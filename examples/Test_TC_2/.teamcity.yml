@@ -1,0 +1,37 @@
+name: Build and Test
+jobs:
+  verify:
+    name: Verify
+    files-publication:
+      - path: build/teamcity-artifacts/reports.tgz
+        publish-artifact: true
+        share-with-jobs: false
+      - path: build/teamcity-artifacts/test-results.tgz
+        publish-artifact: true
+        share-with-jobs: false
+      - path: build/teamcity-artifacts/distributions.tgz
+        publish-artifact: true
+        share-with-jobs: false
+    steps:
+      - type: gradle
+        name: Gradle Verify
+        use-gradle-wrapper: "true"
+        tasks: clean check jacocoTestReport build
+        docker-image: gradle:8.14.1-jdk21
+      - type: script
+        name: Package Artifacts
+        script-content: |-
+          mkdir -p build/teamcity-artifacts
+          tar -czf build/teamcity-artifacts/reports.tgz -C build reports
+          tar -czf build/teamcity-artifacts/test-results.tgz -C build test-results
+          tar -czf build/teamcity-artifacts/distributions.tgz -C build distributions
+  container_smoke:
+    name: Build and Smoke Test Container
+    dependencies:
+      - verify
+    steps:
+      - type: script
+        name: Docker Build and Run
+        script-content: |-
+          docker build -t test-tc-2:%teamcity.build.id% .
+          docker run --rm test-tc-2:%teamcity.build.id%

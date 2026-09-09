@@ -1,0 +1,21 @@
+# IDE
+.idea/
+*.iml
+.ai/
+
+# macOS
+.DS_Store
+
+# Gradle / build output
+# Left over from the retired skill-composer prototype; a stray `git add -A`
+# otherwise sweeps several hundred compiled artifacts into a commit.
+.gradle/
+build/
+*/build/
+out/
+
+# Go
+*.test
+
+# Local ticket/PR notes, never published
+drafts/

@@ -1,0 +1,12 @@
+.git
+.gradle
+.gradle-home
+.idea
+.junie
+build
+out
+*.iml
+.mcp.json
+.teamcity
+.teamcity-mcp.env
+.teamcity.yml
