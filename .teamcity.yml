@@ -6,7 +6,6 @@ jobs:
     steps:
       - type: script
         name: Validate cases against schema
-        docker-image: python:3.12-slim
         script-content: |-
           bash evals/run-eval-validation.sh validate
   selfcheck:
@@ -15,7 +14,6 @@ jobs:
     steps:
       - type: script
         name: Grade a pipeline of known shape
-        docker-image: python:3.12-slim
         script-content: |-
           bash evals/run-eval-validation.sh selfcheck
   publish_eval_report:
@@ -28,6 +26,5 @@ jobs:
     steps:
       - type: script
         name: Collect and render evaluation report
-        docker-image: python:3.12-slim
         script-content: |-
           bash evals/run-eval-report.sh
