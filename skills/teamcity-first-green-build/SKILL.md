@@ -143,6 +143,12 @@ different servers, stop. Do not substitute another server.
   image exists, stop polling and do not start or restart another build. Make at
   most one evidence-based configuration correction, validate it, and retry only
   when the compatibility evidence changed.
+- If the agent/job compatibility command returns `permission_denied`, record
+  compatibility as **unverified**. Do not infer compatibility from a generic
+  wait reason or agent inventory alone. Use another permitted machine-readable
+  TeamCity surface. If none is available, stop with the missing permission as
+  the blocker and do not retry until programmatic compatibility access is
+  granted. Never substitute a manual UI confirmation for this check.
 - Prefer personal builds for validation.
 - Iterate only while each rerun has new evidence or a concrete fix.
 - Stop on proven blockers such as missing VCS authorization, missing TeamCity
