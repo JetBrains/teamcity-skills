@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "id": "jetcaster-kmp-multi-targets",
+  "kind": "pipeline-configuration",
+  "status": "draft",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository: preserve its independent shared-test, Android, iOS simulator, desktop platform, and Wasm targets as separate jobs, create the VCS root and pipeline, validate the configuration against the server, and stop there. Do not queue any build.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/kotlin-hands-on/jetcaster-kmp-migration.git",
+    "revision": "41c118bfe6aadd129cde32bd4a3587af8e746354",
+    "defaultBranch": "main",
+    "root": "."
+  },
+  "stack": {
+    "family": "compose-multiplatform",
+    "buildTool": "gradle",
+    "gradle": "9.6.1",
+    "jdk": "17",
+    "kotlin": "2.4.10"
+  },
+  "requestedConfiguration": {
+    "format": "yaml",
+    "sourcePath": ".teamcity.yml"
+  },
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "expected": {
+    "configurationValidated": true,
+    "sourceMutations": "none",
+    "minimumJobs": 7,
+    "requiredStepTypes": ["gradle", "script"],
+    "requiredStepProperties": [
+      {
+        "stepType": "gradle",
+        "property": "tasks",
+        "matches": "(?i)jvmTest"
+      },
+      {
+        "stepType": "gradle",
+        "property": "tasks",
+        "matches": ":androidApp:assembleDebug"
+      },
+      {
+        "stepType": "script",
+        "property": "script-content",
+        "matches": "(?i)xcodebuild"
+      },
+      {
+        "stepType": "gradle",
+        "property": "tasks",
+        "matches": "(?i)packageDmg"
+      },
+      {
+        "stepType": "gradle",
+        "property": "tasks",
+        "matches": "(?i)packageMsi"
+      },
+      {
+        "stepType": "gradle",
+        "property": "tasks",
+        "matches": "(?i)packageDeb"
+      },
+      {
+        "stepType": "gradle",
+        "property": "tasks",
+        "matches": "(?i)wasmJsBrowserDistribution"
+      }
+    ],
+    "requiredArtifactRules": [
+      "(?i)\\.apk",
+      "(?i)\\.app",
+      "(?i)\\.dmg",
+      "(?i)\\.msi",
+      "(?i)\\.deb",
+      "(?i)wasm"
+    ],
+    "requiredAgentRequirements": [
+      "(?i)mac|darwin|osx",
+      "(?i)win",
+      "(?i)linux"
+    ]
+  }
+}

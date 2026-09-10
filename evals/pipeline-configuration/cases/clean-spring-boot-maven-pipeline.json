@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "id": "clean-spring-boot-maven-pipeline",
+  "kind": "pipeline-configuration",
+  "status": "draft",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository: inspect the repository, create the VCS root and the smallest useful pipeline, validate the configuration against the server, and stop there. Do not queue any build.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/kawser2133/clean-spring-boot-project.git",
+    "revision": "315ca51dcb0ec25f2cce8f99fa239ec23717f3f6",
+    "defaultBranch": "development",
+    "root": "."
+  },
+  "stack": {
+    "family": "spring-boot",
+    "buildTool": "maven",
+    "maven": "3.x",
+    "jdk": "21",
+    "springBoot": "3.2.5"
+  },
+  "requestedConfiguration": {
+    "format": "yaml",
+    "sourcePath": ".teamcity.yml"
+  },
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "expected": {
+    "configurationValidated": true,
+    "sourceMutations": "none",
+    "minimumJobs": 1,
+    "requiredStepTypes": ["maven"],
+    "requiredStepProperties": [
+      {
+        "stepType": "maven",
+        "property": "goals",
+        "matches": "(?i)(^|\\s)(verify|package)(\\s|$)"
+      }
+    ],
+    "requiredArtifactRules": ["(?i)\\.jar"]
+  }
+}
