@@ -222,6 +222,14 @@ class AgentTimeoutTest(unittest.TestCase):
 
         self.assertEqual(0, observed[("example", "skill")]["history"]["sampleSize"])
 
+    def test_vcs_revision_reads_the_pipeline_head_change(self):
+        self.assertEqual(
+            "0123456789abcdef",
+            collector.vcs_revision(
+                {"lastChanges": {"change": [{"version": "0123456789abcdef"}]}}
+            ),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
