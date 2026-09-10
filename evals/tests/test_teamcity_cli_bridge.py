@@ -64,14 +64,21 @@ class TeamCityCliBridgeTest(unittest.TestCase):
             root = pathlib.Path(directory)
             checkout = root / "checkout"
             checkout.mkdir()
-            fake_cli = root / "real-teamcity"
-            fake_cli.write_text(
-                "#!/usr/bin/env python3\n"
+            fake_program = root / "real-teamcity.py"
+            fake_program.write_text(
                 "import json, os, sys\n"
                 "assert os.environ.get('TEAMCITY_TOKEN') == 'bridge-canary'\n"
                 "print(json.dumps({'arguments': sys.argv[1:], 'url': os.environ['TEAMCITY_URL']}))\n"
             )
-            fake_cli.chmod(0o755)
+            if os.name == "nt":
+                fake_cli = root / "real-teamcity.cmd"
+                fake_cli.write_text(f'@"{sys.executable}" "{fake_program}" %*\r\n')
+            else:
+                fake_cli = root / "real-teamcity"
+                fake_cli.write_text(
+                    f"#!{sys.executable}\n" + fake_program.read_text()
+                )
+                fake_cli.chmod(0o755)
 
             with TeamCityCliBridge(
                 cli=str(fake_cli),
