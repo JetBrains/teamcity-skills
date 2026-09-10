@@ -68,8 +68,17 @@ else
     curl --fail --silent --show-error --location "$node_url" --output "$node_archive"
   elif command -v wget >/dev/null 2>&1; then
     wget --quiet --output-document="$node_archive" "$node_url"
+  elif command -v python3 >/dev/null 2>&1; then
+    NODE_URL="$node_url" NODE_ARCHIVE="$node_archive" \
+      python3 -c 'import os, urllib.request; open(os.environ["NODE_ARCHIVE"], "wb").write(urllib.request.urlopen(os.environ["NODE_URL"], timeout=60).read())'
+  elif command -v python >/dev/null 2>&1; then
+    NODE_URL="$node_url" NODE_ARCHIVE="$node_archive" \
+      python -c 'import os, urllib.request; open(os.environ["NODE_ARCHIVE"], "wb").write(urllib.request.urlopen(os.environ["NODE_URL"], timeout=60).read())'
+  elif command -v py.exe >/dev/null 2>&1; then
+    NODE_URL="$node_url" NODE_ARCHIVE="$node_archive" \
+      py.exe -3 -c 'import os, urllib.request; open(os.environ["NODE_ARCHIVE"], "wb").write(urllib.request.urlopen(os.environ["NODE_URL"], timeout=60).read())'
   else
-    echo "Neither curl nor wget is available to bootstrap Node on the TeamCity agent." >&2
+    echo "curl, wget, or Python is required to bootstrap Node on the TeamCity agent." >&2
     return 1
   fi
   if command -v sha256sum >/dev/null 2>&1; then
