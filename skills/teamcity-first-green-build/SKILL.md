@@ -128,6 +128,11 @@ different servers, stop. Do not substitute another server.
   than an open-ended question. State the owner, exact TeamCity scope, UI path
   or supported command, known values to enter, expected result, and the ID or
   evidence the user should return so the agent can continue.
+- Validate every generated or modified TeamCity YAML or Kotlin DSL
+  configuration before queueing a build. A syntax-only YAML parse is not a
+  successful TeamCity validation.
+- A single empty or non-idle agent query is not proof that an accepted build
+  cannot run: cloud agents may be provisioned on demand.
 
 ## Final Report
 
@@ -137,6 +142,7 @@ Report only facts that were checked:
 - Repository URL and project root.
 - Existing, created, updated, or selected TeamCity object.
 - Important TeamCity operations performed.
+- Configuration format, validation method, and validation result.
 - First failed build ID and root cause, if one was observed.
 - First successful build ID, if one was observed.
 - A concrete manual completion checklist for every remaining prerequisite or
