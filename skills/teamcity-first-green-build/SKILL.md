@@ -27,6 +27,12 @@ stop without queueing a build:
   is attached to the intended VCS root, and the exact stored configuration has
   passed server validation. Make at most one evidence-based correction to a
   validation/read-back mismatch, then report a concrete blocker.
+- Keep the completion phase bounded: after one successful server validation
+  and read-back audit, perform at most one agent-inventory query and one
+  targeted job-compatibility query. If either required query is unavailable or
+  denied, report that programmatic blocker immediately. Once the requested
+  configuration passes these checks, return the final result without further
+  discovery, polling, waiting, or speculative improvements.
 
 For a first-green request, follow the full workflow through a successful build
 or a proven external blocker.
