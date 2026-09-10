@@ -7,7 +7,13 @@ jobs:
       - type: script
         name: Validate cases against schema
         script-content: |-
-          bash evals/run-eval-validation.sh validate
+          :; exec bash evals/run-eval-validation.sh validate
+          @goto :windows
+          :windows
+          @echo off
+          "C:\Program Files\Git\bin\bash.exe" evals/run-eval-validation.sh validate
+          @if errorlevel 1 exit /b 1
+          @exit /b 0
   selfcheck:
     name: Self-check the grader
     runs-on: self-hosted
@@ -15,7 +21,13 @@ jobs:
       - type: script
         name: Grade a pipeline of known shape
         script-content: |-
-          bash evals/run-eval-validation.sh selfcheck
+          :; exec bash evals/run-eval-validation.sh selfcheck
+          @goto :windows
+          :windows
+          @echo off
+          "C:\Program Files\Git\bin\bash.exe" evals/run-eval-validation.sh selfcheck
+          @if errorlevel 1 exit /b 1
+          @exit /b 0
   publish_eval_report:
     name: Publish evaluation report
     runs-on: self-hosted
@@ -27,4 +39,10 @@ jobs:
       - type: script
         name: Collect and render evaluation report
         script-content: |-
-          bash evals/run-eval-report.sh
+          :; exec bash evals/run-eval-report.sh
+          @goto :windows
+          :windows
+          @echo off
+          "C:\Program Files\Git\bin\bash.exe" evals/run-eval-report.sh
+          @if errorlevel 1 exit /b 1
+          @exit /b 0
