@@ -64,11 +64,46 @@ def arm_cell(case, arm):
         return '<span class="muted">not run</span>'
     category = observation.get("classification", "unknown")
     color = COLORS.get(category, "#6e6e6e")
+    history = observation.get("history") or {}
+    sample_size = history.get("sampleSize", 0)
+    pass_count = history.get("passCount", 0)
+    pass_rate = history.get("passRate")
+    target = history.get("targetMinSamples", 3)
+    history_html = ""
+    if sample_size:
+        rate = f"{pass_rate * 100:.0f}%" if pass_rate is not None else "—"
+        readiness = "measured" if sample_size >= target else f"need {target - sample_size} more"
+        history_html = (
+            f'<div class="detail">same-revision pass rate: '
+            f'{pass_count}/{sample_size} ({rate}); {readiness}</div>'
+        )
     return (
         f'<span class="status" style="color:{color}">{esc(category)}</span><br>'
         f'{link(observation.get("url"), "run " + str(observation.get("runId")))}'
         f'<div class="detail">{esc(observation.get("detail"))}</div>'
+        f'{history_html}'
     )
+
+
+def usage_cell(run):
+    usage = ((run.get("result") or {}).get("agentUsage") or {})
+    if not usage:
+        return '<span class="muted">not reported</span>'
+    tokens = []
+    if "inputTokens" in usage:
+        tokens.append(f'{usage["inputTokens"]:,.0f} in')
+    if "outputTokens" in usage:
+        tokens.append(f'{usage["outputTokens"]:,.0f} out')
+    if "cacheReadTokens" in usage:
+        tokens.append(f'{usage["cacheReadTokens"]:,.0f} cache read')
+    if "cacheWriteTokens" in usage:
+        tokens.append(f'{usage["cacheWriteTokens"]:,.0f} cache write')
+    cost = (
+        f'<div class="detail">${usage["totalCostUsd"]:,.4f} provider-reported</div>'
+        if "totalCostUsd" in usage else
+        '<div class="detail">provider cost not reported</div>'
+    )
+    return esc(" · ".join(tokens) or "token counts not reported") + cost
 
 
 def render(data):
@@ -111,6 +146,7 @@ def render(data):
             f'<td>{esc(job.get("classificationDetail"))}</td>'
             f'<td>{esc(job.get("agent"))}</td>'
             f'<td>{compact_duration(job.get("durationSeconds"))}</td>'
+            f'<td>{usage_cell(job)}</td>'
             '</tr>'
         )
 
@@ -119,15 +155,33 @@ def render(data):
         for category, count in sorted(counts.items())
     ) or "<span>No job runs collected</span>"
     recommendations = "".join(f"<li>{esc(item)}</li>" for item in data.get("recommendations", []))
+    usage = summary.get("agentUsage") or {}
+    if usage.get("runsMeasured"):
+        measured = usage.get("fieldsMeasured") or {}
+        cost = (
+            f' · ${usage["totalCostUsd"]:,.4f} provider-reported cost'
+            if measured.get("totalCostUsd") else
+            ' · provider cost unavailable'
+        )
+        usage_line = (
+            f'Measured agent usage across {usage["runsMeasured"]} run(s): '
+            f'{usage.get("inputTokens", 0):,.0f} input · '
+            f'{usage.get("outputTokens", 0):,.0f} output · '
+            f'{usage.get("cacheReadTokens", 0):,.0f} cache read · '
+            f'{usage.get("cacheWriteTokens", 0):,.0f} cache write'
+            f'{cost}'
+        )
+    else:
+        usage_line = "Agent token/cost telemetry has not been reported by collected runs yet."
     return f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TeamCity evaluation runs</title><style>
 body{{margin:0;background:#f6f7f8;color:#1d252c;font:14px/1.45 Inter,system-ui,sans-serif}}main{{max-width:1200px;margin:auto;padding:32px 24px 60px}}h1{{font-size:28px;margin:0}}h2{{font-size:16px;margin:30px 0 12px}}.meta{{color:#64717c;margin:4px 0 22px}}.metrics{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}}.section{{background:#fff;border:1px solid #dce1e5;border-radius:10px;padding:16px}}.value{{font-size:26px;font-weight:700}}.label,.muted,.detail,.gate{{color:#64717c}}.detail{{font-size:11px;margin-top:4px}}.barline{{display:flex;overflow:hidden;height:12px;border-radius:8px;background:#e9ecef;margin-top:16px}}.bar{{min-width:4px}}.legend{{display:flex;gap:14px;flex-wrap:wrap;margin:9px 0;color:#52606c;font-size:12px}}.legend i{{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}}.visually-hidden{{position:absolute;clip-path:inset(50%);overflow:hidden;width:1px;height:1px;white-space:nowrap}}code{{font-size:12px;overflow-wrap:anywhere}}table{{border-collapse:collapse;width:100%;min-width:900px;font-size:12px}}th{{text-align:left;color:#64717c;font-weight:600}}td,th{{padding:9px 8px;border-bottom:1px solid #e5e8eb;vertical-align:top}}a{{color:#2864b0;text-decoration:none}}.status{{font-weight:650}}ol{{margin:0;padding-left:22px}}li+li{{margin-top:8px}}@media(max-width:700px){{main{{padding:20px 14px}}.metrics{{grid-template-columns:1fr 1fr}}.table-wrap{{overflow:auto}}}}@media(max-width:420px){{.metrics{{grid-template-columns:1fr 1fr}}}}
 </style></head><body><main>
 <h1>TeamCity evaluation runs</h1><div class="meta">{esc(data.get("server"))} · collected {esc(data.get("generatedAt"))}</div>
-<section class="section"><div class="metrics"><div><div class="value">{summary.get("caseContracts", 0)}</div><div class="label">case contracts</div></div><div><div class="value">{summary.get("pairedCaseContracts", 0)}</div><div class="label">paired agent cases</div></div><div><div class="value">{summary.get("distinctArmsObserved", 0)}/{summary.get("expectedArmSlots", 0)}</div><div class="label">case arms observed</div></div><div><div class="value">{counts.get("running", 0) + counts.get("queued", 0)}</div><div class="label">active eval jobs</div></div></div><div class="barline">{bars}</div><div class="legend">{legend}</div></section>
+<section class="section"><div class="metrics"><div><div class="value">{summary.get("caseContracts", 0)}</div><div class="label">case contracts</div></div><div><div class="value">{summary.get("pairedCaseContracts", 0)}</div><div class="label">paired agent cases</div></div><div><div class="value">{summary.get("distinctArmsObserved", 0)}/{summary.get("expectedArmSlots", 0)}</div><div class="label">case arms observed</div></div><div><div class="value">{counts.get("running", 0) + counts.get("queued", 0)}</div><div class="label">active eval jobs</div></div></div><div class="barline">{bars}</div><div class="legend">{legend}</div><div class="detail">{esc(usage_line)}</div></section>
 <h2>Case × arm matrix</h2><section class="section table-wrap"><table><caption class="visually-hidden">Latest skill and baseline result for every evaluation contract</caption><thead><tr><th scope="col">Case</th><th scope="col">Contract</th><th scope="col">What is tested</th><th scope="col">Skill</th><th scope="col">Baseline</th></tr></thead><tbody>{"".join(matrix_rows)}</tbody></table></section>
-<h2>Recent execution ledger</h2><section class="section table-wrap"><table><caption class="visually-hidden">Recent unique evaluator jobs</caption><thead><tr><th scope="col">Job</th><th scope="col">Case</th><th scope="col">Arm</th><th scope="col">Verdict</th><th scope="col">Reason</th><th scope="col">Agent</th><th scope="col">Duration</th></tr></thead><tbody>{"".join(rows)}</tbody></table></section>
+<h2>Recent execution ledger</h2><section class="section table-wrap"><table><caption class="visually-hidden">Recent unique evaluator jobs</caption><thead><tr><th scope="col">Job</th><th scope="col">Case</th><th scope="col">Arm</th><th scope="col">Verdict</th><th scope="col">Reason</th><th scope="col">Agent</th><th scope="col">Duration</th><th scope="col">Agent usage</th></tr></thead><tbody>{"".join(rows)}</tbody></table></section>
 <h2>Next useful evaluations</h2><section class="section"><ol>{recommendations}</ol></section>
 </main></body></html>'''
 

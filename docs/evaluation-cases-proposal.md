@@ -72,8 +72,8 @@ and is not covered by this contract.
 
 ### Current Evaluation Cases
 
-The suite currently contains 11 contracts over 7 unique repositories: 2
-first-green builds, 7 configuration-only evaluations, 1 deterministic queue
+The suite currently contains 12 contracts over 7 unique repositories: 2
+first-green builds, 8 configuration-only evaluations, 1 deterministic queue
 stall diagnosis, and 1 TeamCity access preflight. Configuration-only and queue
 diagnosis cases are the default expansion path because they exercise Claude
 without compiling the target project.
@@ -90,6 +90,7 @@ without compiling the target project.
 | `spring-boot-kotlin-gradle-java25-pipeline` | A Spring Boot 4/Gradle repository gets exactly one Gradle build job using an exact JDK 25 container and publishes its JAR even when the ephemeral host does not preinstall JDK 25. |
 | `kmm-basic-sample-mobile-targets` | JetBrains' official basic KMP sample gets exactly three shared-test, Android, and macOS/iOS jobs; the APK and simulator app must be published by their corresponding jobs. |
 | `jetcaster-kmp-multi-targets` | Jetcaster preserves exactly seven independent test, Android, iOS, desktop-platform, and Wasm jobs, with each task, platform agent, and artifact checked inside the corresponding job. |
+| `kotlinconf-app-multi-targets` | KotlinConf App preserves six shared-test, Android, iOS, desktop, web, and backend jobs, and publishes each platform output from the job that produces it. |
 | `teamcity-mcp-access-permissions` | The evaluation environment is authenticated and exposes the TeamCity operations needed for first-green-build setup. It classifies an actual `401`/`403` authorization failure separately from an operation that the selected TeamCity tool surface does not provide. |
 
 The cases define expected behavior, not stored results. A case can therefore be
@@ -345,13 +346,22 @@ python3 evals/render_teamcity_eval_report.py \
 ```
 
 The rendered report shows every contract as a row and keeps the latest `skill`
-and `baseline` observations in separate columns. The access preflight contract
-is shown separately as non-arm-based until it has an executable runner. The
+and `baseline` observations in separate columns. Each arm also shows a pass
+rate over at most five executions of the same case, arm, and harness revision;
+three samples are the minimum for calling that rate measured. A missing VCS
+revision is never combined with another run. The access preflight contract is
+shown separately as non-arm-based until it has an executable runner. The
 execution ledger includes each evaluator build ID once and excludes validation,
 self-check, and report jobs. The default collection window is 32 pipeline heads
 per evaluation pipeline so completed observations do not disappear as soon as
 several paired cases and retries have run; set `EVAL_REPORT_LIMIT` explicitly
 when a different retention window is needed.
+
+Every public result may include only the provider-reported numeric
+`agentUsage` allowlist: `inputTokens`, `outputTokens`, `cacheReadTokens`,
+`cacheWriteTokens`, and `totalCostUsd`. The report shows these per run and as
+aggregates. It does not estimate a cost when the provider omitted one, and it
+never copies a prompt, trajectory, session ID, tool argument, or trace field.
 
 `evals/run-eval-report.sh` is the cross-platform wrapper for that job. It
 bootstraps the TeamCity CLI when needed, detects Python on Linux/macOS/Windows,
@@ -375,6 +385,13 @@ The runner publishes one JSON object per execution, for example:
   "caseId": "spring-petclinic-maven-yaml",
   "caseStatus": "active",
   "status": "passed",
+  "agentUsage": {
+    "inputTokens": 1200,
+    "outputTokens": 400,
+    "cacheReadTokens": 800,
+    "cacheWriteTokens": 100,
+    "totalCostUsd": 0.42
+  },
   "configuration": {
     "format": "yaml",
     "validationMethod": "teamcity pipeline validate",
@@ -452,8 +469,10 @@ One execution:
    artifact path matched a published artifact, and `git status` in the checkout
    is clean apart from the TeamCity configuration the agent was asked to
    create;
-6. preserves the temporary project while the current staging server's project
-   deletion is under investigation, and removes the disposable checkout.
+6. marks the project as temporary with creation and expiry timestamps, defers
+   its lifecycle to the archive-only cleanup pipeline, and removes the
+   disposable checkout. The public result records only
+   `cleanupDeferred: true`, never its TeamCity object ID.
 
 For `queue-stall-diagnosis`, steps that create a TeamCity project or wait for a
 build are replaced by the deterministic CLI fixture described above. This keeps
@@ -465,9 +484,9 @@ monitored is never a first-green success, even if tests passed. In that state
 TeamCity may have substituted a default revision. The skill must repair the
 VCS root branch specification and rerun on a monitored branch.
 
-The runner records the retained project ID and sets `cleanupDeferred: true` in
-its result. This temporary infrastructure workaround is not a user-build
-requirement and does not affect grading.
+The runner keeps a retained project ID only inside its disposable process and
+sets `cleanupDeferred: true` in the minimized result. This temporary
+infrastructure state does not affect grading.
 
 A failing `active` case exits non-zero. A failing `aspirational` case is
 reported and exits zero. `--dry-run` resolves the case without touching the
@@ -499,11 +518,19 @@ installation hosts them. Claude's own authentication comes only from the JCP
 Central AI Agent build feature configured in the TeamCity UI.
 
 The server-side `validate-eval-cases` definition is `.teamcity.yml`. It has
-separate schema, grader self-check, and report jobs. They use the target
-server's schema-supported `Linux-Small` tier so the TeamCity CLI bootstrap is
-not scheduled on legacy Windows agents. Their wrappers bootstrap the required
-runtime dependencies without pinning a transient agent name or a server-local
-agent family.
+separate schema, grader self-check, and report jobs. They use `self-hosted`
+because the wrappers are portable across Linux, macOS, and Git Bash on
+Windows; the nightly server accepts `Linux-Small` in its schema but currently
+has no eligible image for it. This avoids pinning a transient agent name or a
+server-local family.
+
+`.teamcity/cleanup-eval-projects.yml` defines a separate maintenance pipeline.
+Its checked-in default is always dry-run so the public repository remains
+portable. After a reviewed dry-run, an external schedule may invoke it in
+`archive` mode with explicit apply and exact-parent confirmation. Scheduled
+cleanup is archive-only: deletion is never automatic. The published cleanup
+report keeps candidate names, reasons, ages, and outcome counts but strips
+internal TeamCity project IDs.
 
 Two operational facts, both learned the hard way:
 

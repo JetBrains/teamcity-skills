@@ -48,6 +48,12 @@ class EvalReportTest(unittest.TestCase):
                             "classification": "passed",
                             "detail": "all recorded assertions passed",
                             "runId": 42,
+                            "history": {
+                                "sampleSize": 3,
+                                "passCount": 2,
+                                "passRate": 0.667,
+                                "targetMinSamples": 3,
+                            },
                         },
                         "baseline": None,
                     },
@@ -75,7 +81,45 @@ class EvalReportTest(unittest.TestCase):
         self.assertIn('<th scope="col">Skill</th><th scope="col">Baseline</th>', report)
         self.assertIn("not arm-based", report)
         self.assertIn("run 42", report)
+        self.assertIn("same-revision pass rate: 2/3 (67%); measured", report)
+        self.assertIn("token/cost telemetry has not been reported", report)
         self.assertEqual(1, report.count("<td>42</td>"))
+
+    def test_report_shows_run_usage_and_distinguishes_missing_cost(self):
+        job = {
+            "id": 42,
+            "classification": "passed",
+            "classificationDetail": "passed",
+            "result": {
+                "caseId": "example",
+                "arm": "skill",
+                "agentUsage": {"inputTokens": 100, "outputTokens": 20},
+            },
+        }
+        data = {
+            "summary": {
+                "jobRunsObserved": 1,
+                "classifications": {"passed": 1},
+                "agentUsage": {
+                    "runsMeasured": 1,
+                    "inputTokens": 100,
+                    "outputTokens": 20,
+                    "fieldsMeasured": {
+                        "inputTokens": 1,
+                        "outputTokens": 1,
+                        "totalCostUsd": 0,
+                    },
+                },
+            },
+            "cases": [],
+            "pipelines": [{"id": "one", "runs": [{"jobs": [job]}]}],
+        }
+
+        report = renderer.render(data)
+
+        self.assertIn("100 in · 20 out", report)
+        self.assertIn("provider cost not reported", report)
+        self.assertIn("provider cost unavailable", report)
 
 
 if __name__ == "__main__":
