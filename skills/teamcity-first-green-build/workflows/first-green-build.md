@@ -13,6 +13,13 @@ blocks progress.
 Do not claim success after only creating a project, creating a pipeline, or
 queueing a build.
 
+For an explicit configuration-only request that says not to queue a build, the
+goal is instead a server-validated, server-stored pipeline attached to the
+intended VCS root. Read it back and audit its requested job topology, runner
+properties, agent selectors, and artifact rules before reporting completion.
+In this mode, never queue a verification build merely to satisfy the
+first-green stopping condition below.
+
 ## Tool Policy
 
 - Use a specific TeamCity tool surface selected by the current environment.
@@ -641,6 +648,9 @@ a generic OS requirement or a transient cloud VM name.
 
 ### 10. Queue The First Build
 
+Skip this step entirely when the user requested configuration-only work and
+explicitly prohibited queueing a build.
+
 Queue the first verification build, preferably as a personal or isolated build
 when the chosen TeamCity surface supports it.
 
@@ -686,6 +696,9 @@ Stop polling early if:
 - The same failure repeats twice with no new signal.
 
 ### 11. Investigate The First Failure
+
+This step applies to a queued first-green build. For configuration-only work,
+diagnose validation or stored-configuration mismatches in steps 7--9 instead.
 
 If the build fails, diagnose one real blocker at a time:
 
@@ -741,10 +754,17 @@ The task is complete only when one of these is true:
 
 - The first verification build is green.
 - A stable external blocker is proven with evidence and reported clearly.
+- For an explicit configuration-only request, the pipeline exists on the
+  target server, is attached to the intended VCS root, the exact stored YAML
+  passes server validation, and the read-back audit confirms the requested
+  jobs, runner properties, agent selectors, and artifact rules.
 
 ## Success Criteria
 
 Do not stop after "project created" or "pipeline queued".
+
+For configuration-only work, do not require or queue a build. Require the
+server-stored configuration and read-back audit described above instead.
 
 A successful report includes:
 
