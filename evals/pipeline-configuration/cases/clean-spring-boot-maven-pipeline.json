@@ -31,6 +31,7 @@
     "configurationValidated": true,
     "sourceMutations": "none",
     "minimumJobs": 1,
+    "expectedJobCount": 1,
     "requiredStepTypes": ["maven"],
     "requiredStepProperties": [
       {
@@ -39,6 +40,20 @@
         "matches": "(?i)(^|\\s)(verify|package)(\\s|$)"
       }
     ],
-    "requiredArtifactRules": ["(?i)\\.jar"]
+    "requiredArtifactRules": ["(?i)\\.jar"],
+    "requiredJobs": [
+      {
+        "jobMatches": ".*",
+        "requiredStepTypes": ["maven"],
+        "requiredStepProperties": [
+          {
+            "stepType": "maven",
+            "property": "goals",
+            "matches": "(?i)(^|\\s)(verify|package)(\\s|$)"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)\\.jar"]
+      }
+    ]
   }
 }

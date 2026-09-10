@@ -31,6 +31,7 @@
     "configurationValidated": true,
     "sourceMutations": "none",
     "minimumJobs": 7,
+    "expectedJobCount": 7,
     "requiredStepTypes": ["gradle", "script"],
     "requiredStepProperties": [
       {
@@ -81,6 +82,95 @@
       "(?i)mac|darwin|osx",
       "(?i)win",
       "(?i)linux"
+    ],
+    "requiredJobs": [
+      {
+        "jobMatches": "(?i)(shared|jvm)",
+        "requiredStepTypes": ["gradle"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i)jvmTest"
+          }
+        ]
+      },
+      {
+        "jobMatches": "(?i)android",
+        "requiredStepTypes": ["gradle"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": ":androidApp:assembleDebug"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)\\.apk"]
+      },
+      {
+        "jobMatches": "(?i)ios",
+        "requiredStepTypes": ["script"],
+        "requiredStepProperties": [
+          {
+            "stepType": "script",
+            "property": "script-content",
+            "matches": "(?i)xcodebuild"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)\\.app"],
+        "requiredAgentRequirements": ["(?i)mac|darwin|osx"]
+      },
+      {
+        "jobMatches": "(?i)(macos|dmg)",
+        "requiredStepTypes": ["gradle"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i)packageDmg"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)\\.dmg"],
+        "requiredAgentRequirements": ["(?i)mac|darwin|osx"]
+      },
+      {
+        "jobMatches": "(?i)(windows|msi)",
+        "requiredStepTypes": ["gradle"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i)packageMsi"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)\\.msi"],
+        "requiredAgentRequirements": ["(?i)win"]
+      },
+      {
+        "jobMatches": "(?i)(linux|deb)",
+        "requiredStepTypes": ["gradle"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i)packageDeb"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)\\.deb"],
+        "requiredAgentRequirements": ["(?i)linux"]
+      },
+      {
+        "jobMatches": "(?i)(wasm|web)",
+        "requiredStepTypes": ["gradle"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i)wasmJsBrowserDistribution"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)wasm"]
+      }
     ]
   }
 }

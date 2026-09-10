@@ -32,6 +32,7 @@
     "configurationValidated": true,
     "sourceMutations": "none",
     "minimumJobs": 3,
+    "expectedJobCount": 3,
     "requiredStepTypes": ["gradle", "script"],
     "requiredStepProperties": [
       {
@@ -51,6 +52,44 @@
       }
     ],
     "requiredArtifactRules": ["(?i)\\.apk", "(?i)\\.app"],
-    "requiredAgentRequirements": ["(?i)mac|darwin|osx"]
+    "requiredAgentRequirements": ["(?i)mac|darwin|osx"],
+    "requiredJobs": [
+      {
+        "jobMatches": "(?i)(shared|common)",
+        "requiredStepTypes": ["gradle"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": ":shared:allTests"
+          }
+        ]
+      },
+      {
+        "jobMatches": "(?i)android",
+        "requiredStepTypes": ["gradle"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": ":androidApp:assembleDebug"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)\\.apk"]
+      },
+      {
+        "jobMatches": "(?i)ios",
+        "requiredStepTypes": ["script"],
+        "requiredStepProperties": [
+          {
+            "stepType": "script",
+            "property": "script-content",
+            "matches": "(?i)xcodebuild"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)\\.app"],
+        "requiredAgentRequirements": ["(?i)mac|darwin|osx"]
+      }
+    ]
   }
 }

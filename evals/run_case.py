@@ -377,7 +377,7 @@ def artifact_matches(pattern: str, published: list) -> bool:
     return False
 
 
-def toolchain_evidence(properties: dict, jdk: str) -> tuple:
+def toolchain_evidence(properties: dict, jdk: str, jobs: list = None) -> tuple:
     """Which JDK the build resolved, read from the properties it ran with.
 
     Returns (matched, evidence). A build that names no JDK anywhere is reported
@@ -390,7 +390,19 @@ def toolchain_evidence(properties: dict, jdk: str) -> tuple:
         if "java" in name.lower() or "jdk" in name.lower()
     }
     matched = sorted(n for n, v in candidates.items() if version.search(v) or version.search(n))
-    return bool(matched), matched or sorted(candidates)[:8]
+    images = sorted({
+        str(step["properties"]["docker-image"])
+        for job in (jobs or [])
+        for step in job["steps"]
+        if "docker-image" in step["properties"]
+    })
+    matched_images = [
+        image for image in images
+        if version.search(image) and re.search(r"(?i)java|jdk|openjdk|temurin", image)
+    ]
+    evidence = matched + [f"docker-image:{image}" for image in matched_images]
+    fallback = sorted(candidates)[:8] + [f"docker-image:{image}" for image in images[:4]]
+    return bool(evidence), evidence or fallback
 
 
 def source_mutations(checkout: pathlib.Path, allowed: list) -> list:
@@ -442,7 +454,7 @@ def grade(case: dict, observed: dict) -> dict:
         "detail": f"unmatched: {missing}" if missing else f"{len(observed['artifacts'])} artifact(s)",
     }
     jdk = expected["toolchain"]["jdk"]
-    matched, evidence = toolchain_evidence(observed["properties"], jdk)
+    matched, evidence = toolchain_evidence(observed["properties"], jdk, observed.get("jobs"))
     checks["toolchain"] = {
         "expected": jdk,
         "observed": jdk if matched else "not-evidenced",
@@ -481,6 +493,13 @@ def grade_configuration(case: dict, observed: dict) -> dict:
     }
     checks["minimumJobs"]["observed"] = len(jobs) >= expected["minimumJobs"]
     checks["minimumJobs"]["expected"] = True
+
+    if "expectedJobCount" in expected:
+        checks["jobCount"] = {
+            "expected": expected["expectedJobCount"],
+            "observed": len(jobs),
+            "detail": f"{len(jobs)} job(s) carrying build steps",
+        }
 
     step_types = {step["type"] for job in jobs for step in job["steps"]}
     if "requiredStepTypes" in expected:
@@ -526,6 +545,72 @@ def grade_configuration(case: dict, observed: dict) -> dict:
             "expected": True,
             "observed": not missing,
             "detail": f"missing {missing} in {text!r}" if missing else f"requirements: {text!r}",
+        }
+
+    if "requiredJobs" in expected:
+        failures = []
+        selected = set()
+        for contract in expected["requiredJobs"]:
+            matcher = contract["jobMatches"]
+            candidates = [
+                (index, job) for index, job in enumerate(jobs)
+                if re.search(matcher, f"{job['id'].rsplit('/', 1)[-1]}\n{job['name']}")
+            ]
+            if len(candidates) != 1:
+                failures.append(f"{matcher!r} matched {len(candidates)} jobs")
+                continue
+
+            index, job = candidates[0]
+            if index in selected:
+                failures.append(f"{matcher!r} reused a job selected by another contract")
+                continue
+            selected.add(index)
+
+            step_types = {step["type"] for step in job["steps"]}
+            missing_types = [
+                step_type for step_type in contract.get("requiredStepTypes", [])
+                if step_type not in step_types
+            ]
+            if missing_types:
+                failures.append(f"{matcher!r} missing step types {missing_types}")
+
+            for want in contract.get("requiredStepProperties", []):
+                pattern = re.compile(want["matches"]) if "matches" in want else None
+                satisfied = any(
+                    step["type"] == want["stepType"]
+                    and want["property"] in step["properties"]
+                    and (
+                        pattern is None
+                        or pattern.search(str(step["properties"][want["property"]]))
+                    )
+                    for step in job["steps"]
+                )
+                if not satisfied:
+                    failures.append(
+                        f"{matcher!r} missing {want['stepType']}.{want['property']}"
+                    )
+
+            missing_artifacts = [
+                pattern for pattern in contract.get("requiredArtifactRules", [])
+                if not re.search(pattern, job["artifactRules"])
+            ]
+            if missing_artifacts:
+                failures.append(f"{matcher!r} missing artifacts {missing_artifacts}")
+
+            requirements = "\n".join(job["agentRequirements"])
+            missing_requirements = [
+                pattern for pattern in contract.get("requiredAgentRequirements", [])
+                if not re.search(pattern, requirements)
+            ]
+            if missing_requirements:
+                failures.append(
+                    f"{matcher!r} missing agent requirements {missing_requirements}"
+                )
+
+        checks["requiredJobs"] = {
+            "expected": True,
+            "observed": not failures,
+            "detail": f"violations: {failures}" if failures else "all per-job contracts satisfied",
         }
 
     if "toolUse" in expected:
@@ -1120,6 +1205,7 @@ def run(
             "artifacts": tc.artifacts(build["id"]),
             "mutations": source_mutations(checkout, allowed),
             "properties": tc.resulting_properties(build["id"]),
+            "jobs": tc.jobs(project_id),
             "attempts": len(history),
         }
         result["buildHistory"] = [

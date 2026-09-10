@@ -20,6 +20,7 @@ evals/
   pipeline-configuration/
     cases/
       cmp-unit-converter-targets.json
+      spring-boot-kotlin-gradle-java25-pipeline.json
       ...
   queue-stall-diagnosis/
     cases/
@@ -71,8 +72,8 @@ and is not covered by this contract.
 
 ### Current Evaluation Cases
 
-The suite currently contains 10 contracts over 6 unique repositories: 2
-first-green builds, 6 configuration-only evaluations, 1 deterministic queue
+The suite currently contains 11 contracts over 7 unique repositories: 2
+first-green builds, 7 configuration-only evaluations, 1 deterministic queue
 stall diagnosis, and 1 TeamCity access preflight. Configuration-only and queue
 diagnosis cases are the default expansion path because they exercise Claude
 without compiling the target project.
@@ -81,13 +82,14 @@ without compiling the target project.
 | --- | --- |
 | `spring-petclinic-maven-yaml` | A Java 17 Spring Boot/Maven repository can receive a valid TeamCity YAML pipeline, execute Maven verification, import JUnit XML, publish its JAR, and finish its first verification build successfully. |
 | `kotlinconf-app-compose-multiplatform` | A Compose Multiplatform application must build its desktop, Android, iOS simulator, web, and backend targets, report every applicable test target, and publish each distributable artifact without silently changing the source toolchain. |
-| `cmp-unit-converter-targets` | A Compose Multiplatform pipeline keeps Android, iOS, and desktop work separate, publishes an APK, and assigns iOS to a macOS environment without building the repository during evaluation. |
-| `teamcity-cli-not-curl` | The agent uses an authenticated first-class TeamCity tool path rather than raw REST through `curl` or `wget`. |
+| `cmp-unit-converter-targets` | A Compose Multiplatform pipeline creates exactly three Android, iOS, and desktop jobs, publishes the APK from the Android job, and assigns iOS to a macOS environment without building the repository during evaluation. |
+| `teamcity-cli-not-curl` | The agent uses authenticated first-class TeamCity commands rather than raw REST through `curl`, `wget`, `/app/rest/`, or `teamcity api`. |
 | `queued-no-compatible-agent` | Once a run has already been queued for over two minutes, the agent checks inventory, job incompatibility reasons, and unresolved stored-pipeline parameters by its second status observation, then stops instead of polling or requeueing. The runner simulates the queue and consumes no target build agent. |
 | `spring-petclinic-maven-pipeline` | The configuration-only Spring Petclinic case uses its documented Maven verification path and publishes the JAR. |
 | `clean-spring-boot-maven-pipeline` | A Maven-only Spring Boot project receives a Maven verification job and JAR publication contract; a later first-green case must prove Java 21. |
-| `kmm-basic-sample-mobile-targets` | JetBrains' official basic KMP sample gets distinct shared-test, Android, and macOS/iOS jobs with APK and simulator-app artifacts. |
-| `jetcaster-kmp-multi-targets` | Jetcaster preserves seven independent test, Android, iOS, desktop-platform, and Wasm jobs with platform-specific agents and artifacts. |
+| `spring-boot-kotlin-gradle-java25-pipeline` | A Spring Boot 4/Gradle repository gets exactly one Gradle build job using an exact JDK 25 container and publishes its JAR even when the ephemeral host does not preinstall JDK 25. |
+| `kmm-basic-sample-mobile-targets` | JetBrains' official basic KMP sample gets exactly three shared-test, Android, and macOS/iOS jobs; the APK and simulator app must be published by their corresponding jobs. |
+| `jetcaster-kmp-multi-targets` | Jetcaster preserves exactly seven independent test, Android, iOS, desktop-platform, and Wasm jobs, with each task, platform agent, and artifact checked inside the corresponding job. |
 | `teamcity-mcp-access-permissions` | The evaluation environment is authenticated and exposes the TeamCity operations needed for first-green-build setup. It classifies an actual `401`/`403` authorization failure separately from an operation that the selected TeamCity tool surface does not provide. |
 
 The cases define expected behavior, not stored results. A case can therefore be

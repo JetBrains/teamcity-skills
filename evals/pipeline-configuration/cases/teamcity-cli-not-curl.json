@@ -32,7 +32,11 @@
     "minimumJobs": 1,
     "toolUse": {
       "required": ["Bash .*\\bteamcity\\b"],
-      "forbidden": ["Bash .*\\b(curl|wget)\\b", "Bash .*/app/rest/"]
+      "forbidden": [
+        "Bash .*\\b(curl|wget)\\b",
+        "Bash .*/app/rest/",
+        "Bash .*\\bteamcity(?:\\.cmd)?\\s+api\\b"
+      ]
     }
   }
 }

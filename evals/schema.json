@@ -461,6 +461,11 @@
           "type": "integer",
           "minimum": 1
         },
+        "expectedJobCount": {
+          "description": "Exact number of jobs that carry build steps when the requested topology has a fixed shape.",
+          "type": "integer",
+          "minimum": 1
+        },
         "requiredStepTypes": {
           "description": "Step types that must appear at least once, for example \"gradle\" where the skill requires a dedicated runner instead of a script step.",
           "type": "array",
@@ -536,6 +541,69 @@
           "items": {
             "type": "string",
             "minLength": 1
+          }
+        },
+        "requiredJobs": {
+          "description": "Per-job contracts. Each matcher must select exactly one job, and different contracts must select different jobs. Runner, task, artifact, and agent assertions are evaluated only inside that job.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["jobMatches"],
+            "properties": {
+              "jobMatches": {
+                "type": "string",
+                "minLength": 1
+              },
+              "requiredStepTypes": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "requiredStepProperties": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["stepType", "property"],
+                  "properties": {
+                    "stepType": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "property": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "matches": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              },
+              "requiredArtifactRules": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "requiredAgentRequirements": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
           }
         }
       }
