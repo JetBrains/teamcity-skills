@@ -1,6 +1,6 @@
 ---
-name: "teamcity-first-green-build"
-description: "Use when setting up, updating, or repairing TeamCity CI for a repository, then iterating through builds until the first successful build or a proven blocker."
+name: teamcity-first-green-build
+description: Use when setting up, updating, or repairing TeamCity CI for a repository, then iterating through builds until the first successful build or a proven blocker.
 ---
 
 # TeamCity First Green Build
