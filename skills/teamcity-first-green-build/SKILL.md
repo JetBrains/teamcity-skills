@@ -1,12 +1,35 @@
 ---
 name: teamcity-first-green-build
-description: Use when setting up, updating, or repairing TeamCity CI for a repository, then iterating through builds until the first successful build or a proven blocker.
+description: Use when creating, validating, updating, or repairing TeamCity CI for a repository, either as configuration-only work or through the first successful build.
 ---
 
 # TeamCity First Green Build
 
 Use this skill to set up TeamCity CI for a repository and drive it to the first
 successful build.
+
+## Select The Requested Outcome
+
+The user's stopping condition controls the workflow. Do not turn a
+configuration-only request into a build run.
+
+When the user explicitly asks to create or update a pipeline, validate it, and
+stop without queueing a build:
+
+- Follow repository inspection, TeamCity discovery, VCS setup, pipeline
+  creation, server validation, and compatibility discovery. Skip Remote Run,
+  build queueing, build polling, and first-build debugging.
+- Preserve every requested or repository-defined independent job. Before
+  finishing, read back the server-stored YAML and audit job topology, dedicated
+  runner types and task/goal properties, `runs-on`, and artifact publication
+  rules against the repository and existing CI.
+- Treat a locally valid file as incomplete until the target pipeline exists,
+  is attached to the intended VCS root, and the exact stored configuration has
+  passed server validation. Make at most one evidence-based correction to a
+  validation/read-back mismatch, then report a concrete blocker.
+
+For a first-green request, follow the full workflow through a successful build
+or a proven external blocker.
 
 ## Load First
 
