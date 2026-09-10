@@ -24,6 +24,7 @@ import secrets
 import subprocess
 import sys
 import tempfile
+import time
 import importlib.util
 
 HERE = pathlib.Path(__file__).parent
@@ -152,7 +153,13 @@ def main() -> int:
         if created.returncode:
             raise RuntimeError(f"could not create the fixture pipeline: {created.stderr.strip()}")
 
-        jobs = tc.jobs(project_id)
+        jobs = []
+        for attempt in range(5):
+            jobs = tc.jobs(project_id)
+            if jobs:
+                break
+            if attempt < 4:
+                time.sleep(2)
         print(f"read back {len(jobs)} job(s): {[j['name'] for j in jobs]}")
         for job in jobs:
             print(f"  {job['name']:10} steps={[s['type'] for s in job['steps']]} "

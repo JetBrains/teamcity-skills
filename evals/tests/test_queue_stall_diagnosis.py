@@ -3,6 +3,7 @@ import json
 import os
 import pathlib
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -96,8 +97,11 @@ class QueueStallDiagnosisTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             workspace = pathlib.Path(directory)
             env = run_case.install_queue_stall_fixture(workspace, dict(os.environ))
+            fixture_cli = [
+                sys.executable, str(workspace / "fixture-bin/teamcity-fixture.py")
+            ]
             queued = subprocess.run(
-                [str(workspace / "fixture-bin/teamcity"), "run", "view", "73142", "--json"],
+                [*fixture_cli, "run", "view", "73142", "--json"],
                 env=env,
                 capture_output=True,
                 text=True,
@@ -110,7 +114,7 @@ class QueueStallDiagnosisTest(unittest.TestCase):
 
             output = workspace / "stored.yml"
             subprocess.run(
-                [str(workspace / "fixture-bin/teamcity"), "pipeline", "pull", "QueueFixture",
+                [*fixture_cli, "pipeline", "pull", "QueueFixture",
                  "--output", str(output)],
                 env=env,
                 capture_output=True,
