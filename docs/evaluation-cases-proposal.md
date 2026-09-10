@@ -486,69 +486,21 @@ list so a reviewer can judge a loose match.
 
 The TCEvals pipelines are server-stored YAML: `validate-eval-cases` is the
 continuous static gate; `run-eval-case` and `run-configuration-eval` run a
-selected case on demand. The checked-in `.teamcity/*.yml` files are their
-reviewable desired definitions, not an automatic source of truth. Pull the
-server definition to a scratch file, validate it against that server, and push
-the same file explicitly after a review. Configure VCS and pull-request
-triggers on the hosting TeamCity project; neither YAML file names a server.
+selected case on demand. The checked-in `.teamcity.yml` and `.teamcity/*.yml`
+files are their reviewable desired definitions, not an automatic source of
+truth. Pull the server definition to a scratch file, validate it against that
+server, and push the corresponding checked-in file explicitly after a review.
+Configure VCS and pull-request triggers on the hosting TeamCity project; the
+YAML files do not name a server.
 The URL and TeamCity access token are project parameters on whichever TeamCity
 installation hosts them. Claude's own authentication comes only from the JCP
 Central AI Agent build feature configured in the TeamCity UI.
 
-The server-side `validate-eval-cases` definition needs these three jobs. The
-POSIX wrapper is called directly on Linux/macOS and through Git Bash on Windows;
-unlike the old `python:3.12-slim` and `node:22-bookworm` Docker steps, it does
-not require a Linux container host.
-
-```yaml
-jobs:
-  validate:
-    name: Validate eval cases
-    runs-on: self-hosted
-    steps:
-      - type: script
-        name: Validate cases against schema
-        script-content: |-
-          :; exec bash evals/run-eval-validation.sh validate
-          @goto :windows
-          :windows
-          @echo off
-          "C:\Program Files\Git\bin\bash.exe" evals/run-eval-validation.sh validate
-          @if errorlevel 1 exit /b 1
-          @exit /b 0
-  selfcheck:
-    name: Self-check the grader
-    runs-on: self-hosted
-    steps:
-      - type: script
-        name: Grade a pipeline of known shape
-        script-content: |-
-          :; exec bash evals/run-eval-validation.sh selfcheck
-          @goto :windows
-          :windows
-          @echo off
-          "C:\Program Files\Git\bin\bash.exe" evals/run-eval-validation.sh selfcheck
-          @if errorlevel 1 exit /b 1
-          @exit /b 0
-  publish_eval_report:
-    name: Publish evaluation report
-    runs-on: self-hosted
-    files-publication:
-      - path: .teamcity/evaluation-report/**
-        publish-artifact: true
-        share-with-jobs: false
-    steps:
-      - type: script
-        name: Collect and render evaluation report
-        script-content: |-
-          :; exec bash evals/run-eval-report.sh
-          @goto :windows
-          :windows
-          @echo off
-          "C:\Program Files\Git\bin\bash.exe" evals/run-eval-report.sh
-          @if errorlevel 1 exit /b 1
-          @exit /b 0
-```
+The server-side `validate-eval-cases` definition is `.teamcity.yml`. It has
+separate schema, grader self-check, and report jobs. All three select a
+self-hosted Linux agent by durable OS capability so an unrestricted
+`self-hosted` match cannot schedule the bootstrap scripts on unsupported
+legacy Windows images.
 
 Two operational facts, both learned the hard way:
 
