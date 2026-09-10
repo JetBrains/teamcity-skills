@@ -30,3 +30,28 @@ symptoms to the smallest useful fix.
   test does not override an actual build-time change-collection failure.
 - Do not hide uncertainty. If the logs do not identify a single cause, state
   the likely causes and the next verification step.
+
+## Live-Agent Diagnostics
+
+An agent process can redirect its own structured output to an artifact, so a
+running TeamCity step with no new visible log line does not by itself prove it
+is hung. First use normal build metadata, queue state, build problems, tests,
+and artifacts. Do not read agent workspaces or trajectories unless that is
+needed and allowed by the task's data handling rules.
+
+If the diagnostic command `teamcity agent exec <agent-id> <read-only-command>`
+returns HTTP 403, treat it as an optional-diagnostics permission gap, not as a
+build failure and not as authorization to broaden the current token. Continue
+to monitor through normal build APIs. If live runtime inspection is necessary,
+give the project administrator this bounded handoff:
+
+1. On the confirmed TeamCity server, open **Project Settings → Permissions**
+   for the target project and grant the permission required by the **Agent
+   Terminal** plugin / agent command execution to a diagnostic role only.
+2. Limit that role to the target project and the current diagnostic user; it
+   does not need global project-administration or token-management rights.
+3. Verify the scope with one benign read-only command, such as `teamcity agent
+   exec <agent-id> "echo agent-terminal-ok"`.
+4. Revoke the temporary diagnostic grant when the investigation is complete,
+   or return the permitted build log and artifact metadata to continue without
+   granting terminal access.

@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 1,
+  "id": "kotlinconf-app-compose-multiplatform",
+  "kind": "first-green-build",
+  "status": "aspirational",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} for https://github.com/JetBrains/kotlinconf-app and reach the first green build.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/JetBrains/kotlinconf-app.git",
+    "revision": "7011707b0a2d6c7ceacc44e467ae21524c7db26e",
+    "defaultBranch": "main",
+    "root": "."
+  },
+  "stack": {
+    "family": "compose-multiplatform",
+    "buildTool": "gradle",
+    "gradle": "9.6.1",
+    "jdk": "21",
+    "kotlin": "2.4.10"
+  },
+  "requestedConfiguration": {
+    "format": "yaml",
+    "sourcePath": ".teamcity.yml",
+    "requiredStepProperties": [
+      {
+        "stepType": "script",
+        "property": "script-content"
+      },
+      {
+        "stepType": "gradle",
+        "property": "tasks"
+      }
+    ]
+  },
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "verification": {
+    "command": "./gradlew --no-daemon :app:desktopApp:jar jvmTest :app:androidApp:assembleDebug :app:androidApp:testDebugUnitTest :app:webApp:composeCompatibilityBrowserDistribution :backend:jar :backend:test",
+    "commands": [
+      "./gradlew --no-daemon :app:desktopApp:jar jvmTest",
+      "./gradlew --no-daemon :app:desktopApp:createReleaseDistributable --stacktrace",
+      "./gradlew --no-daemon :app:androidApp:assembleDebug :app:androidApp:testDebugUnitTest --stacktrace",
+      "cd app/iosApp && xcodebuild -project KotlinConf.xcodeproj -scheme KotlinConfAppScheme -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build",
+      "./gradlew --no-daemon :app:webApp:composeCompatibilityBrowserDistribution",
+      "./gradlew --no-daemon :backend:jar :backend:test"
+    ],
+    "testReportPaths": [
+      "app/shared/build/test-results/jvmTest/*.xml",
+      "app/androidApp/build/test-results/testDebugUnitTest/*.xml",
+      "backend/build/test-results/test/*.xml"
+    ],
+    "artifactPaths": [
+      "app/desktopApp/build/libs/*.jar",
+      "app/desktopApp/build/compose/binaries/main/*",
+      "app/androidApp/build/outputs/apk/debug/*.apk",
+      "app/iosApp/.teamcity/ios-derived-data/Build/Products/Debug-iphonesimulator/*.app/**",
+      "app/webApp/build/dist/composeWebCompatibility/productionExecutable/**",
+      "backend/build/libs/*.jar"
+    ]
+  },
+  "expected": {
+    "configurationValidated": true,
+    "testsExecutedAndReported": true,
+    "artifactsPublished": true,
+    "sourceMutations": "none",
+    "toolchain": {
+      "jdk": "21"
+    },
+    "firstBuild": "SUCCESS",
+    "targets": [
+      {
+        "id": "jvm-desktop",
+        "name": "JVM desktop build and test",
+        "status": "SUCCESS",
+        "tests": "reported",
+        "artifactPaths": [
+          "app/desktopApp/build/libs/*.jar"
+        ],
+        "requiresExactSourceToolchain": true
+      },
+      {
+        "id": "desktop-release",
+        "name": "Desktop release distributable",
+        "status": "SUCCESS",
+        "tests": "not-applicable",
+        "artifactPaths": [
+          "app/desktopApp/build/compose/binaries/main/*"
+        ],
+        "requiresExactSourceToolchain": true
+      },
+      {
+        "id": "android",
+        "name": "Android debug build and unit tests",
+        "status": "SUCCESS",
+        "tests": "reported",
+        "artifactPaths": [
+          "app/androidApp/build/outputs/apk/debug/*.apk"
+        ],
+        "requiresExactSourceToolchain": true
+      },
+      {
+        "id": "ios-simulator",
+        "name": "iOS simulator build",
+        "status": "SUCCESS",
+        "tests": "not-applicable",
+        "artifactPaths": [
+          "app/iosApp/.teamcity/ios-derived-data/Build/Products/Debug-iphonesimulator/*.app/**"
+        ],
+        "requiresExactSourceToolchain": true
+      },
+      {
+        "id": "web",
+        "name": "Web distribution",
+        "status": "SUCCESS",
+        "tests": "not-applicable",
+        "artifactPaths": [
+          "app/webApp/build/dist/composeWebCompatibility/productionExecutable/**"
+        ],
+        "requiresExactSourceToolchain": true
+      },
+      {
+        "id": "backend",
+        "name": "Backend build and test",
+        "status": "SUCCESS",
+        "tests": "reported",
+        "artifactPaths": [
+          "backend/build/libs/*.jar"
+        ],
+        "requiresExactSourceToolchain": true
+      }
+    ]
+  },
+  "observedBaseline": {
+    "configuration": "accepted-by-server",
+    "overallBuild": "SUCCESS",
+    "targets": [
+      {
+        "id": "jvm-desktop",
+        "status": "SUCCESS",
+        "testsReported": false,
+        "artifactsPublished": true,
+        "notes": "The requested jvmTest task succeeded, but TeamCity imported no test occurrences."
+      },
+      {
+        "id": "desktop-release",
+        "status": "SUCCESS",
+        "testsReported": false,
+        "artifactsPublished": false,
+        "notes": "The release-distribution task succeeded, but no release artifact was published."
+      },
+      {
+        "id": "android",
+        "status": "SUCCESS",
+        "testsReported": false,
+        "artifactsPublished": true,
+        "notes": "The unit-test task succeeded, but TeamCity imported no test occurrences."
+      },
+      {
+        "id": "ios-simulator",
+        "status": "SUCCESS",
+        "testsReported": false,
+        "artifactsPublished": true,
+        "notes": "The project has no iOS test action; the simulator app bundle was published."
+      },
+      {
+        "id": "web",
+        "status": "SUCCESS",
+        "testsReported": false,
+        "artifactsPublished": true,
+        "notes": "The web distribution was archived and published."
+      },
+      {
+        "id": "backend",
+        "status": "SUCCESS",
+        "testsReported": false,
+        "artifactsPublished": true,
+        "notes": "The requested backend test task succeeded, but TeamCity imported no test occurrences."
+      }
+    ],
+    "testReporting": {
+      "observed": 0,
+      "expected": 3
+    },
+    "artifactPublication": {
+      "observed": 5,
+      "expected": 6
+    },
+    "sourceFidelity": "build-time-compatibility-shim",
+    "limitations": [
+      "The available Android image did not provide platforms;android-37, so the successful run installed API 36 and changed compileSdk and targetSdk from 37 to 36 only in the disposable checkout.",
+      "Script-based Gradle test steps did not import JUnit XML into TeamCity, so a green build did not provide test-result observability.",
+      "The desktop release distributable was built but not published as an artifact."
+    ]
+  }
+}

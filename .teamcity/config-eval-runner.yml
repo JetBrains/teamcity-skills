@@ -1,0 +1,59 @@
+name: Run configuration eval
+# Runs lightweight configuration and queue-diagnosis evals without compiling a
+# target project. Cheap enough to run per commit and across many repositories,
+# unlike a green-build case.
+# In TeamCity UI, add the JCP Central AI Agent build feature, select Claude
+# Code and a JCP Central connection. The feature provides `claude` and injects
+# short-lived authentication for this build; no agent token belongs in YAML.
+#
+# Parameters set at trigger time:
+#   case            path to the case JSON
+#   env.EVAL_ARM    "skill" (default) or "baseline", which withholds the skill
+parameters:
+  case: evals/pipeline-configuration/cases/cmp-unit-converter-targets.json
+  env.EVAL_PIPELINES: ""
+jobs:
+  run_config_case:
+    name: Run configuration eval
+    # This job orchestrates the evaluation only. KMP target jobs created by
+    # Claude must declare their own Linux/macOS agent requirements.
+    runs-on: self-hosted
+    files-publication:
+      - path: eval-result.json
+        publish-artifact: true
+        share-with-jobs: false
+    steps:
+      - type: script
+        name: Run the case
+        script-content: |-
+          :; exec bash evals/run-eval-case.sh "%case%"
+          @goto :windows
+          :windows
+          @echo off
+          "C:\Program Files\Git\bin\bash.exe" evals/run-eval-case.sh "%case%"
+          @if errorlevel 1 exit /b 1
+          @exit /b 0
+    # Configure the JCP Central AI Agent feature and select this installation's
+    # connection in TeamCity. Connection IDs are server-local and never belong
+    # in this portable definition.
+  publish_eval_report:
+    name: Publish evaluation report
+    runs-on: self-hosted
+    dependencies:
+      - run_config_case:
+          run-job-if-upstream-fails: true
+    files-publication:
+      - path: .teamcity/evaluation-report/**
+        publish-artifact: true
+        share-with-jobs: false
+    steps:
+      - type: script
+        name: Collect and render evaluation report
+        script-content: |-
+          :; exec bash evals/run-eval-report.sh
+          @goto :windows
+          :windows
+          @echo off
+          "C:\\Program Files\\Git\\bin\\bash.exe" evals/run-eval-report.sh
+          @if errorlevel 1 exit /b 1
+          @exit /b 0

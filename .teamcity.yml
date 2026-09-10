@@ -1,0 +1,28 @@
+name: Validate eval cases
+jobs:
+  validate:
+    name: Validate eval cases
+    # Docker-image adds the Docker requirement; select an eligible Linux agent
+    # family on the TeamCity installation that hosts this pipeline.
+    runs-on: self-hosted
+    steps:
+      - type: script
+        name: Validate cases against schema
+        docker-image: python:3.12-slim
+        script-content: |-
+          set -eu
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet --requirement evals/requirements.txt
+          .venv/bin/python evals/validate.py
+  selfcheck:
+    name: Self-check the grader
+    runs-on: self-hosted
+    steps:
+      - type: script
+        name: Grade a pipeline of known shape
+        docker-image: node:22-bookworm
+        script-content: |-
+          set -eu
+          npm install --global --silent @jetbrains/teamcity-cli
+          apt-get update -qq && apt-get install -y -qq python3-yaml
+          python3 evals/selfcheck.py
