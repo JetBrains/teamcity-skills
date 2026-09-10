@@ -15,6 +15,13 @@
 - Direct API (`teamcity api`)
 - Global Flags
 - List Output Flags
+- CLI Updates (`teamcity update`)
+
+## CLI Updates (`teamcity update`)
+
+- `teamcity update` checks the release feed and asks before installing.
+- `--yes`, `-y` installs without prompting; required for non-interactive installation.
+- `--check` or `--json` reports status without installing; neither combines with `--yes`.
 
 ## Authentication (`teamcity auth`)
 
@@ -266,6 +273,7 @@ The `<id>` (job) positional is optional when the repo is linked; `delete` accept
 | `teamcity project param delete <id> <name>`    | Delete parameter             |
 | `teamcity project token put <id>`              | Store secret, get token      |
 | `teamcity project token get <id> <token>`      | Retrieve secret              |
+| `teamcity project settings enable <id>`        | Import initial settings from VCS |
 | `teamcity project settings export <id>`        | Export settings as ZIP       |
 | `teamcity project settings status <id>`        | Show versioned settings sync |
 | `teamcity project settings validate [path]`    | Validate Kotlin DSL config   |
@@ -304,6 +312,10 @@ The `<id>` (job) positional is optional when the repo is linked; `delete` accept
 - `--json` - Output as JSON
 - `-w, --web` - Open in browser
 
+### Flags for `teamcity project vcs create`
+
+- `--token-id <id>` - Reference a stored token; requires `--auth token`, excludes `--connection-id`
+
 ### Flags for `teamcity project vcs delete`
 
 - `-y, --yes` - Skip confirmation prompt
@@ -315,6 +327,13 @@ The `<id>` (job) positional is optional when the repo is linked; `delete` accept
 ### Flags for `teamcity project param set`
 
 - `--secure` - Mark as secure/password parameter
+
+### Flags for `teamcity project settings enable`
+
+- `--vcs-root <id>` - Settings VCS root (required)
+- `--format <kotlin|xml>` - Settings format (default: kotlin)
+- `--settings-path <path>` - Repository settings directory (default: .teamcity)
+- `--json` - Output the configuration as JSON
 
 ### Flags for `teamcity project settings export`
 
