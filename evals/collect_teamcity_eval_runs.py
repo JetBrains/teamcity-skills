@@ -30,6 +30,10 @@ import tempfile
 HERE = pathlib.Path(__file__).resolve().parent
 EVAL_JOB_NAMES = {"Run configuration eval", "Run eval case"}
 ARMS = ("skill", "baseline")
+USAGE_FIELDS = (
+    "inputTokens", "outputTokens", "cacheReadTokens",
+    "cacheWriteTokens", "totalCostUsd",
+)
 
 
 def teamcity_cli():
@@ -82,6 +86,23 @@ def duration_seconds(run):
     except ValueError:
         return None
     return int((finished - started).total_seconds())
+
+
+def vcs_revision(run):
+    changes = (run.get("lastChanges") or {}).get("change") or []
+    return changes[0].get("version") if changes else None
+
+
+def safe_agent_usage(value):
+    if not isinstance(value, dict):
+        return {}
+    return {
+        name: value[name]
+        for name in USAGE_FIELDS
+        if isinstance(value.get(name), (int, float))
+        and not isinstance(value.get(name), bool)
+        and value[name] >= 0
+    }
 
 
 def flatten_dependencies(tree):
@@ -230,6 +251,7 @@ def download_result(warnings, server, run_id):
             "arm": result.get("arm"),
             "agentExitCode": result.get("agentExitCode"),
             "agentTimedOut": result.get("agentTimedOut"),
+            "agentUsage": safe_agent_usage(result.get("agentUsage")),
             "errorCategory": error_category,
             "checks": {
                 name: {"passed": check.get("passed")}
@@ -348,10 +370,49 @@ def normalize_run(server, warnings, node):
         "startedAt": iso_time(detailed.get("startDate")),
         "finishedAt": iso_time(detailed.get("finishDate")),
         "durationSeconds": duration_seconds(detailed),
+        "revision": vcs_revision(detailed),
         "classification": category,
         "classificationDetail": detail,
         "result": result,
     }
+
+
+def latest_arm_observations(all_jobs, window_size=5, target_min_samples=3):
+    """Latest arm plus a bounded pass-rate window on the same harness SHA."""
+    observed = {}
+    history = {}
+    for job in sorted(all_jobs, key=lambda item: item["id"], reverse=True):
+        result = job.get("result") or {}
+        case_id = result.get("caseId")
+        arm = result.get("arm")
+        key = (case_id, arm)
+        if not case_id or arm not in ARMS:
+            continue
+        history.setdefault(key, []).append(job)
+        if key not in observed:
+            observed[key] = {
+                "classification": job["classification"],
+                "detail": job["classificationDetail"],
+                "runId": job["id"],
+                "url": job["url"],
+                "arm": arm,
+                "revision": job.get("revision"),
+            }
+    for key, observation in observed.items():
+        latest_revision = observation.get("revision")
+        samples = [] if not latest_revision else [
+            job for job in history[key]
+            if job.get("revision") == latest_revision
+        ][:window_size]
+        passed = sum(job["classification"] == "passed" for job in samples)
+        observation["history"] = {
+            "sampleSize": len(samples),
+            "passCount": passed,
+            "passRate": round(passed / len(samples), 3) if samples else None,
+            "targetMinSamples": target_min_samples,
+            "windowSize": window_size,
+        }
+    return observed
 
 
 def collect(server, pipelines, limit, excluded_job_names):
@@ -409,20 +470,7 @@ def collect(server, pipelines, limit, excluded_job_names):
         report["pipelines"].append({"id": pipeline, "runs": heads})
 
     all_jobs = list(all_jobs_by_id.values())
-    observed = {}
-    for job in sorted(all_jobs, key=lambda item: item["id"], reverse=True):
-        result = job.get("result") or {}
-        case_id = result.get("caseId")
-        arm = result.get("arm")
-        key = (case_id, arm)
-        if case_id and arm in ARMS and key not in observed:
-            observed[key] = {
-                "classification": job["classification"],
-                "detail": job["classificationDetail"],
-                "runId": job["id"],
-                "url": job["url"],
-                "arm": arm,
-            }
+    observed = latest_arm_observations(all_jobs)
     for case in report["cases"]:
         if case["executionModel"] == "paired-arms":
             case["arms"] = {arm: observed.get((case["id"], arm)) for arm in ARMS}
@@ -432,6 +480,20 @@ def collect(server, pipelines, limit, excluded_job_names):
     counts = {}
     for job in all_jobs:
         counts[job["classification"]] = counts.get(job["classification"], 0) + 1
+    usage_rows = [
+        safe_agent_usage((job.get("result") or {}).get("agentUsage"))
+        for job in all_jobs
+    ]
+    usage_rows = [usage for usage in usage_rows if usage]
+    usage_totals = {"runsMeasured": len(usage_rows)}
+    for field in USAGE_FIELDS:
+        values = [usage[field] for usage in usage_rows if field in usage]
+        if values:
+            usage_totals[field] = round(sum(values), 6)
+    usage_totals["fieldsMeasured"] = {
+        field: sum(field in usage for usage in usage_rows)
+        for field in USAGE_FIELDS
+    }
     report["summary"] = {
         "caseContracts": len(report["cases"]),
         "pairedCaseContracts": sum(
@@ -444,6 +506,7 @@ def collect(server, pipelines, limit, excluded_job_names):
         "distinctArmsObserved": len(observed),
         "jobRunsObserved": len(all_jobs),
         "classifications": counts,
+        "agentUsage": usage_totals,
     }
     report["recommendations"] = [
         "Complete skill and baseline arms on one pinned revision; a single skill-arm pass does not measure skill lift.",

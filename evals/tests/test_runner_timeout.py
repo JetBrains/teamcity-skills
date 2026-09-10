@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import pathlib
 import subprocess
 import tempfile
@@ -73,6 +74,63 @@ class AgentTimeoutTest(unittest.TestCase):
         self.assertNotIn("projectId", published)
         self.assertNotIn("error", published)
 
+    def test_agent_usage_copies_only_safe_numeric_aggregates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trace = pathlib.Path(directory) / "trace.log"
+            trace.write_text(
+                "prompt and private trajectory\n"
+                + json.dumps(
+                    {
+                        "type": "result",
+                        "result": "private final answer",
+                        "total_cost_usd": 0.42,
+                        "session_id": "private-session",
+                        "usage": {
+                            "input_tokens": 100,
+                            "output_tokens": 20,
+                            "cache_read_input_tokens": 80,
+                            "cache_creation_input_tokens": 10,
+                            "private": "must not escape",
+                        },
+                    }
+                )
+                + "\n"
+            )
+
+            usage = run_case.agent_usage(trace)
+
+        self.assertEqual(
+            {
+                "inputTokens": 100,
+                "outputTokens": 20,
+                "cacheReadTokens": 80,
+                "cacheWriteTokens": 10,
+                "totalCostUsd": 0.42,
+            },
+            usage,
+        )
+
+    def test_publishable_result_keeps_safe_usage_without_trace_fields(self):
+        published = run_case.publishable_result(
+            {
+                "caseId": "example",
+                "status": "passed",
+                "agentUsage": {
+                    "inputTokens": 100,
+                    "totalCostUsd": 0.42,
+                    "private": "must not escape",
+                },
+                "agentTraceTail": ["private"],
+                "checks": {},
+            }
+        )
+
+        self.assertEqual(
+            {"inputTokens": 100, "totalCostUsd": 0.42},
+            published["agentUsage"],
+        )
+        self.assertNotIn("agentTraceTail", published)
+
     def test_timed_out_agent_keeps_checks_but_cannot_pass(self):
         result = {"checks": {"build": {"passed": True}}}
 
@@ -123,6 +181,46 @@ class AgentTimeoutTest(unittest.TestCase):
         flattened = collector.flatten_dependencies(tree)
 
         self.assertEqual([8, 7], [node["id"] for node in flattened])
+
+    def test_pass_rate_uses_at_most_five_runs_from_latest_revision(self):
+        def job(identifier, revision, classification):
+            return {
+                "id": identifier,
+                "revision": revision,
+                "classification": classification,
+                "classificationDetail": classification,
+                "url": f"https://teamcity.example/{identifier}",
+                "result": {"caseId": "example", "arm": "skill"},
+            }
+
+        observed = collector.latest_arm_observations(
+            [
+                job(9, "new", "passed"),
+                job(8, "new", "skill-output-failed"),
+                job(7, "old", "passed"),
+            ]
+        )
+
+        history = observed[("example", "skill")]["history"]
+        self.assertEqual(2, history["sampleSize"])
+        self.assertEqual(1, history["passCount"])
+        self.assertEqual(0.5, history["passRate"])
+
+    def test_pass_rate_is_not_claimed_without_a_harness_revision(self):
+        observed = collector.latest_arm_observations(
+            [
+                {
+                    "id": 9,
+                    "revision": None,
+                    "classification": "passed",
+                    "classificationDetail": "passed",
+                    "url": "https://teamcity.example/9",
+                    "result": {"caseId": "example", "arm": "skill"},
+                }
+            ]
+        )
+
+        self.assertEqual(0, observed[("example", "skill")]["history"]["sampleSize"])
 
 
 if __name__ == "__main__":

@@ -933,6 +933,63 @@ def agent_final_text(trace: pathlib.Path) -> str:
     return latest
 
 
+def agent_usage(trace: pathlib.Path) -> dict:
+    """Return only provider-reported numeric usage from the final result event.
+
+    Claude's stream trace is private and may contain the prompt, repository
+    content, and tool arguments.  The final result event also carries aggregate
+    counters; copy only that fixed numeric allowlist into the public result.
+    """
+    latest = {}
+    try:
+        lines = trace.read_text(errors="replace").splitlines()
+    except OSError:
+        return latest
+    for line in lines:
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") != "result":
+            continue
+        usage = event.get("usage") if isinstance(event.get("usage"), dict) else {}
+        candidates = {
+            "inputTokens": usage.get("input_tokens"),
+            "outputTokens": usage.get("output_tokens"),
+            "cacheReadTokens": usage.get("cache_read_input_tokens"),
+            "cacheWriteTokens": usage.get("cache_creation_input_tokens"),
+            "totalCostUsd": event.get("total_cost_usd"),
+        }
+        latest = {
+            name: value
+            for name, value in candidates.items()
+            if isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value >= 0
+        }
+    return latest
+
+
+def safe_agent_usage(value) -> dict:
+    """Apply the public usage allowlist even to an already assembled result."""
+    if not isinstance(value, dict):
+        return {}
+    allowed = (
+        "inputTokens", "outputTokens", "cacheReadTokens",
+        "cacheWriteTokens", "totalCostUsd",
+    )
+    return {
+        name: value[name]
+        for name in allowed
+        if isinstance(value.get(name), (int, float))
+        and not isinstance(value.get(name), bool)
+        and value[name] >= 0
+    }
+
+
 def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.Path,
                  timeout: int, tools: list = None) -> dict:
     # The runner owns the output format, because grading reads the trace, and the
@@ -1007,6 +1064,9 @@ def publishable_result(result: dict) -> dict:
         "cleanupDeferred",
     )
     published = {name: result[name] for name in fields if name in result}
+    usage = safe_agent_usage(result.get("agentUsage"))
+    if usage:
+        published["agentUsage"] = usage
     published["checks"] = {
         name: {"passed": check.get("passed")}
         for name, check in (result.get("checks") or {}).items()
@@ -1166,6 +1226,9 @@ def run(
         result["agentExitCode"] = agent_exit
         result["agentTimedOut"] = agent_run["timedOut"]
         result["agentTimeoutSeconds"] = agent_run["timeoutSeconds"]
+        usage = agent_usage(trace)
+        if usage:
+            result["agentUsage"] = usage
         result["errorCategory"] = trace_error_category(trace)
 
         # A dead agent queues nothing, so waiting the full budget for a build
@@ -1248,7 +1311,8 @@ def run(
         if project_id and not keep:
             # Temporary project deletion is disabled while the target server
             # does not complete the project DELETE request. Keep the project
-            # ID in the result so the infrastructure owner can clean it up.
+            # ID only in the private in-memory result for lifecycle tooling;
+            # publishable_result strips it from eval-result.json.
             result["temporaryObjectsRemoved"] = False
             result["cleanupDeferred"] = True
         if not keep:

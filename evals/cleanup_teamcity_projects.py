@@ -311,6 +311,11 @@ def classify_projects(projects, backend, parent, mode, ttl, delete_grace, now, a
     return records
 
 
+def public_cleanup_record(record):
+    """Strip the internal TeamCity object ID from the published report."""
+    return {name: value for name, value in record.items() if name != "id"}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server", default=os.environ.get("TEAMCITY_URL"))
@@ -367,7 +372,7 @@ def main():
         "ttlHours": args.ttl_hours,
         "deleteGraceHours": args.delete_grace_hours,
         "summary": counts,
-        "projects": records,
+        "projects": [public_cleanup_record(record) for record in records],
     }
     args.report.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({"summary": counts, "report": str(args.report)}, indent=2))

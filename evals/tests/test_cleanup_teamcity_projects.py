@@ -223,6 +223,19 @@ class CleanupTeamCityProjectsTest(unittest.TestCase):
         self.assertEqual("deleted-after-TimeoutError", reason)
         self.assertEqual(1, manager.tc.deletes)
 
+    def test_public_report_record_never_contains_temporary_project_id(self):
+        record = {
+            "id": "private-teamcity-object-id",
+            "name": "eval-skill-case-20260908-000000-abcdef",
+            "status": "candidate",
+            "reason": "eligible-for-archive",
+        }
+
+        published = cleanup.public_cleanup_record(record)
+
+        self.assertNotIn("id", published)
+        self.assertEqual(record["name"], published["name"])
+
 
 if __name__ == "__main__":
     unittest.main()
