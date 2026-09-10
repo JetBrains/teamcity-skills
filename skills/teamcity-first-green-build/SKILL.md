@@ -18,6 +18,8 @@ Read shared guidance only when relevant:
 
 - `shared/project-inspection.md` for local repository inspection.
 - `shared/build-step-selection.md` for choosing TeamCity build steps.
+- `shared/kmp-mobile.md` for Kotlin Multiplatform, Compose Multiplatform, or
+  Android/iOS build and test setup.
 - `shared/token-safety.md` when credentials are involved.
 - `shared/build-log-debugging.md` when diagnosing failed builds.
 
@@ -35,12 +37,6 @@ present in the user's current request, stop and ask for them in the next
 assistant message.
 
 ## Prerequisites
-
-At the start of every task, before repository inspection, TeamCity discovery, or
-writes, ask for or confirm:
-
-- The exact TeamCity server name or URL being targeted.
-- The target parent project name or ID. `_Root` is valid.
 
 Before any TeamCity write, also make sure the following facts are known:
 
@@ -60,11 +56,15 @@ different servers, stop. Do not substitute another server.
 - Inspect existing TeamCity objects before creating new ones.
 - Preserve checked-in TeamCity YAML topology unless the user asks for a reduced
   first pass.
+- Validate every generated or modified TeamCity YAML or Kotlin DSL
+  configuration before queueing a build. A syntax-only YAML parse is not a
+  successful TeamCity validation.
 - Prefer personal builds for validation.
 - Iterate only while each rerun has new evidence or a concrete fix.
-- Stop on proven blockers such as missing VCS authorization, missing TeamCity
-  permissions, incompatible build environments, or unavailable external
-  services.
+- Stop only on proven blockers such as missing VCS authorization, missing
+  TeamCity permissions, incompatible build environments, or unavailable
+  external services. A single empty or non-idle agent query is not proof that
+  an accepted build cannot run: cloud agents may be provisioned on demand.
 
 ## Final Report
 
@@ -74,6 +74,7 @@ Report only facts that were checked:
 - Repository URL and project root.
 - Existing, created, updated, or selected TeamCity object.
 - Important TeamCity operations performed.
+- Configuration format, validation method, and validation result.
 - First failed build ID and root cause, if one was observed.
 - First successful build ID, if one was observed.
 - Remaining manual prerequisites or blockers.

@@ -19,57 +19,35 @@ queueing a build.
   Adapters should map this workflow to the concrete tools available in their
   environment.
 - Do not use plain REST with `curl`, ad hoc scripts, or generic REST escape
-  hatches unless the user explicitly asks for that path, except for the
-  direct patch-upload fallback documented in step 5.
-- Confirm the exact TeamCity server before discovery or writes.
+  hatches unless the user explicitly asks for that path, except for the direct
+  patch-upload fallback in step 5.
 - If a callable tool, connection, or configured context points at a different
   TeamCity server, abort discovery and fix the attachment or login first.
-- Whenever YAML or Kotlin DSL with TeamCity configuration are generated or modified,
-  always perform a validation of it (See "Validate Configuration" step),
-  before starting a run in TeamCity.
-- At the start of every run, ask for or confirm the TeamCity server and target
-  project before repository inspection, TeamCity discovery, or writes.
-- This confirmation must be obvious in the assistant's first response for the
-  task. Do not continue based on prior context, tool names, environment
-  variables, command history, repository files, or cached assumptions.
-- Keep a small in-memory cache of server facts learned during the task. Reuse
-  it while the target server, parent project, repository, and TeamCity object
-  have not changed.
+- After authenticating to a TeamCity server, discover its version and the
+  capabilities exposed by the selected TeamCity surface.
+- Before queueing a build, validate every generated or modified TeamCity YAML
+  or Kotlin DSL configuration with the strongest validator available for that
+  format. A syntax-only YAML parse does not establish that TeamCity can use the
+  configuration.
 
 ## Recommended Workflow
 
-### 1. Confirm TeamCity Server And Project
+### 1. Identify TeamCity Server And Project
 
-This is a hard stop gate. If the user's current request does not explicitly
-include both values below, the assistant's next message must ask for them and do
-nothing else:
-
-- TeamCity server name or URL.
-- Target parent project name or ID. `_Root` is valid.
-
-The assistant must not treat environment context, previous tasks, command
-history, repository files, MCP server names, or cached values as confirmation.
-
-At the start of the task, ask for or confirm:
-
-- TeamCity server name or URL.
-- Target parent project name or ID. `_Root` is valid.
-
-Do not continue to repository inspection, TeamCity discovery, connection
-creation, or writes until both values are known from explicit user input in the
-current request.
+Ask for the TeamCity server URL and target parent project if either is missing.
+`_Root` is valid.
 
 If the user provides a project name rather than an ID, resolve it to a concrete
-TeamCity project ID after connecting, then confirm the exact ID before any write
-operation.
+TeamCity project ID after connecting. Report the resolved ID and continue; ask
+only when zero or multiple candidate projects match.
 
-Also ask for or discover:
+Also discover:
 
 - Authentication path. Try OAuth or existing interactive authentication first
   when the selected TeamCity surface supports it. Ask for a TeamCity token only
   when no safer existing authentication path is available.
-- Object strategy: create a new pipeline or reuse/update an existing TeamCity
-  object.
+- Whether a matching TeamCity object should be reused or a new named pipeline
+  created.
 - Repository URL and default branch.
 
 Handle tokens safely:
@@ -89,6 +67,10 @@ Identify the smallest command set that should prove the project works:
 - Docker image build, push, compose, or container validation steps, if present.
 - Required services, caches, environment variables, and credentials.
 - Existing CI files and checked-in TeamCity YAML or Kotlin DSL.
+
+For Kotlin Multiplatform, Compose Multiplatform, Android, or iOS projects,
+also read `shared/kmp-mobile.md`. When the repository declares mobile targets,
+the first useful pipeline must build those targets, not only a JVM module.
 
 For Gradle/JVM projects, a common starting point is:
 
@@ -124,11 +106,26 @@ Discover state only against the confirmed target server:
   or credentials.
 - Recent failures and last successful baseline builds for related objects.
 - Available build agents, compatible environments, and pipeline capabilities.
+- TeamCity version, Pipelines YAML schema/version, and support for pipeline
+  validation, VCS roots, Remote Run, and agent compatibility discovery.
 
 Avoid duplicate CI. Prefer reusing or updating an existing object when it
 matches the repository and user intent.
 
+When a matching TeamCity configuration exists, reuse its configuration format
+and update it rather than generating a parallel pipeline. Otherwise, if the
+repository contains GitHub Actions workflows, attempt to convert the relevant
+workflow to TeamCity Pipelines YAML before generating a configuration from
+scratch. With the TeamCity CLI, use `teamcity migrate --from github-actions`.
+Review the converted YAML and its reported manual setup before treating it as
+generated configuration.
+
 ### 5. Check Local Changes With Remote Run Fallback
+
+For an IDE-led KMP onboarding flow, when the user provides a local repository
+clone and its path, use that working tree first for Remote Run when the selected
+surface supports it. This gives the initial verification build the actual source
+code before a durable VCS root is configured. Use a VCS root for durable CI.
 
 For private repositories where TeamCity cannot collect changes, try a TeamCity
 remote run or patch-based personal build before declaring the setup blocked,
@@ -288,26 +285,65 @@ Pipeline contents should include:
 - Parameters and secrets referenced through TeamCity credentials or project
   connections, not hardcoded values.
 
+When mobile targets are present, use the mobile job topology and artifact rules
+in `shared/kmp-mobile.md`. Do not silently reduce a KMP application to JVM-only
+validation.
+
+For an iOS script that builds an Xcode scheme embedding a KMP framework, add
+the architecture arguments selected under `shared/kmp-mobile.md` to the
+generated `xcodebuild` command. For example, an `iosSimulatorArm64`-only
+project on an Arm64 macOS agent needs `ARCHS=arm64 ONLY_ACTIVE_ARCH=YES` before
+the `build` action.
+
 Prefer the smallest pipeline that can prove the repository. Preserve existing
 multi-job topology when the repository already defines it.
 
 ### 8. Validate Configuration
 
-If a TeamCity configuration was created or modified, perform the local verification of it.
-The verification depends on the format of the configuration:
- - For Kotlin DSL, if you have the TeamCity CLI skill, then use the CLI to validate the configuration
-   by running `teamcity project settings validate` (More information is available in the TeamCity CLI skill's "Validating Kotlin DSL Locally" section).
-  
-   Raw Maven command to validate in case when CLI is not available: `./mvnw teamcity-configs:generate -f .teamcity/pom.xml` (prefer wrapper),
-   or `./mvnw teamcity-configs:generate -f .teamcity/pom.xml` (fallback, use when wrapper is not available). Successful build states that configuration is correct.
-  
-   If Maven is absent, notify the user and ask to install it.
- - For YAML, if you have the TeamCity CLI skill, then use the CLI to validate the pipeline
-   by running `teamcity pipeline validate`. Otherwise, run
-   `python3 -c "import yaml; yaml.safe_load(open('.teamcity.yml'))" && echo "Valid" || echo "Invalid"`.
-   If the `Valid` value is printed, the configuration is correct. If the `python3` is not available, use `python` instead.
-   For the fallback, when Python is not available, perform only basic syntax check and
-   raise a warning, that deterministic validation was not performed.
+Validate generated or modified configuration before queueing a build. Use the
+configuration file that will be committed or otherwise become the source of
+truth; do not validate a separately reconstructed copy.
+
+#### Kotlin DSL
+
+Use a deterministic Kotlin DSL validator available in the selected TeamCity
+surface. The TeamCity CLI command is:
+
+```bash
+teamcity project settings validate path/to/.teamcity
+```
+
+An MCP validation operation is equally valid when exposed. If neither is
+available, run the TeamCity Configs Maven goal from the DSL directory. Prefer
+its wrapper; use `mvn` only when the wrapper is absent and Maven is installed:
+
+```bash
+./mvnw teamcity-configs:generate -f path/to/.teamcity/pom.xml
+mvn teamcity-configs:generate -f path/to/.teamcity/pom.xml
+```
+
+Do not queue a build if no deterministic Kotlin DSL validation is available.
+Report the missing validation capability instead.
+
+#### Pipeline YAML
+
+Use a server-backed YAML schema validator available in the selected TeamCity
+surface. The TeamCity CLI command is:
+
+```bash
+teamcity pipeline validate path/to/pipeline.yml
+```
+
+An MCP schema-validation operation is equally valid when exposed. If neither
+is available, a local YAML parser may establish only syntax, for example:
+
+```bash
+python3 -c "import yaml, sys; yaml.safe_load(open(sys.argv[1])); print('YAML syntax is valid')" path/to/pipeline.yml
+```
+
+Do not describe a successful syntax parse as successful TeamCity validation.
+Stop before queueing the build and report that semantic YAML validation is
+missing.
 
 ### 9. Validate Compatibility
 
@@ -323,25 +359,57 @@ Check:
 - Required parameters and credentials resolve.
 - VCS connection can collect changes.
 
-If no compatible agent exists, report this as an infrastructure blocker instead
-of repeatedly queueing builds.
+For TeamCity Pipelines YAML, the agent field is `jobs.<job-id>.runs-on`.
+For a platform-specific job, obtain the macOS/Xcode, Android, or other offered
+value from the confirmed server and write that exact durable agent/image name
+as the scalar value, for example:
+
+```yaml
+jobs:
+  ios-simulator:
+    runs-on: <offered-macos-xcode-agent-or-image>
+```
+
+Do not substitute a generic OS requirement or the name of a transient cloud VM.
+After saving, read back the YAML and verify that `runs-on` is present on the
+specific job and equals the selected offered value. Never carry that value to a
+different server or infer it from a previous build. If the selected tool
+surface cannot set or read this field, report that capability gap before
+relying on queue provisioning.
+
+Do not requeue a build to solve agent availability. A single empty or
+non-idle-compatible-agent query is only a queue observation, not an
+infrastructure blocker: cloud agents may be provisioned after the build enters
+the queue. Continue monitoring the accepted build and its job builds.
+
+Treat agent availability as a blocker only after the queue grace period in step
+10 has elapsed without an agent being assigned, or when TeamCity reports a
+specific incompatible requirement that cannot be fixed in the pipeline.
 
 ### 10. Queue The First Build
 
 Queue the first verification build, preferably as a personal or isolated build
 when the chosen TeamCity surface supports it.
 
-Poll with bounded backoff. For example:
+Poll the pipeline head and every generated job with bounded backoff. For
+example:
 
 - 5 seconds
 - 10 seconds
 - 20 seconds
 - 30 seconds
 
+For an accepted build waiting for an agent, continue at a 60-second maximum
+interval for at least 10 minutes from queueing. Inspect both the job queue
+reason and agent availability, but do not end the task merely because one agent
+listing is empty. Give the user a short progress update at least once a minute
+while waiting.
+
 Stop polling early if:
 
 - The build reaches a terminal state.
-- The queue or build reason already explains a stable blocker.
+- A documented queue grace period has elapsed and the queue or build reason
+  proves a stable blocker.
 - The same failure repeats twice with no new signal.
 
 ### 11. Investigate The First Failure
@@ -385,6 +453,7 @@ A successful report includes:
 - Final TeamCity object name and ID.
 - Repository URL and branch.
 - VCS root and connection strategy used.
+- Configuration format, validation method, and validation result.
 - Build IDs for failed and successful verification runs, when observed.
 - Root cause and fix for each investigated failure.
 - Remaining manual prerequisites, if any.
