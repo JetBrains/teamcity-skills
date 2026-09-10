@@ -88,8 +88,17 @@ class TeamCityCliBridgeTest(unittest.TestCase):
                 agent_env = bridge.agent_environment(
                     {**os.environ, "TEAMCITY_TOKEN": "bridge-canary"}
                 )
+                command = [
+                    str(bridge.wrapper_dir / ("teamcity.cmd" if os.name == "nt" else "teamcity")),
+                    "auth",
+                    "status",
+                ]
+                if os.name == "nt":
+                    command = [
+                        "cmd.exe", "/d", "/s", "/c", subprocess.list2cmdline(command)
+                    ]
                 outcome = subprocess.run(
-                    ["teamcity", "auth", "status"], cwd=checkout, env=agent_env,
+                    command, cwd=checkout, env=agent_env,
                     capture_output=True, text=True, check=True,
                 )
 
