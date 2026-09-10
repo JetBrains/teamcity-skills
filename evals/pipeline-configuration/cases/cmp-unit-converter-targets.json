@@ -31,8 +31,25 @@
     "configurationValidated": true,
     "sourceMutations": "none",
     "minimumJobs": 3,
+    "expectedJobCount": 3,
     "requiredStepTypes": ["gradle"],
     "requiredArtifactRules": ["\\.apk"],
-    "requiredAgentRequirements": ["(?i)mac|darwin|osx"]
+    "requiredAgentRequirements": ["(?i)mac|darwin|osx"],
+    "requiredJobs": [
+      {
+        "jobMatches": "(?i)android",
+        "requiredStepTypes": ["gradle"],
+        "requiredArtifactRules": ["(?i)\\.apk"]
+      },
+      {
+        "jobMatches": "(?i)ios",
+        "requiredStepTypes": ["gradle"],
+        "requiredAgentRequirements": ["(?i)mac|darwin|osx"]
+      },
+      {
+        "jobMatches": "(?i)desktop",
+        "requiredStepTypes": ["gradle"]
+      }
+    ]
   }
 }

@@ -610,6 +610,12 @@ other tier just because it was valid on a different TeamCity server.
 For an exact repository-declared JVM version, agent compatibility alone is not
 enough. Discover a server-managed JDK installation from the selected agent or
 image and verify the completed build's effective `JAVA_HOME` and Java version.
+If the host lacks that JDK and the repository's job is portable to Linux
+containers, use a step-level official JDK image pinned to the exact major
+version after programmatically confirming Docker-compatible agents. Run the
+same dedicated Gradle or Maven step inside that image and publish the same
+outputs; do not install a system JDK onto the ephemeral host. This fallback is
+not valid for host-native macOS/iOS work.
 Prefer first-class CLI fields. If the CLI omits agent parameters or resulting
 runtime properties, discover the current environment's TeamCity MCP tools,
 read their guide and schemas, confirm the server, and use a dedicated agent or
@@ -619,8 +625,9 @@ such operation is exposed, use the manual infrastructure handoff below. A green
 build whose effective runtime is older than the declared version remains a
 failed verification.
 
-If the required JDK is unavailable, do not queue repeated builds and do not
-weaken the repository requirement. Hand off this exact infrastructure work:
+If neither a matching managed JDK nor a compatible pinned JDK container is
+available, do not queue repeated builds and do not weaken the repository
+requirement. Hand off this exact infrastructure work:
 
 1. **Owner:** the TeamCity agent or cloud-image administrator.
 2. **Scope:** an agent pool or cloud image available to the target project;
