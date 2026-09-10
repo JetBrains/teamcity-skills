@@ -17,7 +17,8 @@ Read and follow the canonical workflow:
 Read shared guidance only when relevant:
 
 - `shared/project-inspection.md` for local repository inspection.
-- `shared/build-step-selection.md` for choosing TeamCity build steps.
+- `shared/build-step-selection.md` for choosing TeamCity build steps and the
+  required build status service messages.
 - `shared/kmp-mobile.md` for Kotlin Multiplatform, Compose Multiplatform, or
   Android/iOS build and test setup.
 - `shared/token-safety.md` when credentials are involved.

@@ -2,7 +2,7 @@
 
 ## Starting and Monitoring Builds
 
-> **Always use `--watch`** when starting builds to wait until the build finishes before proceeding.
+> **Never start a build and move on** — wait for it. Block on it with `--watch`, or, when a user is waiting on the result, poll it and report each stage (see [Reporting progress while a build runs](#reporting-progress-while-a-build-runs)).
 > **Always verify the branch name** — do not guess. Check with `git branch` or `teamcity run list --job <job-id>` to see valid branches.
 
 **Start a build:**
@@ -66,6 +66,26 @@ teamcity run watch <run-id> --timeout 30m --quiet
 teamcity run start <job-id> --watch --json
 teamcity run watch <run-id> --json
 ```
+
+## Reporting Progress While A Build Runs
+
+`--watch` only prints once the build is over, so it is right only when nobody
+reads intermediate output. When a user is waiting, poll instead:
+
+```bash
+teamcity run view <run-id> --json    # state, status, statusText, percentageComplete
+teamcity queue list --job <job-id> --json=id,waitReason,queuedDate
+teamcity agent list --json=name,connected,enabled,authorized
+teamcity agent jobs <agent-id> --incompatible
+```
+
+- Report each stage the first time it appears, never an unchanged status. Space
+  the checks out — 5s, 10s, 20s, 30s — and stop once `state` is terminal.
+- Still `queued` after a check or two means blocked, not slow: report the
+  `waitReason`.
+- Say whether a human is needed. No agent connected/enabled/authorized is a
+  human action; an unmet requirement (missing tool, env var, parameter, wrong
+  pool) is usually fixable in the job or DSL.
 
 ## Personal Builds (Local Changes)
 
