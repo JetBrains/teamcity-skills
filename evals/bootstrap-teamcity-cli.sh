@@ -76,15 +76,37 @@ else
     echo "$node_sha256  $node_archive" | sha256sum --check --status
   elif command -v shasum >/dev/null 2>&1; then
     [ "$(shasum -a 256 "$node_archive" | awk '{print $1}')" = "$node_sha256" ]
+  elif command -v python3 >/dev/null 2>&1; then
+    NODE_ARCHIVE="$node_archive" NODE_SHA256="$node_sha256" \
+      python3 -c 'import hashlib, os; assert hashlib.sha256(open(os.environ["NODE_ARCHIVE"], "rb").read()).hexdigest() == os.environ["NODE_SHA256"]'
+  elif command -v python >/dev/null 2>&1; then
+    NODE_ARCHIVE="$node_archive" NODE_SHA256="$node_sha256" \
+      python -c 'import hashlib, os; assert hashlib.sha256(open(os.environ["NODE_ARCHIVE"], "rb").read()).hexdigest() == os.environ["NODE_SHA256"]'
+  elif command -v py.exe >/dev/null 2>&1; then
+    NODE_ARCHIVE="$node_archive" NODE_SHA256="$node_sha256" \
+      py.exe -3 -c 'import hashlib, os; assert hashlib.sha256(open(os.environ["NODE_ARCHIVE"], "rb").read()).hexdigest() == os.environ["NODE_SHA256"]'
   else
-    echo "Neither sha256sum nor shasum is available to verify the Node download." >&2
+    echo "sha256sum, shasum, or Python is required to verify the Node download." >&2
     return 1
   fi
   if [ "$node_platform" = win ]; then
-    if command -v unzip >/dev/null 2>&1; then
+    if command -v python3 >/dev/null 2>&1; then
+      NODE_ARCHIVE="$node_archive" NODE_DESTINATION="$teamcity_eval_cli_dir" \
+        python3 -c 'import os, zipfile; zipfile.ZipFile(os.environ["NODE_ARCHIVE"]).extractall(os.environ["NODE_DESTINATION"])'
+    elif command -v python >/dev/null 2>&1; then
+      NODE_ARCHIVE="$node_archive" NODE_DESTINATION="$teamcity_eval_cli_dir" \
+        python -c 'import os, zipfile; zipfile.ZipFile(os.environ["NODE_ARCHIVE"]).extractall(os.environ["NODE_DESTINATION"])'
+    elif command -v py.exe >/dev/null 2>&1; then
+      NODE_ARCHIVE="$node_archive" NODE_DESTINATION="$teamcity_eval_cli_dir" \
+        py.exe -3 -c 'import os, zipfile; zipfile.ZipFile(os.environ["NODE_ARCHIVE"]).extractall(os.environ["NODE_DESTINATION"])'
+    elif command -v unzip >/dev/null 2>&1; then
       unzip -q "$node_archive" -d "$teamcity_eval_cli_dir"
+    elif command -v powershell.exe >/dev/null 2>&1; then
+      NODE_ARCHIVE="$node_archive" NODE_DESTINATION="$teamcity_eval_cli_dir" \
+        powershell.exe -NoProfile -NonInteractive -Command \
+        'Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory($env:NODE_ARCHIVE, $env:NODE_DESTINATION)'
     else
-      echo "unzip is required to bootstrap Node on a Windows TeamCity agent." >&2
+      echo "Python, unzip, or PowerShell is required to extract Node on a Windows TeamCity agent." >&2
       return 1
     fi
     export PATH="$node_dir:$PATH"
