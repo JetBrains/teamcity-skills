@@ -1,0 +1,2 @@
+# Dependencies for evals/validate.py
+jsonschema==4.23.0

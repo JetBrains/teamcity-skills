@@ -18,7 +18,15 @@ TeamCity server's supported capabilities.
 
 ## Technology Defaults
 
-- Gradle: prefer a Gradle runner for Gradle tasks.
+- Gradle: when the live Pipeline schema exposes `type: gradle`, use the Gradle
+  runner for primary Gradle build, test, and package tasks. Set its `tasks`
+  property from the repository's verified Gradle tasks. Do not substitute a
+  generic script merely because schema validation does not validate every
+  runner-specific property. When the repository declares an exact JDK, require
+  an agent/image that offers it and set job-level `env.JAVA_HOME` to the same
+  discovered server-managed installation; do not rely on the agent's default
+  Java. Use a script only for non-Gradle glue that the Gradle runner cannot
+  express.
 - Maven: prefer a Maven runner for Maven goals.
 - Node.js: prefer a Node.js or npm-capable runner when the schema exposes one.
 - .NET: prefer a .NET runner when available.

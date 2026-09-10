@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "id": "kmm-basic-sample-mobile-targets",
+  "kind": "pipeline-configuration",
+  "status": "draft",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository: create the VCS root and a pipeline covering the repository's shared tests, Android application, and iOS simulator application, validate the configuration against the server, and stop there. Do not queue any build.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/Kotlin/kmm-basic-sample.git",
+    "revision": "83e1d17070878ce1ded5936b789bff515aa63e7f",
+    "defaultBranch": "master",
+    "root": "."
+  },
+  "stack": {
+    "family": "kotlin-multiplatform",
+    "buildTool": "gradle",
+    "gradle": "9.6.1",
+    "jdk": "17",
+    "declaredJdk": "11",
+    "kotlin": "2.4.10"
+  },
+  "requestedConfiguration": {
+    "format": "yaml",
+    "sourcePath": ".teamcity.yml"
+  },
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "expected": {
+    "configurationValidated": true,
+    "sourceMutations": "none",
+    "minimumJobs": 3,
+    "requiredStepTypes": ["gradle", "script"],
+    "requiredStepProperties": [
+      {
+        "stepType": "gradle",
+        "property": "tasks",
+        "matches": ":shared:allTests"
+      },
+      {
+        "stepType": "gradle",
+        "property": "tasks",
+        "matches": ":androidApp:assembleDebug"
+      },
+      {
+        "stepType": "script",
+        "property": "script-content",
+        "matches": "(?i)xcodebuild"
+      }
+    ],
+    "requiredArtifactRules": ["(?i)\\.apk", "(?i)\\.app"],
+    "requiredAgentRequirements": ["(?i)mac|darwin|osx"]
+  }
+}
