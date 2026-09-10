@@ -41,10 +41,11 @@ Keep independent targets as separate jobs when agents permit parallelism.
   exact debug APK or AAB output only after confirming its path locally or from
   the build output.
 - **iOS job:** query the target server's schema and macOS/Xcode agents or cloud
-  images before setting `jobs.<ios-job-id>.runs-on`. Use the server-offered
-  hosted selector, or stable self-hosted constraints that identify a compatible
-  macOS/Xcode agent; never use a transient VM name. Read back the YAML to
-  verify it. Reuse a checked-in Fastlane setup when it already
+  images before setting `jobs.<ios-job-id>.runs-on`. Use the exact durable
+  macOS/Xcode agent or image offered by that server, or stable self-hosted
+  constraints accepted by its schema; do not use a generic macOS requirement or
+  a transient VM name. Read back the YAML to verify it. Reuse a checked-in
+  Fastlane setup when it already
   defines the project, scheme, and test flow; otherwise use a script step that
   runs the discovered `xcodebuild` commands. Build the app and run tests only
   for a scheme that has testable targets.
@@ -110,12 +111,13 @@ bundle ID, project/workspace, scheme, and export method before queuing it.
 
 ## Mobile Preconditions And Completion
 
-Before queueing, query the selected TeamCity server for compatible Linux/Android
-and macOS/Xcode environments when those jobs are generated. For each
-platform-specific job, set a selector supported by the live server schema and
-its compatible agents/images, then read the saved YAML back to verify it was
-applied. Do not pin a transient cloud-VM name or reuse an agent choice from
-another server. An iOS job must not be sent to a Linux agent.
+Before queueing, verify that the selected TeamCity server exposes compatible
+Linux/Android and macOS/Xcode environments when those jobs are generated. For
+each platform-specific job, set the exact durable server-offered agent/image or
+stable self-hosted selector supported by the live schema in
+`jobs.<job-id>.runs-on`, then read the saved YAML back to verify it was applied.
+Do not pin a transient cloud-VM name or reuse an agent choice from another
+server. An iOS job must not be sent to a generic Linux agent.
 
 The first-green outcome for a multi-target project reports each target
 separately: Android build/tests/artifact, iOS build/tests/artifact, and
