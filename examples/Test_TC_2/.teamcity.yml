@@ -21,10 +21,12 @@ jobs:
       - type: script
         name: Package Artifacts
         script-content: |-
+          echo "##teamcity[progressMessage 'Packaging artifacts']"
           mkdir -p build/teamcity-artifacts
           tar -czf build/teamcity-artifacts/reports.tgz -C build reports
           tar -czf build/teamcity-artifacts/test-results.tgz -C build test-results
           tar -czf build/teamcity-artifacts/distributions.tgz -C build distributions
+          echo "##teamcity[buildStatus text='{build.status.text}, artifacts packaged']"
   container_smoke:
     name: Build and Smoke Test Container
     dependencies:
@@ -33,5 +35,8 @@ jobs:
       - type: script
         name: Docker Build and Run
         script-content: |-
+          echo "##teamcity[progressMessage 'Building container image']"
           docker build -t test-tc-2:%teamcity.build.id% .
+          echo "##teamcity[progressMessage 'Running container smoke test']"
           docker run --rm test-tc-2:%teamcity.build.id%
+          echo "##teamcity[buildStatus text='{build.status.text}, container smoke test passed']"
