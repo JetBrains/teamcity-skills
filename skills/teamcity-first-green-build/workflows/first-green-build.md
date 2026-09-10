@@ -510,6 +510,14 @@ Before spending time debugging build failures, validate that the generated
 pipeline and jobs are compatible with at least one TeamCity build agent or
 build environment.
 
+For configuration-only work, this phase is a bounded completion gate. After
+the saved-YAML audit, make at most one inventory query and one targeted
+job-compatibility query. A denied or unavailable query is a terminal
+programmatic blocker for that request, not a reason to try aliases, poll, wait,
+or continue general discovery. When the check succeeds, return the final result
+immediately; do not spend the remaining agent budget refining an already valid
+configuration.
+
 ### 9a. Resolve Pipeline Parameters Before Agent Diagnosis
 
 Server-backed YAML validation checks Pipeline shape but does not prove that all
