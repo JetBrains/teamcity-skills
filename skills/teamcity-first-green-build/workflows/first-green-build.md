@@ -67,6 +67,18 @@ queueing a build.
   patch-upload fallback in step 5.
 - After authenticating to a TeamCity server, discover its version and the
   capabilities exposed by the selected TeamCity surface.
+- Before queueing a build, validate every generated or modified TeamCity YAML
+  or Kotlin DSL configuration with the strongest validator available for that
+  format (see the "Validate Configuration" step). A syntax-only YAML parse
+  does not establish that TeamCity can use the configuration.
+- Whenever a pipeline, build step, or build script is generated or modified, it
+  must report meaningful live status through TeamCity service messages (See
+  "Report Meaningful Build Status" in step 7).
+- At the start of every run, ask for or confirm the TeamCity server and target
+  project before repository inspection, TeamCity discovery, or writes.
+- This confirmation must be obvious in the assistant's first response for the
+  task. Do not continue based on prior context, tool names, environment
+  variables, command history, repository files, or cached assumptions.
 
 ## Recommended Workflow
 
