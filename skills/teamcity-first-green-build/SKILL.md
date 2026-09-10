@@ -23,6 +23,13 @@ stop without queueing a build:
   finishing, read back the server-stored YAML and audit job topology, dedicated
   runner types and task/goal properties, `runs-on`, and artifact publication
   rules against the repository and existing CI.
+- Derive task names and output rules from the pinned checkout. For a Maven
+  wrapper repository, the wrapper alone is not a reason to replace an
+  available Maven runner with a script: keep lifecycle goals in the Maven
+  step and publish the produced JAR from that job. For a multiplatform
+  repository, keep each independently scheduled platform/package in its own
+  job and attach its artifact rule to that same job; a global artifact rule on
+  another job does not satisfy the target.
 - Treat a locally valid file as incomplete until the target pipeline exists,
   is attached to the intended VCS root, and the exact stored configuration has
   passed server validation. Make at most one evidence-based correction to a

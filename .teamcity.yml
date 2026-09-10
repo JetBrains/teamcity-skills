@@ -2,7 +2,11 @@ name: Validate eval cases
 jobs:
   validate:
     name: Validate eval cases
-    runs-on: Linux-Small
+    # The wrappers are portable across Linux, macOS, and Git Bash on Windows.
+    # `Linux-Small` is accepted by the schema on the nightly server but has no
+    # eligible image there, so keep static validation on the live self-hosted
+    # pool instead of leaving every push queued indefinitely.
+    runs-on: self-hosted
     steps:
       - type: script
         name: Validate cases against schema
@@ -16,7 +20,7 @@ jobs:
           @exit /b 0
   selfcheck:
     name: Self-check the grader
-    runs-on: Linux-Small
+    runs-on: self-hosted
     steps:
       - type: script
         name: Grade a pipeline of known shape
@@ -30,7 +34,7 @@ jobs:
           @exit /b 0
   publish_eval_report:
     name: Publish evaluation report
-    runs-on: Linux-Small
+    runs-on: self-hosted
     files-publication:
       - path: .teamcity/evaluation-report/**
         publish-artifact: true

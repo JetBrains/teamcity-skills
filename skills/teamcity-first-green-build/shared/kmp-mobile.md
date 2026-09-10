@@ -96,6 +96,13 @@ Publish artifacts that a developer can use:
   only into a compatible simulator architecture.
 - iOS device build: publish the unsigned app bundle only as a build artifact;
   it cannot be installed on a physical device without signing.
+- Compose Desktop: when the repository declares OS-specific native formats,
+  keep the DMG, MSI, and DEB tasks on separate macOS, Windows, and Linux jobs
+  and publish the matching output from each job. Do not run all three package
+  tasks on one host or claim an artifact produced by another platform.
+- Wasm/web: publish the browser distribution directory (or a deterministic
+  archive of it) from the web job. Do not publish Gradle caches as the web
+  deliverable.
 
 Do not publish Gradle caches, DerivedData, or TeamCity's shared-files archive as
 the primary mobile artifact.
