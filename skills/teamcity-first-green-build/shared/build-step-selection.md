@@ -31,7 +31,13 @@ TeamCity server's supported capabilities.
   rely on its default Java. Keep host-native macOS/iOS work outside that
   fallback. Use a script only for non-Gradle glue that the Gradle runner cannot
   express.
-- Maven: prefer a Maven runner for Maven goals.
+- Maven: when the live Pipeline schema exposes `type: maven`, use the Maven
+  runner for the primary lifecycle work and put the repository's verified
+  `verify`, `test`, or `package` invocation in its `goals` property. Preserve
+  the repository-selected Maven version or wrapper through a runner selector
+  supported by the target server. Use a script for that lifecycle work only
+  when the dedicated runner is unavailable or cannot preserve a required
+  wrapper/runtime, and report that concrete limitation.
 - Node.js: prefer a Node.js or npm-capable runner when the schema exposes one.
 - .NET: prefer a .NET runner when available.
 - Docker: prefer a Docker runner when the schema exposes one; otherwise keep
