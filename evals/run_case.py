@@ -60,6 +60,8 @@ import urllib.request
 
 EVALS = pathlib.Path(__file__).parent
 PLACEHOLDER = re.compile(r"\{\{teamcity\.(server|targetProject)\}\}")
+sys.path.insert(0, str(EVALS))
+from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
 
 
 class EvalError(RuntimeError):
@@ -1033,12 +1035,37 @@ def run(
                 f"{case['repository']['defaultBranch']!r} at the pinned revision. "
                 "Ensure the VCS root monitors that branch before triggering a build."
             )
-        agent_env = install_queue_stall_fixture(workspace, env) if fixture_case else env
-        agent_run = invoke_agent(
-            prompt, checkout, agent_env, trace,
-            int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
-            case.get("agentTools"),
-        )
+        if fixture_case:
+            agent_run = invoke_agent(
+                prompt, checkout, install_queue_stall_fixture(workspace, env), trace,
+                int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
+                case.get("agentTools"),
+            )
+        else:
+            cli_name = env.get("TEAMCITY_EVAL_CLI", "teamcity")
+            cli_path = shutil.which(cli_name, path=env.get("PATH"))
+            if not cli_path:
+                raise EvalError(f"TeamCity CLI executable not found: {cli_name}")
+            try:
+                with TeamCityCliBridge(
+                    cli=cli_path,
+                    server_url=url,
+                    token=token,
+                    workspace=workspace,
+                    checkout=checkout,
+                    target_project=project_id,
+                    allow_build_writes=case["kind"] == "first-green-build",
+                    pipeline_ids=lambda: tc.pipeline_ids(project_id),
+                    job_ids=lambda: [item["id"] for item in tc.build_types(project_id)],
+                    base_env=env,
+                ) as bridge:
+                    agent_run = invoke_agent(
+                        prompt, checkout, bridge.agent_environment(env), trace,
+                        int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
+                        case.get("agentTools"),
+                    )
+            except BridgeError as exc:
+                raise EvalError(f"could not provide scoped TeamCity CLI access: {exc}") from exc
         agent_exit = agent_run["exitCode"]
         result["agentExitCode"] = agent_exit
         result["agentTimedOut"] = agent_run["timedOut"]
