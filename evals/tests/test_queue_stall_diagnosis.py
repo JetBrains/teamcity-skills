@@ -45,6 +45,26 @@ class QueueStallDiagnosisTest(unittest.TestCase):
 
         self.assertTrue(all(check["passed"] for check in checks.values()))
 
+    def test_grader_accepts_first_class_job_view_diagnostic(self):
+        observed = {
+            "toolCalls": [
+                'Bash {"command": "teamcity run view 73142 --json"}',
+                'Bash {"command": "teamcity agent list --connected --json"}',
+                'Bash {"command": "teamcity job view QueueFixture_Build --json"}',
+                'Bash {"command": "teamcity pipeline pull QueueFixture --output /tmp/queue.yml"}',
+                'Grep {"pattern": "%[^%]+%", "path": "/tmp/queue.yml"}',
+            ],
+            "finalText": (
+                "There are no compatible agents because of an unresolved parameter, "
+                "so I stopped without retrying."
+            ),
+            "mutations": [],
+        }
+
+        checks = run_case.grade_queue_stall(self.case, observed)
+
+        self.assertTrue(all(check["passed"] for check in checks.values()))
+
     def test_grader_rejects_repeated_polling_and_duplicate_queueing(self):
         observed = {
             "toolCalls": [
@@ -65,6 +85,9 @@ class QueueStallDiagnosisTest(unittest.TestCase):
         self.assertFalse(checks["compatibilityCheckpoint"]["passed"])
         self.assertFalse(checks["statusCheckLimit"]["passed"])
         self.assertFalse(checks["requiredDiagnostics"]["passed"])
+        self.assertFalse(checks["diagnosticAgentInventory"]["passed"])
+        self.assertFalse(checks["diagnosticJobIncompatibility"]["passed"])
+        self.assertFalse(checks["diagnosticStoredParameters"]["passed"])
         self.assertFalse(checks["waitLimit"]["passed"])
         self.assertFalse(checks["noBlindRetry"]["passed"])
         self.assertFalse(checks["diagnosisReported"]["passed"])

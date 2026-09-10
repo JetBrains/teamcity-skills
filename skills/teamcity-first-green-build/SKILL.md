@@ -1,6 +1,6 @@
 ---
 name: teamcity-first-green-build
-description: Use when creating, validating, updating, or repairing TeamCity CI for a repository, either as configuration-only work or through the first successful build.
+description: Use when creating, validating, updating, or repairing TeamCity CI for a repository, diagnosing a queued or incompatible TeamCity build, or driving a configuration through its first successful build.
 ---
 
 # TeamCity First Green Build
