@@ -563,6 +563,14 @@ Check:
   TEAMCITY_URL=<server> teamcity agent jobs <agent-id> --incompatible --json
   ```
 
+  A `permission_denied` response does not establish either compatibility or
+  incompatibility. Mark the check unverified; never replace it with a generic
+  queue `waitReason` or the mere presence of similarly named agents. Use a
+  permitted machine-readable TeamCity compatibility operation when available.
+  If none is available, stop and report the missing permission; do not retry
+  until programmatic compatibility access is granted. A manual UI confirmation
+  is not valid compatibility evidence for this workflow.
+
   Use matching MCP agent/compatibility tools when they are exposed. If MCP does
   not expose them, use the CLI; an MCP connection that can only read builds and
   logs is not evidence that the server has no agents.
