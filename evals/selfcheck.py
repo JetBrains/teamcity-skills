@@ -64,9 +64,11 @@ jobs:
 EXPECTATIONS = {
     "configurationValidated": True,
     "minimumJobs": True,
+    "jobCount": True,
     "requiredStepTypes": True,
     "requiredArtifactRules": True,
     "requiredAgentRequirements": True,
+    "requiredJobs": True,
     "sourceMutations": True,
 }
 
@@ -75,9 +77,40 @@ CASE = {
         "configurationValidated": True,
         "sourceMutations": "none",
         "minimumJobs": 3,
+        "expectedJobCount": 3,
         "requiredStepTypes": ["gradle", "script"],
         "requiredArtifactRules": [r"\.apk"],
         "requiredAgentRequirements": ["Mac-Medium"],
+        "requiredJobs": [
+            {
+                "jobMatches": "(?i)android",
+                "requiredStepTypes": ["gradle"],
+                "requiredStepProperties": [
+                    {"stepType": "gradle", "property": "tasks", "matches": "assembleDebug"}
+                ],
+                "requiredArtifactRules": [r"\.apk"],
+                "requiredAgentRequirements": ["Linux-Medium"],
+            },
+            {
+                "jobMatches": "(?i)ios",
+                "requiredStepTypes": ["script"],
+                "requiredStepProperties": [
+                    {"stepType": "script", "property": "script-content", "matches": "xcodebuild"}
+                ],
+                "requiredAgentRequirements": ["Mac-Medium"],
+            },
+            {
+                "jobMatches": "(?i)desktop",
+                "requiredStepTypes": ["gradle"],
+                "requiredStepProperties": [
+                    {
+                        "stepType": "gradle",
+                        "property": "tasks",
+                        "matches": "packageDistributionForCurrentOS",
+                    }
+                ],
+            },
+        ],
     }
 }
 
