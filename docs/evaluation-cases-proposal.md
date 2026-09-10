@@ -497,10 +497,10 @@ installation hosts them. Claude's own authentication comes only from the JCP
 Central AI Agent build feature configured in the TeamCity UI.
 
 The server-side `validate-eval-cases` definition is `.teamcity.yml`. It has
-separate schema, grader self-check, and report jobs. All three select a
-self-hosted Linux agent by durable OS capability so an unrestricted
-`self-hosted` match cannot schedule the bootstrap scripts on unsupported
-legacy Windows images.
+separate schema, grader self-check, and report jobs. Every step runs in the
+same small Python container. Its Docker requirement keeps these portable jobs
+off unsupported legacy Windows images without pinning a transient agent name
+or a server-local agent family.
 
 Two operational facts, both learned the hard way:
 

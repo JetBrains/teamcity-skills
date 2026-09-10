@@ -2,29 +2,25 @@ name: Validate eval cases
 jobs:
   validate:
     name: Validate eval cases
-    runs-on:
-      self-hosted:
-        - os-family: Linux
+    runs-on: self-hosted
     steps:
       - type: script
         name: Validate cases against schema
+        docker-image: python:3.12-slim
         script-content: |-
           bash evals/run-eval-validation.sh validate
   selfcheck:
     name: Self-check the grader
-    runs-on:
-      self-hosted:
-        - os-family: Linux
+    runs-on: self-hosted
     steps:
       - type: script
         name: Grade a pipeline of known shape
+        docker-image: python:3.12-slim
         script-content: |-
           bash evals/run-eval-validation.sh selfcheck
   publish_eval_report:
     name: Publish evaluation report
-    runs-on:
-      self-hosted:
-        - os-family: Linux
+    runs-on: self-hosted
     files-publication:
       - path: .teamcity/evaluation-report/**
         publish-artifact: true
@@ -32,5 +28,6 @@ jobs:
     steps:
       - type: script
         name: Collect and render evaluation report
+        docker-image: python:3.12-slim
         script-content: |-
           bash evals/run-eval-report.sh
