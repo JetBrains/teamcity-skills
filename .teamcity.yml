@@ -2,7 +2,7 @@ name: Validate eval cases
 jobs:
   validate:
     name: Validate eval cases
-    runs-on: self-hosted
+    runs-on: Linux-Small
     steps:
       - type: script
         name: Validate cases against schema
@@ -16,7 +16,7 @@ jobs:
           @exit /b 0
   selfcheck:
     name: Self-check the grader
-    runs-on: self-hosted
+    runs-on: Linux-Small
     steps:
       - type: script
         name: Grade a pipeline of known shape
@@ -30,7 +30,7 @@ jobs:
           @exit /b 0
   publish_eval_report:
     name: Publish evaluation report
-    runs-on: self-hosted
+    runs-on: Linux-Small
     files-publication:
       - path: .teamcity/evaluation-report/**
         publish-artifact: true
