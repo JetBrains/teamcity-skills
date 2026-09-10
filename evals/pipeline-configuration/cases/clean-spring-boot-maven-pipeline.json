@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "clean-spring-boot-maven-pipeline",
   "kind": "pipeline-configuration",
-  "status": "draft",
+  "status": "active",
   "skill": "teamcity-first-green-build",
   "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository: inspect the repository, create the VCS root and the smallest useful pipeline, validate the configuration against the server, and stop there. Do not queue any build.",
   "teamcity": {

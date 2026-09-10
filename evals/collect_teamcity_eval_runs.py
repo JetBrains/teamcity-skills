@@ -440,6 +440,11 @@ def collect(server, pipelines, limit, excluded_job_names):
         ) or {}
         heads = []
         for head in listed.get("build") or []:
+            detailed_head = (
+                cli_json(warnings, server, "run", "view", str(head["id"]), "--json")
+                or head
+            )
+            head_revision = vcs_revision(detailed_head)
             tree = cli_json(warnings, server, "run", "tree", str(head["id"]), "--json") or head
             jobs = []
             for node in flatten_dependencies(tree):
@@ -449,21 +454,27 @@ def collect(server, pipelines, limit, excluded_job_names):
                 ):
                     continue
                 job = normalized(node)
+                if not job.get("revision"):
+                    # Snapshot-dependency jobs omit lastChanges on this server;
+                    # the pipeline head owns the exact VCS revision for all of
+                    # them in the chain.
+                    job["revision"] = head_revision
                 jobs.append(job)
                 all_jobs_by_id.setdefault(
                     job["id"], {**job, "pipeline": pipeline, "headId": head["id"]}
                 )
             normalized_head = {
                 "id": head["id"],
-                "number": head.get("number"),
-                "state": head.get("state"),
-                "status": head.get("status"),
-                "statusText": head.get("statusText"),
-                "url": head.get("webUrl"),
-                "trigger": (head.get("triggered") or {}).get("type"),
-                "queuedAt": iso_time(head.get("queuedDate")),
-                "startedAt": iso_time(head.get("startDate")),
-                "finishedAt": iso_time(head.get("finishDate")),
+                "number": detailed_head.get("number"),
+                "state": detailed_head.get("state"),
+                "status": detailed_head.get("status"),
+                "statusText": detailed_head.get("statusText"),
+                "url": detailed_head.get("webUrl"),
+                "trigger": (detailed_head.get("triggered") or {}).get("type"),
+                "queuedAt": iso_time(detailed_head.get("queuedDate")),
+                "startedAt": iso_time(detailed_head.get("startDate")),
+                "finishedAt": iso_time(detailed_head.get("finishDate")),
+                "revision": head_revision,
                 "jobs": jobs,
             }
             heads.append(normalized_head)
