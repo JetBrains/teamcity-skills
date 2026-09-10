@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "kmm-basic-sample-mobile-targets",
   "kind": "pipeline-configuration",
-  "status": "draft",
+  "status": "active",
   "skill": "teamcity-first-green-build",
   "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository: create the VCS root and a pipeline covering the repository's shared tests, Android application, and iOS simulator application, validate the configuration against the server, and stop there. Do not queue any build.",
   "teamcity": {
@@ -49,9 +49,14 @@
         "stepType": "script",
         "property": "script-content",
         "matches": "(?i)xcodebuild"
+      },
+      {
+        "stepType": "script",
+        "property": "script-content",
+        "matches": "(?is)(?:zip|ditto).*\\.app|\\.app.*(?:zip|ditto)"
       }
     ],
-    "requiredArtifactRules": ["(?i)\\.apk", "(?i)\\.app"],
+    "requiredArtifactRules": ["(?i)\\.apk", "(?i)\\.zip"],
     "requiredAgentRequirements": ["(?i)mac|darwin|osx"],
     "requiredJobs": [
       {
@@ -85,9 +90,14 @@
             "stepType": "script",
             "property": "script-content",
             "matches": "(?i)xcodebuild"
+          },
+          {
+            "stepType": "script",
+            "property": "script-content",
+            "matches": "(?is)(?:zip|ditto).*\\.app|\\.app.*(?:zip|ditto)"
           }
         ],
-        "requiredArtifactRules": ["(?i)\\.app"],
+        "requiredArtifactRules": ["(?i)\\.zip"],
         "requiredAgentRequirements": ["(?i)mac|darwin|osx"]
       }
     ]

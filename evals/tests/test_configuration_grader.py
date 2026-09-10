@@ -38,9 +38,13 @@ CASE = {
                 "jobMatches": "(?i)ios",
                 "requiredStepTypes": ["script"],
                 "requiredStepProperties": [
-                    {"stepType": "script", "property": "script-content", "matches": "xcodebuild"}
+                    {
+                        "stepType": "script",
+                        "property": "script-content",
+                        "matches": r"(?s)xcodebuild.*(?:zip|ditto).*\.app",
+                    }
                 ],
-                "requiredArtifactRules": [r"\.app"],
+                "requiredArtifactRules": [r"\.zip"],
                 "requiredAgentRequirements": ["Mac"],
             },
             {
@@ -70,7 +74,13 @@ def observed_jobs():
     return {
         "jobs": [
             job("android", "Android", "Linux", [step("gradle", tasks="assembleDebug")], "app.apk"),
-            job("ios", "iOS", "Mac", [step("script", **{"script-content": "xcodebuild"})], "app.app"),
+            job(
+                "ios",
+                "iOS",
+                "Mac",
+                [step("script", **{"script-content": "xcodebuild\nzip ios.zip App.app"})],
+                "ios.zip",
+            ),
             job("desktop", "Desktop", "Linux", [step("gradle", tasks="packageDmg")]),
         ],
         "mutations": [],

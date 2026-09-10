@@ -72,7 +72,7 @@
     ],
     "requiredArtifactRules": [
       "(?i)\\.apk",
-      "(?i)\\.app",
+      "(?i)\\.zip",
       "(?i)\\.dmg",
       "(?i)\\.msi",
       "(?i)\\.deb",
@@ -117,7 +117,7 @@
             "matches": "(?i)xcodebuild"
           }
         ],
-        "requiredArtifactRules": ["(?i)\\.app"],
+        "requiredArtifactRules": ["(?i)\\.zip"],
         "requiredAgentRequirements": ["(?i)mac|darwin|osx"]
       },
       {
