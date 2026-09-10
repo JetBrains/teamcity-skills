@@ -644,7 +644,7 @@ WAIT_CALL = re.compile(TEAMCITY_COMMAND + r"run\s+watch\b|\bsleep\s+\d+", re.I)
 DIAGNOSTIC_CALLS = {
     "agent-inventory": re.compile(TEAMCITY_COMMAND + r"agent\s+list\b", re.I),
     "job-incompatibility-reasons": re.compile(
-        TEAMCITY_COMMAND + r"agent\s+jobs\b[^\n]*--incompatible\b", re.I
+        TEAMCITY_COMMAND + r"(?:agent\s+jobs\b[^\n]*--incompatible\b|job\s+view\b)", re.I
     ),
 }
 CONCLUSION_PATTERNS = {
@@ -725,6 +725,17 @@ def grade_queue_stall(case: dict, observed: dict) -> dict:
     missing_diagnostics = [
         name for name in expected["requiredDiagnostics"] if not diagnostics.get(name, False)
     ]
+    diagnostic_checks = {
+        "agent-inventory": "diagnosticAgentInventory",
+        "job-incompatibility-reasons": "diagnosticJobIncompatibility",
+        "stored-configuration-parameters": "diagnosticStoredParameters",
+    }
+    for diagnostic in expected["requiredDiagnostics"]:
+        checks[diagnostic_checks[diagnostic]] = {
+            "expected": True,
+            "observed": bool(diagnostics.get(diagnostic, False)),
+            "detail": f"{diagnostic} {'observed' if diagnostics.get(diagnostic) else 'missing'}",
+        }
     checks["requiredDiagnostics"] = {
         "expected": True,
         "observed": not missing_diagnostics,
