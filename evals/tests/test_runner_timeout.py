@@ -61,7 +61,7 @@ class AgentTimeoutTest(unittest.TestCase):
                 "caseId": "example",
                 "status": "failed",
                 "checks": {"build": {"passed": False, "detail": "raw build data"}},
-                "agentTraceTail": ["TEAMCITY_TOKEN=review-canary"],
+                "agentTraceTail": ["sensitive trace data"],
                 "toolCalls": ["Bash {command: env}"],
                 "projectId": "internal-project",
                 "error": "raw server response",
