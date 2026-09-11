@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "jetcaster-kmp-multi-targets",
   "kind": "pipeline-configuration",
-  "status": "draft",
+  "status": "active",
   "skill": "teamcity-first-green-build",
   "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository: preserve its independent shared-test, Android, iOS simulator, desktop platform, and Wasm targets as separate jobs, create the VCS root and pipeline, validate the configuration against the server, and stop there. Do not queue any build.",
   "teamcity": {
