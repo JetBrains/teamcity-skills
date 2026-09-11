@@ -55,6 +55,13 @@ Keep independent targets as separate jobs when agents permit parallelism.
   `:shared:linkDebugFrameworkIosSimulatorArm64`), then package that framework
   into a zip in the same job. Do not invent an iOS app or call `xcodebuild` for
   a framework-only project.
+
+  In the configuration-only read-back audit, check this framework job as one
+  unit: its macOS `runs-on`, dedicated Gradle runner and discovered link task,
+  packaging script (`zip` or `ditto`) for the `*.framework`, and publication
+  rule for that zip must all belong to the same job. If one of those four
+  pieces is absent, make one targeted correction and read it back again; do not
+  count matching steps or artifacts in unrelated jobs as iOS coverage.
 - **Shared/JVM job:** keep Kotlin common/JVM tests when the project defines
   them; mobile jobs do not replace common-code coverage.
 
