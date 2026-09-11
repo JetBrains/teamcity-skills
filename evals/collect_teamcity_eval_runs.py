@@ -169,7 +169,9 @@ def inventory():
             "targets": "target coverage",
         }
         for key in expected:
-            if key in labels:
+            # This is an internal safety guard, not a capability shown in the
+            # public Case x arm matrix.
+            if key in labels and key != "sourceMutations":
                 assertions.append(labels[key])
         cases.append(
             {
