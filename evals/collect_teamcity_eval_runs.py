@@ -141,7 +141,7 @@ def inventory():
 
         assertions = []
         labels = {
-            "configurationValidated": "server validation",
+            "configurationValidated": "pipeline stored/read back",
             "testsExecutedAndReported": "test reporting",
             "artifactsPublished": "artifact publication",
             "sourceMutations": "source fidelity",
