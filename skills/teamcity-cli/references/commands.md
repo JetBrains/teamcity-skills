@@ -40,6 +40,7 @@ Environment override note:
 - `TEAMCITY_URL` + `TEAMCITY_TOKEN` should be set together when overriding auth in scripts
 - `TEAMCITY_URL` alone bypasses stored `teamcity auth login` credentials
 - `TEAMCITY_HEADER_*` adds an HTTP header to every request: `TEAMCITY_HEADER_FOO_BAR=baz` sends `Foo-Bar: baz`. Use this for proxies that gate access (Cloudflare Access, Google IAP). Values are redacted in `--verbose` output.
+- Cross-origin redirects drop request headers and only permit body-free GET/HEAD requests. HTTPS downgrades and cross-origin terminal redirects are rejected.
 
 ## Builds/Runs (`teamcity run`)
 
@@ -85,7 +86,8 @@ Shows all branches and all build states (including canceled, personal, composite
 ### Flags for `teamcity run start`
 
 - `-b, --branch <name>` - Branch to build
-- `--revision <sha>` - Pin build to a specific Git commit SHA
+- `--revision <sha>` - Pin every VCS root to one Git commit SHA (or local `@head`)
+- `--revision ROOT=SHA[@BRANCH]` - Pin individual roots (repeatable); `ROOT=@BRANCH` uses the latest fetched branch head; cannot mix with a bare SHA
 - `-P, --param <k=v>` - Build parameter (repeatable)
 - `-S, --system <k=v>` - System property (repeatable)
 - `-E, --env <k=v>` - Environment variable (repeatable)
@@ -157,6 +159,8 @@ the name once as a header, one row per build, and a pass-rate footer.
 - `--json` - Output as JSON
 
 ### Flags for `teamcity run download`
+
+Downloads confine writes to `--output`, replace destination file symlinks rather than following them, and preserve existing files on failed transfers.
 
 - `-a, --artifact <pattern>` - Artifact name pattern to filter (matches full path and basename)
 - `-p, --path <subdir>` - Download artifacts under this subdirectory
@@ -260,7 +264,7 @@ The `<id>` (job) positional is optional when the repo is linked; `delete` accept
 | `teamcity project tree [id]`                   | Show project hierarchy tree  |
 | `teamcity project vcs list --project <id>`     | List VCS roots               |
 | `teamcity project vcs view <id>`              | View VCS root details        |
-| `teamcity project vcs create --project <id>`  | Create VCS root (interactive or flag-driven) |
+| `teamcity project vcs create --project <id>`  | Create a VCS root; `--json` returns the created object |
 | `teamcity project vcs delete <id>`            | Delete a VCS root            |
 | `teamcity project connection list -p <id>`    | List project connections     |
 | `teamcity project connection create github-app -p <id>` | Register GitHub App (manifest flow) |
@@ -390,6 +394,8 @@ The `<id>` (job) positional is optional when the repo is linked; `delete` accept
 | `teamcity agent term <id>`        | Open interactive shell on agent   |
 | `teamcity agent reboot <id>`      | Reboot a build agent              |
 
+`agent exec` and `agent term` are blocked by `TEAMCITY_RO=1` or per-server `ro: true`.
+
 ### Flags for `teamcity agent list`
 
 - `-p, --pool <name>` - Filter by agent pool
@@ -445,9 +451,9 @@ Pipelines are YAML-first build configurations. Each pipeline is a project that c
 | `teamcity pipeline list`                 | List pipelines                           |
 | `teamcity pipeline view <id>`            | View pipeline details                    |
 | `teamcity pipeline create <name>`        | Create pipeline from YAML                |
-| `teamcity pipeline validate [file]`      | Validate pipeline YAML against schema    |
+| `teamcity pipeline validate [file]`      | Validate pipeline YAML against complete server schema    |
 | `teamcity pipeline pull <id>`            | Download pipeline YAML                   |
-| `teamcity pipeline push <id> [file]`     | Upload pipeline YAML                     |
+| `teamcity pipeline push <id> [file]`     | Upload YAML; `-f file` is an alternative to `[file] |
 | `teamcity pipeline delete <id>`          | Delete a pipeline                        |
 
 ### Flags for `teamcity pipeline list`
@@ -578,3 +584,5 @@ Available on all list commands (`run list`, `agent list`, `job list`, `pool list
 
 - `--plain` - Tab-separated plain text output for scripting (mutually exclusive with `--json`)
 - `--no-header` - Omit header row (use with `--plain`)
+
+`project settings status` reports the server’s runtime message and missing DSL context parameters. Its “Recorded” timestamp is when the status was recorded, not the last successful sync.
