@@ -41,7 +41,7 @@ class EvalReportTest(unittest.TestCase):
                     "gate": "active",
                     "executionModel": "paired-arms",
                     "scope": "Grades configuration.",
-                    "assertions": ["server validation"],
+                    "assertions": ["pipeline stored/read back"],
                     "targets": [],
                     "arms": {
                         "skill": {
