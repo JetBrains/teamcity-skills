@@ -14,9 +14,16 @@ def load_module(name, filename):
 
 
 renderer = load_module("render_eval_report_test", "render_teamcity_eval_report.py")
+collector = load_module("collect_eval_runs_test", "collect_teamcity_eval_runs.py")
 
 
 class EvalReportTest(unittest.TestCase):
+    def test_inventory_hides_internal_source_mutation_guard(self):
+        cases = collector.inventory()
+
+        self.assertTrue(cases)
+        self.assertTrue(all("source fidelity" not in case["assertions"] for case in cases))
+
     def test_report_renders_separate_arm_columns_and_unique_jobs(self):
         job = {
             "id": 42,
