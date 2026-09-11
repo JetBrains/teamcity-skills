@@ -77,7 +77,7 @@ class EvalReportTest(unittest.TestCase):
 
         report = renderer.render(data)
 
-        self.assertIn("Case × arm matrix", report)
+        self.assertIn("Case x arm matrix", report)
         self.assertIn('<th scope="col">Skill</th><th scope="col">Baseline</th>', report)
         self.assertIn("not arm-based", report)
         self.assertIn("run 42", report)
@@ -117,7 +117,7 @@ class EvalReportTest(unittest.TestCase):
 
         report = renderer.render(data)
 
-        self.assertIn("100 in · 20 out", report)
+        self.assertIn("100 in / 20 out", report)
         self.assertIn("provider cost not reported", report)
         self.assertIn("provider cost unavailable", report)
 
