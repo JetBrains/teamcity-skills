@@ -1,84 +1,64 @@
-# teamcity-skills
+# TeamCitySkills
 
-A library of reusable **agent skills** for working with [TeamCity](https://www.jetbrains.com/teamcity/):
-investigating build failures, driving a repository to its first green build,
-using the `teamcity` CLI, and so on.
+This repository stores reusable skills, prompts, and supporting assets for TeamCity-related work and for other engineering workflows when they are useful to keep together.
 
-A skill is plain Markdown that tells a coding agent how to do a job properly —
-which commands to run, in what order, and what to watch out for. What you see in
-this repository is exactly what an agent reads. Nothing is generated.
+The repository is not limited to one stack, tool, or runtime. A skill can target any technology or workflow as long as it is useful and reviewable by humans.
 
-## Using a skill
+## Organization
 
-**With the `teamcity` CLI.** The CLI bundles the `teamcity-cli` skill and
-installs it for you:
+Group reusable workflows under `skills/`, one folder per skill. Keep reusable
+prompts under `prompts/`.
 
-```bash
-teamcity skill install          # installs into the agents it detects
-teamcity skill list             # shows what is bundled
-```
-
-**By hand.** Copy the skill folder into wherever your agent looks for skills,
-for example `.claude/skills/`:
-
-```bash
-cp -r skills/teamcity-first-green-build ~/.claude/skills/
-```
-
-**From Go.** Skills with an `embed.go` are published as Go packages, so a
-program can depend on a specific, checksummed revision instead of vendoring a
-copy:
-
-```bash
-go get github.com/JetBrains/teamcity-skills/skills/teamcity-cli@latest
-```
-
-```go
-import teamcitycli "github.com/JetBrains/teamcity-skills/skills/teamcity-cli"
-
-// teamcitycli.FS is an fs.FS rooted at the skill: SKILL.md, references/, _agents/
-```
-
-Each package embeds only its own skill, so importing one does not carry the
-others.
-
-## What is here
-
-| Skill | Purpose |
-| --- | --- |
-| [`teamcity-cli`](skills/teamcity-cli/) | Drive the `teamcity` CLI: builds, logs, jobs, queues, agents, projects, pipelines. |
-| [`teamcity-first-green-build`](skills/teamcity-first-green-build/) | Set up CI for a repository and get it to its first successful build. |
-
-Also: [`prompts/`](prompts/) for reusable prompts, and [`examples/`](examples/)
-for a small project you can try the skills against.
-
-## Anatomy of a skill
+Example:
 
 ```text
-skills/<skill-name>/
-├── SKILL.md              Entry point: name + description frontmatter, then the essentials
-├── embed.go              Optional — publishes this skill as a Go package
-├── references/           Loaded only when the task needs them
-│   ├── <topic>.md
-│   └── workflows/<task>.md
-└── _agents/<agent>.md    Optional — background sub-agents
+.
+├── README.md
+├── docs/
+│   └── evaluation-cases-proposal.md
+├── evals/
+│   ├── schema.json
+│   ├── validate.py
+│   ├── first-green-build/
+│   └── teamcity-access-preflight/
+├── examples/
+│   └── <example-project>/
+├── prompts/
+│   └── <prompt-name>.md
+└── skills/
+    └── <skill-name>/
+        └── SKILL.md
 ```
 
-`SKILL.md` is read every time the skill triggers, so keep it short and put the
-detail in `references/`. Prefer several small, single-purpose documents over one
-long file: an agent loads only the file it needs, so a 900-line reference costs
-every task while a short index plus one focused document does not.
+This keeps each workflow self-contained and easy to reuse across different tools.
 
-## Contributing
+## What Can Live Here
 
-Pull requests are welcome, including new skills.
+- reusable skills
+- reusable prompts or runbooks
+- supporting reference material bundled with a skill
+- small helper assets that belong to a skill
 
-- Keep each skill self-contained in one folder under `skills/`.
-- Write for an agent, not a person: concrete commands, exact flags, and the
-  gotchas that cause wrong answers.
-- Prefer many focused documents over one large one.
-- Do not commit generated or copied artifacts.
-- Make it possible to review what a skill does from the layout alone.
+The repository can contain TeamCity setup skills, debugging skills, CI/CD runbooks, repository onboarding flows, or other operational skills that help agents work more reliably.
 
-Please open an issue first if you are planning something large, so we can agree
-on the shape before you write it.
+## Suggested Conventions
+
+- Keep each skill self-contained.
+- Prefer one folder per skill.
+- Keep generated or copied artifacts out unless they are intentional parts of the skill.
+- Make it easy to review what a skill does from the repository layout alone.
+
+## Current Contents
+
+- `skills/teamcity-first-green-build/`
+  - Skill for creating, reusing, or repairing TeamCity CI and driving it to the first successful verification build or a proven external blocker.
+- `prompts/build-on-teamcity.md`
+  - Prompt for building the current project on a TeamCity server with the first green build workflow.
+- `examples/Test_TC_2/`
+  - Example Gradle/Kotlin project with TeamCity pipeline configuration.
+- `evals/`
+  - Versioned JSON evaluation contracts for TeamCity skills. See
+    [`docs/evaluation-cases-proposal.md`](docs/evaluation-cases-proposal.md).
+    Validate them with `uv run evals/validate.py` (or `pipx run
+    evals/validate.py`); the `validate` job in `.teamcity.yml` runs the same
+    check in CI.

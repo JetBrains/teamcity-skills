@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "spring-petclinic-maven-yaml",
+  "kind": "first-green-build",
+  "status": "active",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} and get the first build green.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/spring-projects/spring-petclinic.git",
+    "revision": "818c4136ea971c21674525f9053de0d9c7ad8cfe",
+    "defaultBranch": "main",
+    "root": "."
+  },
+  "stack": {
+    "family": "spring-boot",
+    "buildTool": "maven",
+    "maven": "3.9.16",
+    "jdk": "17",
+    "springBoot": "4.1.0"
+  },
+  "requestedConfiguration": {
+    "format": "yaml",
+    "sourcePath": ".teamcity.yml"
+  },
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "verification": {
+    "command": "./mvnw -B -ntp clean verify",
+    "testReportPaths": [
+      "target/surefire-reports/*.xml"
+    ],
+    "artifactPaths": [
+      "target/*.jar"
+    ]
+  },
+  "expected": {
+    "configurationValidated": true,
+    "testsExecutedAndReported": true,
+    "artifactsPublished": true,
+    "sourceMutations": "none",
+    "toolchain": {
+      "jdk": "17"
+    },
+    "firstBuild": "SUCCESS"
+  }
+}

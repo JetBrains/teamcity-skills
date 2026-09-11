@@ -12,7 +12,7 @@ one that matches the task instead of loading everything.
 ## Running & inspecting builds
 
 - [Inspect a build from a TeamCity URL](workflows/inspect-from-url.md) — parse a TC URL and map it to the right `teamcity` command.
-- [Start, monitor & personal builds](workflows/run-builds.md) — `run start`/`watch`, branches, params, `--local-changes`, `--dry-run`.
+- [Start, monitor & personal builds](workflows/run-builds.md) — `run start`/`watch`, per-stage progress reporting, branches, params, `--local-changes`, `--dry-run`.
 - [Build artifacts](workflows/artifacts.md) — list and download artifacts.
 - [Build metadata & the queue](workflows/build-metadata-and-queue.md) — pin/unpin, tag, comment; manage the build queue.
 

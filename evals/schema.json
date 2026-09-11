@@ -1,0 +1,942 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TeamCitySkills Evaluation Case",
+  "description": "Versioned evaluation contracts for TeamCity skills.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "kind",
+    "skill",
+    "prompt",
+    "repository",
+    "expected"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "kind": {
+      "enum": [
+        "first-green-build",
+        "pipeline-configuration",
+        "queue-stall-diagnosis",
+        "teamcity-access-preflight"
+      ]
+    },
+    "status": {
+      "description": "Gating status. \"active\": the case is expected to pass, so a failure is a regression and blocks the merge. \"aspirational\": the case states a contract the current baseline does not yet meet; the runner reports it but must not gate on it. A case that carries an observedBaseline which falls short of its expected contract must be aspirational. \"draft\": the case is not yet known to distinguish anything - it is kept for the work already in it, but is neither run in CI nor cited as evidence.",
+      "enum": [
+        "active",
+        "aspirational",
+        "draft"
+      ],
+      "default": "active"
+    },
+    "skill": {
+      "const": "teamcity-first-green-build"
+    },
+    "prompt": {
+      "description": "User request handed to the agent. The runner substitutes {{teamcity.server}} and {{teamcity.targetProject}} with the values of the environment it provisioned before invoking the agent.",
+      "type": "string",
+      "minLength": 1
+    },
+    "repository": {
+      "$ref": "#/definitions/repository"
+    },
+    "stack": {
+      "$ref": "#/definitions/stack"
+    },
+    "requestedConfiguration": {
+      "$ref": "#/definitions/requestedConfiguration"
+    },
+    "agentTools": {
+      "description": "Tool allowlist the runner must grant the agent, passed verbatim to its --allowedTools. It belongs to the case rather than the environment: a case that asks which tool the agent reaches for is meaningless unless the tools it must not reach for are actually available. Omit to leave the runner's own policy in place.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "observedBaseline": {
+      "$ref": "#/definitions/firstGreenBuildObservedBaseline"
+    },
+    "verification": {
+      "$ref": "#/definitions/verification"
+    },
+    "teamcity": {
+      "$ref": "#/definitions/runnerConfiguredTeamCity"
+    },
+    "temporaryObjects": {
+      "$ref": "#/definitions/temporaryObjects"
+    },
+    "requiredOperations": {
+      "$ref": "#/definitions/requiredOperations"
+    },
+    "resultClassification": {
+      "$ref": "#/definitions/resultClassification"
+    },
+    "expected": {}
+  },
+  "allOf": [
+    {
+      "title": "First Green Build",
+      "if": {
+        "required": ["kind"],
+        "properties": {
+          "kind": {
+            "const": "first-green-build"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "prompt": {
+            "allOf": [
+              {
+                "pattern": "\\{\\{teamcity\\.server\\}\\}"
+              },
+              {
+                "pattern": "\\{\\{teamcity\\.targetProject\\}\\}"
+              }
+            ]
+          },
+          "repository": {
+            "required": ["root"]
+          },
+          "expected": {
+            "$ref": "#/definitions/firstGreenBuildExpected"
+          }
+        },
+        "required": [
+          "teamcity",
+          "stack",
+          "requestedConfiguration",
+          "verification"
+        ],
+        "propertyNames": {
+          "not": {
+            "enum": [
+              "temporaryObjects",
+              "requiredOperations",
+              "resultClassification"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Pipeline Configuration",
+      "description": "Grades the pipeline the agent produces without running a build. It answers what the agent knows about TeamCity - step types, topology, artifact rules, agent requirements - in minutes and without a build agent, so it can cover many more repositories than a green-build case.",
+      "if": {
+        "required": ["kind"],
+        "properties": {
+          "kind": {
+            "const": "pipeline-configuration"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "prompt": {
+            "allOf": [
+              {
+                "pattern": "\\{\\{teamcity\\.server\\}\\}"
+              },
+              {
+                "pattern": "\\{\\{teamcity\\.targetProject\\}\\}"
+              }
+            ]
+          },
+          "repository": {
+            "required": ["root"]
+          },
+          "expected": {
+            "$ref": "#/definitions/pipelineConfigurationExpected"
+          }
+        },
+        "required": [
+          "teamcity",
+          "stack",
+          "requestedConfiguration"
+        ],
+        "propertyNames": {
+          "not": {
+            "enum": [
+              "verification",
+              "temporaryObjects",
+              "requiredOperations",
+              "resultClassification"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Queue Stall Diagnosis",
+      "description": "Grades whether an agent diagnoses a run that has already been queued for more than two minutes instead of repeatedly waiting or requeueing it.",
+      "if": {
+        "required": ["kind"],
+        "properties": {
+          "kind": {
+            "const": "queue-stall-diagnosis"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "prompt": {
+            "allOf": [
+              {
+                "pattern": "\\{\\{teamcity\\.server\\}\\}"
+              },
+              {
+                "pattern": "\\{\\{teamcity\\.targetProject\\}\\}"
+              }
+            ]
+          },
+          "repository": {
+            "required": ["root"]
+          },
+          "expected": {
+            "$ref": "#/definitions/queueStallDiagnosisExpected"
+          }
+        },
+        "required": [
+          "teamcity"
+        ],
+        "propertyNames": {
+          "not": {
+            "enum": [
+              "stack",
+              "requestedConfiguration",
+              "verification",
+              "observedBaseline",
+              "temporaryObjects",
+              "requiredOperations",
+              "resultClassification"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "TeamCity Access Preflight",
+      "if": {
+        "required": ["kind"],
+        "properties": {
+          "kind": {
+            "const": "teamcity-access-preflight"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "expected": {
+            "$ref": "#/definitions/accessPreflightExpected"
+          }
+        },
+        "required": [
+          "teamcity",
+          "temporaryObjects",
+          "requiredOperations",
+          "resultClassification"
+        ],
+        "propertyNames": {
+          "not": {
+            "enum": [
+              "stack",
+              "requestedConfiguration",
+              "verification",
+              "observedBaseline"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "revision", "defaultBranch"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "defaultBranch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "root": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "stack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "buildTool", "jdk"],
+      "properties": {
+        "family": {
+          "type": "string"
+        },
+        "buildTool": {
+          "type": "string"
+        },
+        "gradle": {
+          "type": "string"
+        },
+        "maven": {
+          "type": "string"
+        },
+        "jdk": {
+          "type": "string"
+        },
+        "declaredJdk": {
+          "type": "string"
+        },
+        "kotlin": {
+          "type": "string"
+        },
+        "springBoot": {
+          "type": "string"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "buildTool": {
+              "const": "gradle"
+            }
+          },
+          "required": ["gradle"],
+          "not": {
+            "required": ["maven"]
+          }
+        },
+        {
+          "properties": {
+            "buildTool": {
+              "const": "maven"
+            }
+          },
+          "required": ["maven"],
+          "not": {
+            "required": ["gradle"]
+          }
+        }
+      ]
+    },
+    "requestedConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "sourcePath"],
+      "properties": {
+        "format": {
+          "const": "yaml"
+        },
+        "sourcePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredStepProperties": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["stepType", "property"],
+            "properties": {
+              "stepType": {
+                "type": "string",
+                "minLength": 1
+              },
+              "property": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "testReportPaths", "artifactPaths"],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "testReportPaths": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "artifactPaths": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "requiredServices": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "image", "environment", "readinessCommand"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "image": {
+                "type": "string",
+                "minLength": 1
+              },
+              "environment": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "readinessCommand": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "pipelineConfigurationExpected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "configurationValidated",
+        "sourceMutations",
+        "minimumJobs"
+      ],
+      "properties": {
+        "configurationValidated": {
+          "const": true
+        },
+        "sourceMutations": {
+          "description": "See firstGreenBuildExpected.sourceMutations.",
+          "enum": [
+            "none",
+            "allowed"
+          ]
+        },
+        "minimumJobs": {
+          "description": "Fewest build configurations that carry at least one build step. Composite pipeline heads do not count. A repository with independent targets is expected to get a job per target rather than one job that builds everything.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "expectedJobCount": {
+          "description": "Exact number of jobs that carry build steps when the requested topology has a fixed shape.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "requiredStepTypes": {
+          "description": "Step types that must appear at least once, for example \"gradle\" where the skill requires a dedicated runner instead of a script step.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "requiredStepProperties": {
+          "description": "Step properties that must be present, optionally with a regular expression the value has to match.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["stepType", "property"],
+            "properties": {
+              "stepType": {
+                "type": "string",
+                "minLength": 1
+              },
+              "property": {
+                "type": "string",
+                "minLength": 1
+              },
+              "matches": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "requiredArtifactRules": {
+          "description": "Regular expressions that the union of the jobs' artifact rules must each match. An empty artifact rule set is the failure this catches.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "toolUse": {
+          "description": "Assertions about the calls the agent actually made, read from its structured trace rather than from its prose summary.",
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "required": {
+              "description": "Regular expressions, each of which must match at least one call, rendered as \"<tool> <arguments as JSON>\".",
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "forbidden": {
+              "description": "Regular expressions that must match no call. Only meaningful when agentTools actually permits the calls in question.",
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "requiredAgentRequirements": {
+          "description": "Regular expressions that the union of the jobs' agent requirements and pool assignments must each match, for example a macOS image for an iOS job.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "requiredJobs": {
+          "description": "Per-job contracts. Each matcher must select exactly one job, and different contracts must select different jobs. Runner, task, artifact, and agent assertions are evaluated only inside that job.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["jobMatches"],
+            "properties": {
+              "jobMatches": {
+                "type": "string",
+                "minLength": 1
+              },
+              "requiredStepTypes": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "requiredStepProperties": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["stepType", "property"],
+                  "properties": {
+                    "stepType": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "property": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "matches": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              },
+              "requiredArtifactRules": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "requiredAgentRequirements": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "queueStallDiagnosisExpected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maximumStatusChecks",
+        "maximumWaitCalls",
+        "requiredDiagnostics",
+        "forbiddenActions",
+        "requiredConclusions",
+        "sourceMutations"
+      ],
+      "properties": {
+        "maximumStatusChecks": {
+          "description": "Maximum number of run/queue status observations allowed once the fixture reports that the run has already been queued for more than two minutes.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "maximumWaitCalls": {
+          "description": "Maximum number of additional sleep/watch calls after the already-stalled state is visible.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "requiredDiagnostics": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "agent-inventory",
+              "job-incompatibility-reasons",
+              "stored-configuration-parameters"
+            ]
+          }
+        },
+        "forbiddenActions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "queue-duplicate",
+              "restart-run",
+              "unbounded-watch"
+            ]
+          }
+        },
+        "requiredConclusions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "no-compatible-agent",
+              "unresolved-parameter"
+            ]
+          }
+        },
+        "sourceMutations": {
+          "const": "none"
+        }
+      }
+    },
+    "firstGreenBuildExpected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "configurationValidated",
+        "testsExecutedAndReported",
+        "artifactsPublished",
+        "sourceMutations",
+        "toolchain",
+        "firstBuild"
+      ],
+      "properties": {
+        "configurationValidated": {
+          "const": true
+        },
+        "testsExecutedAndReported": {
+          "const": true
+        },
+        "artifactsPublished": {
+          "const": true
+        },
+        "sourceMutations": {
+          "description": "Whether the agent may edit the checked-out sources to reach a green build. \"none\" fails the case when the disposable checkout holds any change after the run, apart from the TeamCity configuration at requestedConfiguration.sourcePath, which the agent is expected to create. Verify with git diff on the disposable checkout, not by reading the build log.",
+          "enum": [
+            "none",
+            "allowed"
+          ]
+        },
+        "toolchain": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["jdk"],
+          "properties": {
+            "jdk": {
+              "type": "string"
+            }
+          }
+        },
+        "firstBuild": {
+          "const": "SUCCESS"
+        },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/firstGreenBuildTargetExpected"
+          }
+        }
+      }
+    },
+    "firstGreenBuildTargetExpected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "status", "tests", "artifactPaths"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "const": "SUCCESS"
+        },
+        "tests": {
+          "enum": ["reported", "not-applicable"]
+        },
+        "artifactPaths": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "requiresExactSourceToolchain": {
+          "type": "boolean"
+        }
+      }
+    },
+    "firstGreenBuildObservedBaseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "configuration",
+        "overallBuild",
+        "targets",
+        "testReporting",
+        "artifactPublication",
+        "sourceFidelity",
+        "limitations"
+      ],
+      "properties": {
+        "configuration": {
+          "enum": ["accepted-by-server", "rejected-by-server"]
+        },
+        "overallBuild": {
+          "enum": ["SUCCESS", "FAILURE"]
+        },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/firstGreenBuildTargetObservedBaseline"
+          }
+        },
+        "testReporting": {
+          "$ref": "#/definitions/observedCoverage"
+        },
+        "artifactPublication": {
+          "$ref": "#/definitions/observedCoverage"
+        },
+        "sourceFidelity": {
+          "enum": ["exact", "build-time-compatibility-shim"]
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "firstGreenBuildTargetObservedBaseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "testsReported", "artifactsPublished"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "status": {
+          "enum": ["SUCCESS", "FAILURE", "NOT_RUN"]
+        },
+        "testsReported": {
+          "type": "boolean"
+        },
+        "artifactsPublished": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "observedCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observed", "expected"],
+      "properties": {
+        "observed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "runnerConfiguredTeamCity": {
+      "description": "Declares that the runner, not the case, supplies the TeamCity server and parent project. A case must never pin a concrete server URL or project ID.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["server", "targetProject"],
+      "properties": {
+        "server": {
+          "const": "runner-configured"
+        },
+        "targetProject": {
+          "const": "runner-configured"
+        }
+      }
+    },
+    "temporaryObjects": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["namePrefix", "mustBeRemovedAfterRun"],
+      "properties": {
+        "namePrefix": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mustBeRemovedAfterRun": {
+          "const": true
+        }
+      }
+    },
+    "requiredOperations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operation", "mutating"],
+        "properties": {
+          "operation": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mutating": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "resultClassification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authorizationDenied", "capabilityMissing"],
+      "properties": {
+        "authorizationDenied": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["httpStatusCodes"],
+          "properties": {
+            "httpStatusCodes": {
+              "type": "array",
+              "items": {
+                "enum": [401, 403]
+              }
+            }
+          }
+        },
+        "capabilityMissing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["when"],
+          "properties": {
+            "when": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "accessPreflightExpected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authenticated",
+        "authorizationErrorsAbsent",
+        "allRequiredOperationsAvailable",
+        "temporaryObjectsRemoved"
+      ],
+      "properties": {
+        "authenticated": {
+          "const": true
+        },
+        "authorizationErrorsAbsent": {
+          "const": true
+        },
+        "allRequiredOperationsAvailable": {
+          "const": true
+        },
+        "temporaryObjectsRemoved": {
+          "const": true
+        }
+      }
+    }
+  }
+}

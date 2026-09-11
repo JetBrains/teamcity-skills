@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "id": "kotlinconf-app-multi-targets",
+  "kind": "pipeline-configuration",
+  "status": "active",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository: preserve its shared JVM tests, Android application, iOS simulator framework, desktop application, web distribution, and backend as six separate jobs, create the VCS root and pipeline, validate the configuration against the server, and stop there. Do not queue any build.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/JetBrains/kotlinconf-app.git",
+    "revision": "7011707b0a2d6c7ceacc44e467ae21524c7db26e",
+    "defaultBranch": "main",
+    "root": "."
+  },
+  "stack": {
+    "family": "compose-multiplatform",
+    "buildTool": "gradle",
+    "gradle": "9.6.1",
+    "jdk": "21",
+    "kotlin": "2.4.10"
+  },
+  "requestedConfiguration": {
+    "format": "yaml",
+    "sourcePath": ".teamcity.yml"
+  },
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "expected": {
+    "configurationValidated": true,
+    "sourceMutations": "none",
+    "minimumJobs": 6,
+    "expectedJobCount": 6,
+    "requiredStepTypes": ["gradle", "script"],
+    "requiredArtifactRules": [
+      "(?i)\\.apk",
+      "(?i)\\.zip",
+      "(?i)(desktop|compose|distributable)",
+      "(?i)(web|wasm|distribution)",
+      "(?i)\\.jar"
+    ],
+    "requiredAgentRequirements": ["(?i)mac|darwin|osx"],
+    "requiredJobs": [
+      {
+        "jobMatches": "(?i)(shared|jvm|common)",
+        "requiredStepTypes": ["gradle"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i)jvmTest"
+          }
+        ]
+      },
+      {
+        "jobMatches": "(?i)android",
+        "requiredStepTypes": ["gradle"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": ":app:androidApp:assembleDebug"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)\\.apk"]
+      },
+      {
+        "jobMatches": "(?i)ios",
+        "requiredStepTypes": ["gradle", "script"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i):app:shared:linkDebugFrameworkIosSimulatorArm64"
+          },
+          {
+            "stepType": "script",
+            "property": "script-content",
+            "matches": "(?is)(?:zip|ditto).*\\.framework|\\.framework.*(?:zip|ditto)"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)\\.zip"],
+        "requiredAgentRequirements": ["(?i)mac|darwin|osx"]
+      },
+      {
+        "jobMatches": "(?i)desktop",
+        "requiredStepTypes": ["gradle"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i):app:desktopApp:(?:createReleaseDistributable|packageDmg|packageMsi|packageDeb)"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)(desktop|compose|distributable)"]
+      },
+      {
+        "jobMatches": "(?i)(web|wasm)",
+        "requiredStepTypes": ["gradle"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i):app:webApp:(?:composeCompatibilityBrowserDistribution|wasmJsBrowserDistribution)"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)(web|wasm|distribution)"]
+      },
+      {
+        "jobMatches": "(?i)(backend|server)",
+        "requiredStepTypes": ["gradle"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i):backend:(?:test|jar)"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)\\.jar"]
+      }
+    ]
+  }
+}

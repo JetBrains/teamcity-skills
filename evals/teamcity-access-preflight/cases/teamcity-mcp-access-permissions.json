@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "teamcity-mcp-access-permissions",
+  "kind": "teamcity-access-preflight",
+  "status": "active",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} and get the first build green.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/spring-projects/spring-petclinic.git",
+    "revision": "818c4136ea971c21674525f9053de0d9c7ad8cfe",
+    "defaultBranch": "main"
+  },
+  "temporaryObjects": {
+    "namePrefix": "eval-access-",
+    "mustBeRemovedAfterRun": true
+  },
+  "requiredOperations": [
+    { "operation": "server.read", "mutating": false },
+    { "operation": "identity.read", "mutating": false },
+    { "operation": "project.read", "mutating": false },
+    { "operation": "vcsRoot.create", "mutating": true },
+    { "operation": "pipeline.create", "mutating": true },
+    { "operation": "pipeline.validate", "mutating": false },
+    { "operation": "build.queuePersonal", "mutating": true },
+    { "operation": "pipeline.delete", "mutating": true },
+    { "operation": "vcsRoot.delete", "mutating": true }
+  ],
+  "resultClassification": {
+    "authorizationDenied": {
+      "httpStatusCodes": [401, 403]
+    },
+    "capabilityMissing": {
+      "when": "the MCP surface does not expose a required operation"
+    }
+  },
+  "expected": {
+    "authenticated": true,
+    "authorizationErrorsAbsent": true,
+    "allRequiredOperationsAvailable": true,
+    "temporaryObjectsRemoved": true
+  }
+}

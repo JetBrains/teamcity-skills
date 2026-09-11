@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "queued-no-compatible-agent",
+  "kind": "queue-stall-diagnosis",
+  "status": "active",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Diagnose TeamCity run 73142 on {{teamcity.server}} in project {{teamcity.targetProject}}. It has already remained queued for more than two minutes. Determine whether any compatible agent can run its job, inspect the concrete incompatibility reasons and stored pipeline parameters, and report the proven blocker. Do not create, modify, restart, or queue a build.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/tkuenneth/CMP-Unit-Converter.git",
+    "revision": "fd427a05fd8fd27bef0bbef1971ec5397e12de9d",
+    "defaultBranch": "main",
+    "root": "."
+  },
+  "agentTools": ["Bash", "Read", "Glob", "Grep"],
+  "expected": {
+    "maximumStatusChecks": 2,
+    "maximumWaitCalls": 1,
+    "requiredDiagnostics": [
+      "agent-inventory",
+      "job-incompatibility-reasons",
+      "stored-configuration-parameters"
+    ],
+    "forbiddenActions": [
+      "queue-duplicate",
+      "restart-run",
+      "unbounded-watch"
+    ],
+    "requiredConclusions": [
+      "no-compatible-agent",
+      "unresolved-parameter"
+    ],
+    "sourceMutations": "none"
+  }
+}

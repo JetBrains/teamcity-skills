@@ -18,8 +18,26 @@ TeamCity server's supported capabilities.
 
 ## Technology Defaults
 
-- Gradle: prefer a Gradle runner for Gradle tasks.
-- Maven: prefer a Maven runner for Maven goals.
+- Gradle: when the live Pipeline schema exposes `type: gradle`, use the Gradle
+  runner for primary Gradle build, test, and package tasks. Set its `tasks`
+  property from the repository's verified Gradle tasks. Do not substitute a
+  generic script merely because schema validation does not validate every
+  runner-specific property. When the repository declares an exact JDK, use a
+  discovered server-managed installation and set job-level `env.JAVA_HOME`, or
+  use a step-level official JDK container image pinned to that major version
+  when the repository is container-safe and compatible Docker agents are
+  programmatically confirmed. The container is the preferred fallback for an
+  otherwise missing JDK on ephemeral Linux agents; do not mutate the host or
+  rely on its default Java. Keep host-native macOS/iOS work outside that
+  fallback. Use a script only for non-Gradle glue that the Gradle runner cannot
+  express.
+- Maven: when the live Pipeline schema exposes `type: maven`, use the Maven
+  runner for the primary lifecycle work and put the repository's verified
+  `verify`, `test`, or `package` invocation in its `goals` property. Preserve
+  the repository-selected Maven version or wrapper through a runner selector
+  supported by the target server. Use a script for that lifecycle work only
+  when the dedicated runner is unavailable or cannot preserve a required
+  wrapper/runtime, and report that concrete limitation.
 - Node.js: prefer a Node.js or npm-capable runner when the schema exposes one.
 - .NET: prefer a .NET runner when available.
 - Docker: prefer a Docker runner when the schema exposes one; otherwise keep
@@ -27,6 +45,27 @@ TeamCity server's supported capabilities.
 - Python, Go, Rust, and other stacks: use dedicated runners when the active
   server exposes them; otherwise use the project's standard command in a script
   step.
+
+## Meaningful Build Status
+
+Every generated pipeline must report a live, meaningful status; a generic
+"Running" in the builds overview is incomplete.
+
+- Give every dedicated runner step an explicit, human-readable `name` —
+  TeamCity shows the running step in the overview.
+- In script steps, `echo` `##teamcity[progressMessage '<stage>']` at the start
+  of each stage; when one stage wraps several commands, use
+  `##teamcity[progressStart '<stage>']` / `progressFinish` with identical text.
+- End the stage carrying the result worth seeing in the builds list with
+  `##teamcity[buildStatus text='{build.status.text}, <summary>']`, keeping
+  `{build.status.text}` so the text is appended, not replaced. One short line,
+  no log excerpts.
+- Service messages are only recognized at the start of a line on stdout, so
+  `echo` them as their own command. Escape with `|`: `|'`, `|n`, `|r`, `||`,
+  `|[`, `|]`.
+
+On Windows use `Write-Host "##teamcity[...]"` (PowerShell) or
+`echo ##teamcity[...]` (cmd).
 
 ## Output
 

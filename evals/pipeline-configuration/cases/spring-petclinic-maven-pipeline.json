@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "id": "spring-petclinic-maven-pipeline",
+  "kind": "pipeline-configuration",
+  "status": "active",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository: inspect the repository, create the VCS root and the smallest useful pipeline using its Maven build path, validate the configuration against the server, and stop there. Do not queue any build.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/spring-projects/spring-petclinic.git",
+    "revision": "818c4136ea971c21674525f9053de0d9c7ad8cfe",
+    "defaultBranch": "main",
+    "root": "."
+  },
+  "stack": {
+    "family": "spring-boot",
+    "buildTool": "maven",
+    "maven": "3.9.16",
+    "jdk": "17",
+    "springBoot": "4.1.0"
+  },
+  "requestedConfiguration": {
+    "format": "yaml",
+    "sourcePath": ".teamcity.yml"
+  },
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "expected": {
+    "configurationValidated": true,
+    "sourceMutations": "none",
+    "minimumJobs": 1,
+    "expectedJobCount": 1,
+    "requiredStepTypes": ["maven"],
+    "requiredStepProperties": [
+      {
+        "stepType": "maven",
+        "property": "goals",
+        "matches": "(?i)(^|\\s)(verify|package)(\\s|$)"
+      }
+    ],
+    "requiredArtifactRules": ["(?i)\\.jar"],
+    "requiredJobs": [
+      {
+        "jobMatches": ".*",
+        "requiredStepTypes": ["maven"],
+        "requiredStepProperties": [
+          {
+            "stepType": "maven",
+            "property": "goals",
+            "matches": "(?i)(^|\\s)(verify|package)(\\s|$)"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)\\.jar"]
+      }
+    ]
+  }
+}
