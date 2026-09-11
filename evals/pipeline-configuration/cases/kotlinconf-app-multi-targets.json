@@ -4,7 +4,7 @@
   "kind": "pipeline-configuration",
   "status": "draft",
   "skill": "teamcity-first-green-build",
-  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository: preserve its shared JVM tests, Android application, iOS simulator application, desktop application, web distribution, and backend as six separate jobs, create the VCS root and pipeline, validate the configuration against the server, and stop there. Do not queue any build.",
+  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository: preserve its shared JVM tests, Android application, iOS simulator framework, desktop application, web distribution, and backend as six separate jobs, create the VCS root and pipeline, validate the configuration against the server, and stop there. Do not queue any build.",
   "teamcity": {
     "server": "runner-configured",
     "targetProject": "runner-configured"
@@ -67,17 +67,17 @@
       },
       {
         "jobMatches": "(?i)ios",
-        "requiredStepTypes": ["script"],
+        "requiredStepTypes": ["gradle", "script"],
         "requiredStepProperties": [
           {
-            "stepType": "script",
-            "property": "script-content",
-            "matches": "(?i)xcodebuild"
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i):app:shared:linkDebugFrameworkIosSimulatorArm64"
           },
           {
             "stepType": "script",
             "property": "script-content",
-            "matches": "(?is)(?:zip|ditto).*\\.app|\\.app.*(?:zip|ditto)"
+            "matches": "(?is)(?:zip|ditto).*\\.framework|\\.framework.*(?:zip|ditto)"
           }
         ],
         "requiredArtifactRules": ["(?i)\\.zip"],

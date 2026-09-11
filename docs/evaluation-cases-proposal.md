@@ -81,7 +81,7 @@ without compiling the target project.
 | Case | What it verifies |
 | --- | --- |
 | `spring-petclinic-maven-yaml` | A Java 17 Spring Boot/Maven repository can receive a valid TeamCity YAML pipeline, execute Maven verification, import JUnit XML, publish its JAR, and finish its first verification build successfully. |
-| `kotlinconf-app-compose-multiplatform` | A Compose Multiplatform application must build its desktop, Android, iOS simulator, web, and backend targets, report every applicable test target, and publish each distributable artifact without silently changing the source toolchain. |
+| `kotlinconf-app-compose-multiplatform` | A Compose Multiplatform application must build its desktop, Android, iOS simulator framework, web, and backend targets, report every applicable test target, and publish each distributable artifact without silently changing the source toolchain. |
 | `cmp-unit-converter-targets` | A Compose Multiplatform pipeline creates exactly three Android, iOS, and desktop jobs, publishes the APK from the Android job, and assigns iOS to a macOS environment without building the repository during evaluation. |
 | `teamcity-cli-not-curl` | The agent uses authenticated first-class TeamCity commands rather than raw REST through `curl`, `wget`, `/app/rest/`, or `teamcity api`. |
 | `queued-no-compatible-agent` | Once a run has already been queued for over two minutes, the agent checks inventory, job incompatibility reasons, and unresolved stored-pipeline parameters by its second status observation, then stops instead of polling or requeueing. The runner simulates the queue and consumes no target build agent. |
@@ -108,12 +108,15 @@ red check trains reviewers to ignore the suite.
 - `status: "aspirational"` — the case states a contract the current baseline
   does not meet. The runner executes it and reports the result, but must not
   gate on it.
+- `status: "draft"` — the contract is being added or corrected and has no
+  trustworthy paired evidence yet; it is neither a merge gate nor evidence of
+  skill quality.
 
 The label is not left to the author's memory. When a case carries a
 `observedBaseline`, `evals/validate.py` compares that baseline against `expected`
 and requires `aspirational` whenever the baseline falls short, and `active`
-whenever it does not. `kotlinconf-app-compose-multiplatform` is currently the
-only aspirational case.
+whenever it does not. A case without a trustworthy recorded baseline remains
+`draft` until it is measured.
 
 ### Source Fidelity
 
@@ -171,7 +174,7 @@ hide an unreported test task.
 `verification.command` remains the primary verification command for simple
 repositories. `verification.commands` lists the target-specific commands when
 one command cannot represent a multi-platform pipeline, such as an iOS
-`xcodebuild` action alongside Gradle targets.
+framework-link action alongside Gradle targets.
 
 `expected` is the reference value: the contract a run must meet, and the only
 thing a verdict is decided against. `observedBaseline` is the opposite kind of
@@ -183,15 +186,10 @@ is explicitly subordinate to `expected`.
 
 `observedBaseline` records a verified baseline without retaining a staging URL,
 temporary TeamCity object ID, user identity, or credentials. It makes the
-observed build quality reviewable alongside the desired contract. The
-KotlinConf App baseline is successful across all six targets, but is only a
-partial-quality result: its three test-producing jobs imported zero test
-occurrences, its desktop release job published no distributable, and its
-Android job used an API 36 build-time compatibility shim because the available
-image lacked API 37. A future run satisfies the case only when it meets the
-`expected` contract; the baseline does not lower that bar. Because that
-baseline does not yet clear the bar, the case is marked
-`status: "aspirational"` and does not gate merges.
+observed build quality reviewable alongside the desired contract. KotlinConf's
+previous record expected a nonexistent Xcode application at the pinned source
+revision, so it was removed rather than carried forward as false evidence. Its
+corrected framework contract is `draft` until a new paired run records results.
 
 ### Pipeline Configuration
 
