@@ -40,15 +40,21 @@ Keep independent targets as separate jobs when agents permit parallelism.
   Run the discovered debug assemble task and JVM/unit-test task. Publish the
   exact debug APK or AAB output only after confirming its path locally or from
   the build output.
-- **iOS job:** query the target server's schema and macOS/Xcode agents or cloud
-  images before setting `jobs.<ios-job-id>.runs-on`. Use the exact durable
-  macOS/Xcode agent or image offered by that server, or stable self-hosted
-  constraints accepted by its schema; do not use a generic macOS requirement or
-  a transient VM name. Read back the YAML to verify it. Reuse a checked-in
-  Fastlane setup when it already
-  defines the project, scheme, and test flow; otherwise use a script step that
-  runs the discovered `xcodebuild` commands. Build the app and run tests only
-  for a scheme that has testable targets.
+- **iOS job:** first distinguish an Xcode application from a framework-only
+  Kotlin/Native target. Query the target server's schema and macOS/Xcode agents
+  or cloud images before setting `jobs.<ios-job-id>.runs-on`. Use the exact
+  durable macOS/Xcode agent or image offered by that server, or stable
+  self-hosted constraints accepted by its schema; do not use a generic macOS
+  requirement or a transient VM name. Read back the YAML to verify it. When the
+  checkout contains an `.xcodeproj` or `.xcworkspace`, reuse a checked-in
+  Fastlane setup when it defines the project, scheme, and test flow; otherwise
+  use a script step with the discovered `xcodebuild` command. Build the app and
+  run tests only for a scheme that has testable targets. When the checkout has
+  Kotlin iOS targets but no Xcode project, use a Gradle runner on macOS for the
+  discovered framework-link task (for example
+  `:shared:linkDebugFrameworkIosSimulatorArm64`), then package that framework
+  into a zip in the same job. Do not invent an iOS app or call `xcodebuild` for
+  a framework-only project.
 - **Shared/JVM job:** keep Kotlin common/JVM tests when the project defines
   them; mobile jobs do not replace common-code coverage.
 
@@ -94,6 +100,9 @@ Publish artifacts that a developer can use:
 - iOS simulator request: package the built `*.app` directory for
   `iphonesimulator` as a zip. A simulator app is not an IPA and is installable
   only into a compatible simulator architecture.
+- iOS framework-only target: package the linked `*.framework` directory as a
+  zip from its macOS Gradle job. This verifies the simulator framework without
+  pretending that a nonexistent Xcode application or XCTest suite ran.
 - iOS device build: publish the unsigned app bundle only as a build artifact;
   it cannot be installed on a physical device without signing.
 - Compose Desktop: when the repository declares OS-specific native formats,
