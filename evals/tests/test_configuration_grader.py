@@ -124,6 +124,56 @@ class ConfigurationGraderTest(unittest.TestCase):
         self.assertTrue(checks["jobCount"]["passed"])
         self.assertTrue(checks["requiredJobs"]["passed"])
 
+    def test_ios_framework_contract_uses_gradle_on_macos(self):
+        case = {
+            "expected": {
+                "configurationValidated": True,
+                "sourceMutations": "none",
+                "minimumJobs": 1,
+                "expectedJobCount": 1,
+                "requiredJobs": [
+                    {
+                        "jobMatches": "(?i)ios",
+                        "requiredStepTypes": ["gradle", "script"],
+                        "requiredStepProperties": [
+                            {
+                                "stepType": "gradle",
+                                "property": "tasks",
+                                "matches": "linkDebugFrameworkIosSimulatorArm64",
+                            },
+                            {
+                                "stepType": "script",
+                                "property": "script-content",
+                                "matches": r"(?s)(?:zip|ditto).*\.framework",
+                            },
+                        ],
+                        "requiredArtifactRules": [r"\.zip"],
+                        "requiredAgentRequirements": ["Mac"],
+                    }
+                ]
+            }
+        }
+        observed = {
+            "jobs": [
+                job(
+                    "ios-framework",
+                    "iOS simulator framework",
+                    "Mac",
+                    [
+                        step("gradle", tasks="linkDebugFrameworkIosSimulatorArm64"),
+                        step("script", **{"script-content": "zip ios.framework.zip shared.framework"}),
+                    ],
+                    "ios.framework.zip",
+                )
+            ],
+            "mutations": [],
+            "toolCalls": [],
+        }
+
+        checks = run_case.grade_configuration(case, observed)
+
+        self.assertTrue(checks["requiredJobs"]["passed"])
+
     def test_exact_job_count_rejects_extra_job(self):
         observed = observed_jobs()
         observed["jobs"].append(
