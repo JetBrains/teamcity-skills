@@ -4,6 +4,8 @@
 
 Connections give jobs credentials for external services (GitHub, Docker registries, AWS, ...) without storing secrets per-job. Required before creating a VCS root that authenticates via OAuth.
 
+Connections listed or selected with `--project` include parent projects, including `_Root`. Delete an inherited connection from its owning project.
+
 **Inspect existing connections in a project:**
 ```bash
 teamcity project connection list --project <project-id>
@@ -11,7 +13,7 @@ teamcity project connection list --project <project-id>
 
 ### Connecting a GitHub repository (GitHub App)
 
-> **Always use this path for GitHub.** Don't `vcs create --auth password` with a personal access token — PATs tie infrastructure to one human, leak in job logs, and can't be revoked centrally. The four-step flow below produces a non-personal "Refreshable access token" tied to a service-identity App, which is what the TeamCity UI's "Sign in to GitHub App" button creates.
+> **Prefer a GitHub App connection for GitHub.** Authorization is per TeamCity user. TeamCity may copy a permanent token or reference a refreshable token; this flow does not guarantee a service identity.
 
 Creates a fresh GitHub App via GitHub's manifest flow — credentials are captured automatically, no PAT involved. Lets jobs clone, post commit statuses, and comment on PRs.
 
@@ -30,7 +32,8 @@ The output prints `Next steps:` with follow-up commands and the install link. Ca
 
 ```bash
 teamcity project connection authorize PROJECT_EXT_NN -p <project-id>
-# browser opens TeamCity's OAuth page → click Authorize on GitHub → tab self-closes.
+# Prints the URL and opens the browser; add --no-input to print it without opening.
+# Complete authorization in the browser; the tab closes on success.
 ```
 
 **3. Install the App on a repo** (one-time, per repo, on github.com):
@@ -48,7 +51,7 @@ teamcity project vcs create -p <project-id> \
   --url https://github.com/<owner>/<repo>.git
 ```
 
-TeamCity auto-fills `authMethod=ACCESS_TOKEN`, `username=oauth2`, and the proper `tokenId` from the connection's stored token. No manual property setup needed; the resulting VCS root uses a non-personal "Refreshable access token" — exactly what the UI's "Sign in to GitHub App" produces.
+To reference an existing stored token explicitly, replace `--connection-id` with `--token-id <full-token-id>`. The token must be permitted in this project; use `--username` if the provider requires a value other than `oauth2`. This writes `ACCESS_TOKEN` and `tokenId` without copying a secret; test the root in the TeamCity UI.
 
 **Non-interactive (agent) variant — bring your own GitHub App credentials:**
 
@@ -96,6 +99,8 @@ VCS roots and build features that reference the deleted connection break — cle
 - For Docker on AWS-managed ECR, prefer an AWS connection with role-based federation over Docker credentials.
 
 ## VCS Roots
+
+`teamcity project vcs test <id>` tests saved credentials through the web UI endpoint; if access is blocked, use the printed UI link.
 
 For questions like "which repository URL and default branch does project `<id>` use", always discover attached VCS roots first, then inspect a concrete root.
 
