@@ -22,6 +22,8 @@
 | `403 Forbidden`              | Insufficient permissions  | Build config may require different access rights; check with TeamCity admin             |
 | `404 Not Found`              | Build deleted or wrong ID | Verify the build ID/URL; the build may have been cleaned up                             |
 | Connection refused / timeout | Server unreachable        | Check if TeamCity instance is accessible; verify server URL with `teamcity auth status` |
-| `Not authenticated`          | `TEAMCITY_URL` set without matching token, or no auth configured | Unset `TEAMCITY_URL` to use stored auth from `teamcity auth login`, or set both `TEAMCITY_URL` and `TEAMCITY_TOKEN` |
+| `Not authenticated`          | Missing or invalid credentials for the selected server | Run `teamcity auth login -s <url>` or override credentials with `TEAMCITY_TOKEN` |
 | `No server configured`       | Missing auth config       | Run `teamcity auth login -s <url>` or set `TEAMCITY_URL` and `TEAMCITY_TOKEN` env vars  |
 | `Network access blocked by sandbox` | Sandbox proxy blocking outbound requests | Add the server domain to the sandbox `allowedDomains`, or exclude `teamcity` from sandboxing |
+
+`project settings status` reports the server’s runtime message and missing DSL context parameters. Its “Recorded” timestamp is when the status was recorded, not the last successful sync.

@@ -2,6 +2,12 @@
 
 ## Project Settings (Export & Status)
 
+**Import initial settings from VCS (keeps UI editing enabled; refuses existing configurations):**
+```bash
+teamcity project settings enable <project-id> --vcs-root <root-id>
+teamcity project settings status <project-id>
+```
+
 **Check versioned settings sync status (requires server connection):**
 ```bash
 teamcity project settings status <project-id>
