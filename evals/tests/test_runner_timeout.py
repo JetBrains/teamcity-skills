@@ -242,7 +242,11 @@ class AgentTimeoutTest(unittest.TestCase):
         )
 
     def test_mcp_configuration_error_category_distinguishes_no_mcp_call(self):
-        checks = {"configurationValidated": {"passed": False}}
+        checks = {
+            "configurationValidated": {"passed": False},
+            "requiredMcpToolUse": {"passed": False},
+            "forbiddenCliToolUse": {"passed": True},
+        }
         self.assertEqual(
             "mcp-not-invoked",
             run_case.mcp_configuration_error_category(
@@ -250,6 +254,16 @@ class AgentTimeoutTest(unittest.TestCase):
                 {"mcpTeamCityCalls": 0},
             ),
         )
+        checks["requiredMcpToolUse"] = {"passed": True}
+        checks["forbiddenCliToolUse"] = {"passed": False}
+        self.assertEqual(
+            "mcp-cli-invoked",
+            run_case.mcp_configuration_error_category(
+                "mcp-only", checks,
+                {"mcpTeamCityCalls": 1, "teamcityCliCalls": 1},
+            ),
+        )
+        checks["forbiddenCliToolUse"] = {"passed": True}
         self.assertEqual(
             "mcp-no-configuration",
             run_case.mcp_configuration_error_category(
@@ -257,6 +271,15 @@ class AgentTimeoutTest(unittest.TestCase):
                 {"mcpTeamCityCalls": 1},
             ),
         )
+
+    def test_mcp_only_contract_is_added_to_the_eval_prompt_not_the_skill(self):
+        contract = run_case.transport_prompt_contract("mcp-only")
+
+        self.assertIn("mcp__teamcity__*", contract)
+        self.assertIn("first TeamCity operation must be a read-only MCP discovery", contract)
+        self.assertIn("Do not fall back", contract)
+        self.assertEqual("", run_case.transport_prompt_contract("cli-only"))
+        self.assertEqual("", run_case.transport_prompt_contract("cli+mcp"))
 
     def test_timed_out_agent_keeps_checks_but_cannot_pass(self):
         result = {"checks": {"build": {"passed": True}}}
