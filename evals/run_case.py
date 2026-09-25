@@ -1207,11 +1207,17 @@ def set_graded_status(result: dict, agent_run: dict) -> None:
 
 
 def trace_tail(trace: pathlib.Path, lines: int = 40) -> list:
-    """Read the end of the private agent trace for local classification."""
+    """Read the agent-output tail for local classification, never publishing it."""
     try:
-        return trace.read_text(errors="replace").splitlines()[-lines:]
+        captured = trace.read_text(errors="replace").splitlines()
     except OSError:
         return []
+    try:
+        output_start = len(captured) - 1 - captured[::-1].index("--- output ---")
+        captured = captured[output_start + 1:]
+    except ValueError:
+        pass
+    return captured[-lines:]
 
 
 def trace_error_category(trace: pathlib.Path) -> Optional[str]:
@@ -1220,6 +1226,24 @@ def trace_error_category(trace: pathlib.Path) -> Optional[str]:
     if "requires approval" in tail or "permission_denied" in tail:
         return "agent-permission-failure"
     return None
+
+
+def permission_failure_surface(trace: pathlib.Path) -> Optional[str]:
+    """Classify only the surface of a known permission denial.
+
+    The runner retains neither the denied operation nor the surrounding agent
+    output. The three fixed outcomes make an approval deadlock actionable.
+    """
+    tail = "\n".join(trace_tail(trace)).lower()
+    if "requires approval" not in tail and "permission_denied" not in tail:
+        return None
+    if re.search(r"(?:mcp|teamcity).{0,160}(?:approval|permission)|"
+                 r"(?:approval|permission).{0,160}(?:mcp|teamcity)", tail, re.S):
+        return "mcp"
+    if re.search(r"(?:bash|write|edit|file).{0,160}(?:approval|permission)|"
+                 r"(?:approval|permission).{0,160}(?:bash|write|edit|file)", tail, re.S):
+        return "workspace"
+    return "unknown"
 
 
 def mcp_runtime(trace: pathlib.Path) -> dict:
@@ -1375,6 +1399,8 @@ def publishable_result(result: dict) -> dict:
     tool_summary = safe_agent_tool_summary(result.get("agentToolSummary"))
     if tool_summary:
         published["agentToolSummary"] = tool_summary
+    if result.get("permissionFailureSurface") in ("mcp", "workspace", "unknown"):
+        published["permissionFailureSurface"] = result["permissionFailureSurface"]
     runtime = safe_mcp_runtime(result.get("mcpRuntime"))
     if runtime:
         published["mcpRuntime"] = runtime
@@ -1564,6 +1590,9 @@ def run(
         if usage:
             result["agentUsage"] = usage
         result["errorCategory"] = trace_error_category(trace)
+        permission_surface = permission_failure_surface(trace)
+        if permission_surface:
+            result["permissionFailureSurface"] = permission_surface
         result["agentToolSummary"] = agent_tool_summary(trace)
         if mcp_config:
             result["mcpRuntime"] = mcp_runtime(trace)

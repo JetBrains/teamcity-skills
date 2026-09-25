@@ -316,6 +316,30 @@ class AgentTimeoutTest(unittest.TestCase):
 
         self.assertEqual("mcp-authentication-failed", category)
 
+    def test_permission_failure_surface_uses_only_fixed_categories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trace = pathlib.Path(directory) / "trace.log"
+            trace.write_text(
+                "--- prompt ---\nprivate MCP text\n--- output ---\n"
+                "Tool requires approval before a TeamCity MCP action.\n"
+            )
+
+            surface = run_case.permission_failure_surface(trace)
+
+        self.assertEqual("mcp", surface)
+
+    def test_permission_failure_surface_ignores_prompt_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trace = pathlib.Path(directory) / "trace.log"
+            trace.write_text(
+                "--- prompt ---\nMCP requires approval\n--- output ---\n"
+                "Tool requires approval.\n"
+            )
+
+            surface = run_case.permission_failure_surface(trace)
+
+        self.assertEqual("unknown", surface)
+
     def test_mcp_only_contract_is_added_to_the_eval_prompt_not_the_skill(self):
         contract = run_case.transport_prompt_contract("mcp-only")
 
