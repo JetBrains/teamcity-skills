@@ -53,10 +53,14 @@ backward compatibility. The runner uses Claude's strict MCP configuration
 mode in all three cases: ambient developer MCP servers are never inherited.
 `mcp-only` removes discovered `teamcity` executables and runner credentials
 from the agent environment. `mcp-only` and `cli+mcp` require
-`EVAL_MCP_CONFIG` to name a server-provisioned configuration file. The file
-and any credentials it contains stay outside Git, the checkout, traces, and
-published artifacts. A missing configuration fails as infrastructure; the
-runner never falls back to CLI.
+`EVAL_MCP_CONFIG` to name a configuration file. When that optional parameter
+is empty, `run-eval-case.sh` writes a minimal file to the TeamCity build's
+temporary directory, containing only `https://<this-server>/app/mcp`; no
+token, client secret, OAuth cache, or authorization header is written to it.
+Claude Code then uses the TeamCity MCP server's normal OAuth flow. An
+installation that has not authorized OAuth fails as infrastructure; the runner
+never falls back to CLI. A supplied `EVAL_MCP_CONFIG` still takes precedence
+for a server that needs a different non-secret layout.
 
 The safe result identifies the transport mode, the SHA-256 fingerprint of the
 case contract, and optional opaque agent configuration/version labels. These

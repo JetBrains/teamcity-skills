@@ -10,7 +10,8 @@ name: Run configuration eval
 #   case            path to the case JSON
 #   env.EVAL_ARM    "skill" (default) or "baseline", which withholds the skill
 #   env.EVAL_TOOL_MODE  cli-only, mcp-only, or cli+mcp. MCP modes require a
-#                       server-provisioned config file, never a config in Git.
+#                       per-build OAuth config. The wrapper creates it from the
+#                       server URL when this optional override is empty.
 parameters:
   case: evals/pipeline-configuration/cases/cmp-unit-converter-targets.json
   env.EVAL_PIPELINES: ""

@@ -9,7 +9,8 @@ name: Run eval case
 #   env.EVAL_PARENT_PROJECT      parent project that holds temporary eval projects
 #   env.EVAL_AGENT_CMD           optional override of `claude -p`
 #   env.EVAL_TOOL_MODE           cli-only, mcp-only, or cli+mcp
-#   env.EVAL_MCP_CONFIG          server-provisioned MCP config path for MCP modes
+#   env.EVAL_MCP_CONFIG          optional MCP config path; if unset, the wrapper
+#                                creates an OAuth config from this server's URL
 #
 # In TeamCity UI, add the JCP Central AI Agent build feature, select Claude
 # Code and a JCP Central connection. The feature provides `claude` and injects
