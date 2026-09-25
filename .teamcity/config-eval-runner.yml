@@ -15,6 +15,8 @@ name: Run configuration eval
 #                       parameter; never add its value to this file.
 #   env.EVAL_STRICT_MCP_CONFIG true by default; false is a labelled diagnostic
 #                              for a managed agent-provided MCP connection.
+#   env.EVAL_MCP_LOCAL_PROBE true only for the mcp-only transport diagnostic.
+#                            It adds a token-free local stdio ping server.
 parameters:
   case: evals/pipeline-configuration/cases/cmp-unit-converter-targets.json
   env.EVAL_PIPELINES: ""
@@ -22,6 +24,7 @@ parameters:
   # Standard MCP evals use only the generated per-run config. Set false only
   # for a labelled diagnostic of a managed agent-provided MCP connection.
   env.EVAL_STRICT_MCP_CONFIG: "true"
+  env.EVAL_MCP_LOCAL_PROBE: "false"
   env.EVAL_AGENT_CONFIG_ID: claude-default
   env.EVAL_AGENT_VERSION: ""
   env.EVAL_MCP_CONFIG: ""

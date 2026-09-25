@@ -179,6 +179,22 @@ class AgentTimeoutTest(unittest.TestCase):
         with self.assertRaises(run_case.EvalError):
             run_case.mcp_config_for_mode({}, "mcp-only")
 
+    def test_local_probe_diagnostic_requires_probe_in_its_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = pathlib.Path(directory) / "mcp.json"
+            config.write_text(json.dumps({"mcpServers": {"teamcity": {}}}))
+            with self.assertRaises(run_case.EvalError):
+                run_case.mcp_config_for_mode(
+                    {"EVAL_MCP_CONFIG": str(config)}, "mcp-only", True,
+                )
+            config.write_text(json.dumps({"mcpServers": {"probe": {}}}))
+            self.assertEqual(
+                config,
+                run_case.mcp_config_for_mode(
+                    {"EVAL_MCP_CONFIG": str(config)}, "mcp-only", True,
+                ),
+            )
+
     def test_mcp_only_environment_hides_teamcity_cli(self):
         with tempfile.TemporaryDirectory() as directory:
             cli_dir = pathlib.Path(directory) / "cli"
@@ -244,12 +260,21 @@ class AgentTimeoutTest(unittest.TestCase):
         with self.assertRaises(run_case.EvalError):
             run_case.strict_mcp_config("mcp-only", "sometimes")
 
+    def test_local_mcp_probe_is_opt_in_and_requires_an_mcp_mode(self):
+        self.assertFalse(run_case.local_mcp_probe("mcp-only", None))
+        self.assertTrue(run_case.local_mcp_probe("mcp-only", "true"))
+        with self.assertRaises(run_case.EvalError):
+            run_case.local_mcp_probe("cli+mcp", "yes")
+        with self.assertRaises(run_case.EvalError):
+            run_case.local_mcp_probe("mcp-only", "perhaps")
+
     def test_agent_tool_summary_counts_surfaces_without_inputs(self):
         with tempfile.TemporaryDirectory() as directory:
             trace = pathlib.Path(directory) / "trace.log"
             trace.write_text("\n".join([
                 json.dumps({"type": "assistant", "message": {"content": [
                     {"type": "tool_use", "name": "mcp__teamcity__projects_list", "input": {"secret": "no"}},
+                    {"type": "tool_use", "name": "mcp__probe__ping", "input": {}},
                     {"type": "tool_use", "name": "Bash", "input": {"command": "teamcity pipeline list"}},
                     {"type": "tool_use", "name": "Read", "input": {"file_path": "private"}},
                 ]}}),
@@ -258,7 +283,10 @@ class AgentTimeoutTest(unittest.TestCase):
             summary = run_case.agent_tool_summary(trace)
 
         self.assertEqual(
-            {"totalCalls": 3, "mcpTeamCityCalls": 1, "teamcityCliCalls": 1, "otherCalls": 1},
+            {
+                "totalCalls": 4, "mcpTeamCityCalls": 1, "mcpProbeCalls": 1,
+                "teamcityCliCalls": 1, "otherCalls": 1,
+            },
             summary,
         )
 
@@ -273,6 +301,35 @@ class AgentTimeoutTest(unittest.TestCase):
             run_case.mcp_configuration_error_category(
                 "mcp-only", checks,
                 {"mcpTeamCityCalls": 0},
+            ),
+        )
+
+    def test_mcp_probe_distinguishes_mcp_client_from_teamcity_tools(self):
+        checks = {
+            "configurationValidated": {"passed": False},
+            "requiredMcpToolUse": {"passed": False},
+            "forbiddenCliToolUse": {"passed": True},
+            "requiredLocalMcpProbeUse": {"passed": False},
+        }
+        self.assertEqual(
+            "mcp-local-probe-not-invoked",
+            run_case.mcp_configuration_error_category(
+                "mcp-only", checks, {}, {}, use_local_mcp_probe=True,
+            ),
+        )
+        checks["requiredLocalMcpProbeUse"] = {"passed": True}
+        self.assertEqual(
+            "mcp-teamcity-tools-not-advertised",
+            run_case.mcp_configuration_error_category(
+                "mcp-only", checks, {},
+                {"teamcityToolsAdvertised": False}, use_local_mcp_probe=True,
+            ),
+        )
+        self.assertEqual(
+            "mcp-teamcity-tools-not-used-after-local-probe",
+            run_case.mcp_configuration_error_category(
+                "mcp-only", checks, {},
+                {"teamcityToolsAdvertised": True}, use_local_mcp_probe=True,
             ),
         )
         checks["requiredMcpToolUse"] = {"passed": True}
@@ -338,6 +395,20 @@ class AgentTimeoutTest(unittest.TestCase):
         self.assertEqual("tools-advertised", runtime["connectionStatus"])
         self.assertTrue(runtime["teamcityToolsAdvertised"])
 
+    def test_mcp_runtime_detects_local_probe_without_retaining_tool_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trace = pathlib.Path(directory) / "trace.log"
+            trace.write_text(json.dumps({
+                "type": "system",
+                "tools": ["mcp__probe__ping"],
+            }))
+
+            runtime = run_case.mcp_runtime(trace)
+
+        self.assertEqual("tools-advertised", runtime["connectionStatus"])
+        self.assertFalse(runtime["teamcityToolsAdvertised"])
+        self.assertTrue(runtime["localProbeToolsAdvertised"])
+
     def test_mcp_error_category_uses_runtime_without_copying_diagnostics(self):
         checks = {
             "requiredMcpToolUse": {"passed": False},
@@ -381,6 +452,8 @@ class AgentTimeoutTest(unittest.TestCase):
         self.assertIn("hard success criterion", contract)
         self.assertIn("first TeamCity operation must be a read-only MCP discovery", contract)
         self.assertIn("Do not fall back", contract)
+        probe_contract = run_case.transport_prompt_contract("mcp-only", True)
+        self.assertIn("mcp__probe__ping", probe_contract)
         self.assertEqual("", run_case.transport_prompt_contract("cli-only"))
         self.assertEqual("", run_case.transport_prompt_contract("cli+mcp"))
 
@@ -397,6 +470,23 @@ class AgentTimeoutTest(unittest.TestCase):
         command = invoked.call_args.args[0]
         self.assertIn("--append-system-prompt", command)
         self.assertIn("MCP transport contract", command)
+
+    def test_probe_diagnostic_authorizes_the_probe_and_teamcity_servers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            trace = root / "trace.log"
+            mcp_config = root / "mcp.json"
+            mcp_config.write_text("{}")
+            completed = subprocess.CompletedProcess([], 0)
+            with mock.patch.object(run_case.subprocess, "run", return_value=completed) as invoked:
+                run_case.invoke_agent(
+                    "prompt", root, {}, trace, timeout=7, mcp_config=mcp_config,
+                    use_local_mcp_probe=True,
+                )
+
+        command = invoked.call_args.args[0]
+        self.assertIn("mcp__teamcity__*", command)
+        self.assertIn("mcp__probe__*", command)
 
     def test_timed_out_agent_keeps_checks_but_cannot_pass(self):
         result = {"checks": {"build": {"passed": True}}}
