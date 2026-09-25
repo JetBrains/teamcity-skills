@@ -49,12 +49,14 @@ SAFE_ERROR_CATEGORIES = {
     "mcp-authentication-failed", "mcp-access-denied",
     "mcp-connection-failed", "mcp-initialization-failed",
     "mcp-agent-did-not-use-available-tool", "mcp-config-invalid",
+    "mcp-server-not-registered", "mcp-preflight-failed",
 }
 MCP_PREFLIGHT_STATUSES = {
     "unknown", "connected", "sideload-flags-disabled",
     "enterprise-managed-config", "enterprise-policy-blocked",
     "approval-required", "authentication-failed", "access-denied",
-    "connection-failed", "config-invalid",
+    "connection-failed", "config-invalid", "server-not-registered",
+    "probe-failed",
 }
 
 
