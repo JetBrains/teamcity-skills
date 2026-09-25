@@ -1,2 +1,4 @@
 # Dependencies for evals/validate.py
 jsonschema==4.23.0
+# The evaluator reads stored pipeline YAML through the TeamCity CLI lifecycle.
+PyYAML==6.0.2
