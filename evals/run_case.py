@@ -1208,6 +1208,11 @@ def set_graded_status(result: dict, agent_run: dict) -> None:
 
 def trace_tail(trace: pathlib.Path, lines: int = 40) -> list:
     """Read the agent-output tail for local classification, never publishing it."""
+    return trace_output_lines(trace)[-lines:]
+
+
+def trace_output_lines(trace: pathlib.Path) -> list:
+    """Read only the captured process output, never the prompt header."""
     try:
         captured = trace.read_text(errors="replace").splitlines()
     except OSError:
@@ -1217,7 +1222,7 @@ def trace_tail(trace: pathlib.Path, lines: int = 40) -> list:
         captured = captured[output_start + 1:]
     except ValueError:
         pass
-    return captured[-lines:]
+    return captured
 
 
 def trace_error_category(trace: pathlib.Path) -> Optional[str]:
@@ -1258,9 +1263,17 @@ def mcp_runtime(trace: pathlib.Path) -> dict:
     tools_advertised = False
     patterns = (
         (
+            "sideload-flags-disabled",
+            ("disablesideloadflags forbids --mcp-config",),
+        ),
+        (
+            "enterprise-managed-config",
+            ("enterprise mcp config", "managed-mcp.json", "exclusive control over mcp"),
+        ),
+        (
             "enterprise-policy-blocked",
             ("blocked by enterprise policy", "deniedmcpservers", "allowedmcpservers",
-             "managed-mcp.json"),
+             "mcp server blocked by enterprise policy"),
         ),
         (
             "approval-required",
@@ -1284,12 +1297,18 @@ def mcp_runtime(trace: pathlib.Path) -> dict:
         ),
     )
     try:
-        lines = trace.read_text(errors="replace").splitlines()
+        lines = trace_output_lines(trace)
     except OSError:
-        return {"connectionStatus": status, "teamcityToolsAdvertised": tools_advertised}
+        lines = []
     for line in lines:
         line = line.strip()
+        plain = line.lower()
         if not line.startswith("{"):
+            if "mcp" in plain and status == "unknown":
+                for candidate, markers in patterns:
+                    if any(marker in plain for marker in markers):
+                        status = candidate
+                        break
             continue
         try:
             event = json.loads(line)
@@ -1322,6 +1341,8 @@ def mcp_configuration_error_category(
     if (checks.get("requiredMcpToolUse") or {}).get("passed") is False:
         connection = (runtime or {}).get("connectionStatus")
         categories = {
+            "sideload-flags-disabled": "mcp-sideload-flags-disabled",
+            "enterprise-managed-config": "mcp-enterprise-managed-config",
             "enterprise-policy-blocked": "mcp-enterprise-policy-blocked",
             "approval-required": "mcp-approval-required",
             "authentication-failed": "mcp-authentication-failed",
@@ -1360,7 +1381,8 @@ def safe_mcp_runtime(value: object) -> dict:
     if not isinstance(value, dict):
         return {}
     allowed_statuses = {
-        "unknown", "tools-advertised", "enterprise-policy-blocked",
+        "unknown", "tools-advertised", "sideload-flags-disabled",
+        "enterprise-managed-config", "enterprise-policy-blocked",
         "approval-required", "authentication-failed", "access-denied",
         "connection-failed", "initialization-failed",
     }
