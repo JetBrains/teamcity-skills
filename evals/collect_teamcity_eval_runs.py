@@ -343,6 +343,11 @@ def download_result(warnings, server, run_id):
             "agentTimedOut": result.get("agentTimedOut"),
             "agentUsage": safe_agent_usage(result.get("agentUsage")),
             "agentToolSummary": safe_agent_tool_summary(result.get("agentToolSummary")),
+            "permissionFailureSurface": (
+                result.get("permissionFailureSurface")
+                if result.get("permissionFailureSurface") in ("mcp", "workspace", "unknown")
+                else None
+            ),
             "mcpRuntime": safe_mcp_runtime(result.get("mcpRuntime")),
             "errorCategory": error_category,
             "checks": {
