@@ -23,6 +23,8 @@ parameters:
   env.EVAL_AGENT_CONFIG_ID: claude-default
   env.EVAL_AGENT_VERSION: ""
   env.EVAL_MCP_CONFIG: ""
+  # Server-side password parameter; its value is never stored in this file.
+  env.EVAL_MCP_TOKEN: "%ai.build.analyzer.eval.mcp.auth.token%"
   env.EVAL_REGRESSION_ENFORCEMENT: "false"
 jobs:
   run_case:
