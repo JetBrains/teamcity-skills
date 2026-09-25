@@ -205,7 +205,7 @@ class AgentTimeoutTest(unittest.TestCase):
         self.assertEqual(str(other_dir), environment["PATH"])
         self.assertEqual("https://teamcity.example", environment["TEAMCITY_URL"])
 
-    def test_mcp_config_keeps_dynamic_server_tools_discoverable(self):
+    def test_mcp_config_authorizes_only_dynamic_teamcity_server_tools(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             trace = root / "trace.log"
@@ -219,7 +219,8 @@ class AgentTimeoutTest(unittest.TestCase):
                 )
 
         command = invoked.call_args.args[0]
-        self.assertNotIn("--allowedTools", command)
+        self.assertIn("Read", command)
+        self.assertIn("mcp__teamcity__*", command)
         self.assertIn("--strict-mcp-config", command)
 
     def test_agent_tool_summary_counts_surfaces_without_inputs(self):

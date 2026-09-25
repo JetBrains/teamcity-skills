@@ -1158,13 +1158,15 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
     # case owns the tool policy, because which tools exist is part of the question.
     command = env.get("EVAL_AGENT_CMD", "claude -p") + " --output-format stream-json --verbose"
     allowed_tools = list(tools or [])
-    if allowed_tools and not mcp_config:
+    if mcp_config:
+        # The MCP server supplies individual tool names after connecting. Its
+        # server-scoped permission wildcard authorizes those dynamic names for
+        # a non-interactive Claude run without opening any ambient server.
+        allowed_tools.append("mcp__teamcity__*")
+    if allowed_tools:
         command += " --allowedTools " + " ".join(shlex.quote(t) for t in allowed_tools)
     if mcp_config:
-        # MCP tool names are supplied dynamically by the server after the
-        # client connects. Passing a guessed wildcard through --allowedTools
-        # can hide them altogether, so use the explicit server config as the
-        # boundary instead. --strict-mcp-config excludes ambient MCP servers.
+        # Only the generated TeamCity server can contribute MCP tools.
         command += " --mcp-config " + shlex.quote(str(mcp_config))
     # Do not inherit a developer's ambient MCP servers.  CLI-only must really
     # be CLI-only, while MCP modes receive only the explicit server config.
