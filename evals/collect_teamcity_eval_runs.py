@@ -41,6 +41,14 @@ USAGE_FIELDS = (
 TOOL_SUMMARY_FIELDS = (
     "totalCalls", "mcpTeamCityCalls", "teamcityCliCalls", "otherCalls",
 )
+SAFE_ERROR_CATEGORIES = {
+    "agent-timeout", "agent-permission-failure",
+    "mcp-not-invoked", "mcp-cli-invoked", "mcp-no-configuration",
+    "mcp-enterprise-policy-blocked", "mcp-approval-required",
+    "mcp-authentication-failed", "mcp-access-denied",
+    "mcp-connection-failed", "mcp-initialization-failed",
+    "mcp-agent-did-not-use-available-tool",
+}
 
 
 def teamcity_cli():
@@ -123,6 +131,28 @@ def safe_agent_tool_summary(value):
         and not isinstance(value.get(name), bool)
         and value[name] >= 0
     }
+
+
+def safe_mcp_runtime(value):
+    """Keep only fixed, non-sensitive MCP startup classifications."""
+    if not isinstance(value, dict):
+        return {}
+    allowed_statuses = {
+        "unknown", "tools-advertised", "enterprise-policy-blocked",
+        "approval-required", "authentication-failed", "access-denied",
+        "connection-failed", "initialization-failed",
+    }
+    result = {}
+    if value.get("connectionStatus") in allowed_statuses:
+        result["connectionStatus"] = value["connectionStatus"]
+    if isinstance(value.get("teamcityToolsAdvertised"), bool):
+        result["teamcityToolsAdvertised"] = value["teamcityToolsAdvertised"]
+    return result
+
+
+def safe_error_category(value):
+    """Preserve only the runner's fixed, non-sensitive error taxonomy."""
+    return value if value in SAFE_ERROR_CATEGORIES else None
 
 
 def safe_case_version(value):
@@ -292,15 +322,13 @@ def download_result(warnings, server, run_id):
         trace_tail = "\n".join(
             line for line in result.get("agentTraceTail") or [] if isinstance(line, str)
         ).lower()
-        if (
-            result.get("errorCategory") == "agent-timeout"
-            or result.get("agentTimedOut") is True
-        ):
+        error_category = safe_error_category(result.get("errorCategory"))
+        if result.get("agentTimedOut") is True:
             error_category = "agent-timeout"
-        elif "requires approval" in trace_tail or "permission_denied" in trace_tail:
+        elif error_category is None and (
+            "requires approval" in trace_tail or "permission_denied" in trace_tail
+        ):
             error_category = "agent-permission-failure"
-        else:
-            error_category = None
         return {
             "caseId": result.get("caseId"),
             "caseStatus": result.get("caseStatus"),
@@ -315,6 +343,7 @@ def download_result(warnings, server, run_id):
             "agentTimedOut": result.get("agentTimedOut"),
             "agentUsage": safe_agent_usage(result.get("agentUsage")),
             "agentToolSummary": safe_agent_tool_summary(result.get("agentToolSummary")),
+            "mcpRuntime": safe_mcp_runtime(result.get("mcpRuntime")),
             "errorCategory": error_category,
             "checks": {
                 name: {"passed": check.get("passed")}
