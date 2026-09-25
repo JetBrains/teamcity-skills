@@ -8,6 +8,8 @@ name: Run eval case
 #                                uses it to create temporary projects
 #   env.EVAL_PARENT_PROJECT      parent project that holds temporary eval projects
 #   env.EVAL_AGENT_CMD           optional override of `claude -p`
+#   env.EVAL_TOOL_MODE           cli-only, mcp-only, or cli+mcp
+#   env.EVAL_MCP_CONFIG          server-provisioned MCP config path for MCP modes
 #
 # In TeamCity UI, add the JCP Central AI Agent build feature, select Claude
 # Code and a JCP Central connection. The feature provides `claude` and injects
@@ -15,6 +17,11 @@ name: Run eval case
 parameters:
   case: evals/first-green-build/cases/spring-petclinic-maven-yaml.json
   env.EVAL_PIPELINES: ""
+  env.EVAL_TOOL_MODE: cli-only
+  env.EVAL_AGENT_CONFIG_ID: claude-default
+  env.EVAL_AGENT_VERSION: ""
+  env.EVAL_MCP_CONFIG: ""
+  env.EVAL_REGRESSION_ENFORCEMENT: "false"
 jobs:
   run_case:
     name: Run eval case

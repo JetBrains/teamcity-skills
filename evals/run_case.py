@@ -29,6 +29,11 @@ Configuration comes from the environment, never from the case:
     EVAL_ARM               "skill" (default) or "baseline". The baseline arm
                            withholds the skill and changes nothing else, so the
                            difference between the two arms is the skill's effect
+    EVAL_TOOL_MODE         "cli-only" (default), "mcp-only", or "cli+mcp"
+    EVAL_MCP_CONFIG        server-provisioned MCP configuration for MCP modes;
+                           it is never copied to a result artifact
+    EVAL_AGENT_CONFIG_ID   optional opaque selected-agent profile identifier
+    EVAL_AGENT_VERSION     optional opaque selected-agent version identifier
 
 Standard library only, so it runs with a bare python3:
 
@@ -39,8 +44,10 @@ Schema validation of the cases themselves lives in evals/validate.py.
 """
 
 import argparse
+import contextlib
 import datetime
 import fnmatch
+import hashlib
 import http.cookiejar
 import json
 import os
@@ -60,6 +67,8 @@ import urllib.request
 
 EVALS = pathlib.Path(__file__).parent
 PLACEHOLDER = re.compile(r"\{\{teamcity\.(server|targetProject)\}\}")
+SAFE_AGENT_METADATA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+TOOL_MODES = ("cli-only", "mcp-only", "cli+mcp")
 sys.path.insert(0, str(EVALS))
 from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
 
@@ -70,6 +79,67 @@ class EvalError(RuntimeError):
 
 class _Graded(Exception):
     """Grading finished early; skip the build steps and go straight to teardown."""
+
+
+def resolve_tool_mode(value: str) -> str:
+    """Return one explicit transport profile; never silently broaden it."""
+    if value not in TOOL_MODES:
+        raise EvalError(
+            "EVAL_TOOL_MODE must be one of " + ", ".join(TOOL_MODES)
+        )
+    return value
+
+
+def safe_agent_metadata(value: Optional[str]) -> Optional[str]:
+    """Keep only opaque, non-secret agent identity labels in public results."""
+    if isinstance(value, str) and SAFE_AGENT_METADATA.fullmatch(value):
+        return value
+    return None
+
+
+def mcp_config_for_mode(env: dict, tool_mode: str) -> Optional[pathlib.Path]:
+    """Require a server-provisioned MCP config for MCP evaluation modes.
+
+    The config itself can contain connection details and is deliberately never
+    copied to the checkout, trace, or result artifact.  A missing config is an
+    infrastructure error rather than a reason to fall back to the CLI bridge.
+    """
+    if tool_mode not in ("mcp-only", "cli+mcp"):
+        return None
+    configured = env.get("EVAL_MCP_CONFIG")
+    if not configured:
+        raise EvalError(
+            f"{tool_mode} requires a server-provisioned EVAL_MCP_CONFIG file"
+        )
+    path = pathlib.Path(configured)
+    if not path.is_file():
+        raise EvalError("EVAL_MCP_CONFIG does not name a readable file")
+    return path
+
+
+def agent_environment_without_cli(environment: dict, server_url: str) -> dict:
+    """Remove runner credentials and every discovered TeamCity CLI for MCP-only.
+
+    ``bootstrap-teamcity-cli.sh`` has to install the CLI for the runner's own
+    lifecycle work.  An MCP-only agent must not inherit that executable by
+    accident, otherwise the comparison would silently become CLI+MCP.
+    """
+    result = dict(environment)
+    result.pop("TEAMCITY_TOKEN", None)
+    result.pop("TEAMCITY_GUEST", None)
+    result.pop("TEAMCITY_EVAL_CLI", None)
+    result.pop("TEAMCITY_EVAL_CLI_DIR", None)
+    path_entries = []
+    executable_names = ("teamcity", "teamcity.cmd", "teamcity.exe", "teamcity.bat")
+    for entry in result.get("PATH", "").split(os.pathsep):
+        if not entry:
+            continue
+        if any((pathlib.Path(entry) / executable).is_file() for executable in executable_names):
+            continue
+        path_entries.append(entry)
+    result["PATH"] = os.pathsep.join(path_entries)
+    result["TEAMCITY_URL"] = server_url
+    return result
 
 
 # --------------------------------------------------------------------------- #
@@ -991,12 +1061,18 @@ def safe_agent_usage(value) -> dict:
 
 
 def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.Path,
-                 timeout: int, tools: list = None) -> dict:
+                 timeout: int, tools: list = None,
+                 mcp_config: Optional[pathlib.Path] = None) -> dict:
     # The runner owns the output format, because grading reads the trace, and the
     # case owns the tool policy, because which tools exist is part of the question.
     command = env.get("EVAL_AGENT_CMD", "claude -p") + " --output-format stream-json --verbose"
     if tools:
         command += " --allowedTools " + " ".join(shlex.quote(t) for t in tools)
+    if mcp_config:
+        command += " --mcp-config " + shlex.quote(str(mcp_config))
+    # Do not inherit a developer's ambient MCP servers.  CLI-only must really
+    # be CLI-only, while MCP modes receive only the explicit server config.
+    command += " --strict-mcp-config"
     agent_env = dict(env)
     agent_env.pop("TEAMCITY_TOKEN", None)
     with trace.open("w") as sink:
@@ -1052,7 +1128,11 @@ def publishable_result(result: dict) -> dict:
     fields = (
         "caseId",
         "caseStatus",
+        "caseVersion",
         "arm",
+        "toolMode",
+        "agentConfigId",
+        "agentVersion",
         "runId",
         "status",
         "gradeStatus",
@@ -1096,6 +1176,7 @@ def run(
     dry_run: bool,
     keep: bool,
     arm: str,
+    tool_mode: str,
     lifecycle_token: Optional[str] = None,
 ) -> dict:
     case = json.loads(case_path.read_text())
@@ -1104,6 +1185,7 @@ def run(
     ):
         raise EvalError(f"kind {case['kind']!r} is not executable by this runner")
 
+    tool_mode = resolve_tool_mode(tool_mode)
     env = dict(os.environ)
     environment_token = env.pop("TEAMCITY_TOKEN", None)
     # The runner uses this token directly. Remove it from this process before
@@ -1116,12 +1198,20 @@ def run(
     result = {
         "caseId": case["id"],
         "caseStatus": case.get("status", "active"),
+        "caseVersion": hashlib.sha256(case_path.read_bytes()).hexdigest(),
         "arm": arm,
+        "toolMode": tool_mode,
         "runId": run_id,
         "status": "errored",
         "checks": {},
         "build": None,
     }
+    agent_config_id = safe_agent_metadata(env.get("EVAL_AGENT_CONFIG_ID"))
+    agent_version = safe_agent_metadata(env.get("EVAL_AGENT_VERSION"))
+    if agent_config_id:
+        result["agentConfigId"] = agent_config_id
+    if agent_version:
+        result["agentVersion"] = agent_version
 
     if dry_run:
         prompt = PLACEHOLDER.sub(lambda m: f"<{m.group(1)}>", case["prompt"])
@@ -1130,6 +1220,9 @@ def run(
 
 
     fixture_case = case["kind"] == "queue-stall-diagnosis"
+    if fixture_case and tool_mode == "mcp-only":
+        raise EvalError("queue-stall-diagnosis needs the CLI fixture; mcp-only is unsupported")
+    mcp_config = mcp_config_for_mode(env, tool_mode)
     if fixture_case:
         # A reserved, non-routable host prevents a baseline arm from touching
         # the real TeamCity server if it ignores the first-class CLI fixture.
@@ -1195,30 +1288,39 @@ def run(
             agent_run = invoke_agent(
                 prompt, checkout, install_queue_stall_fixture(workspace, env), trace,
                 int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
-                case.get("agentTools"),
+                case.get("agentTools"), mcp_config,
             )
         else:
-            cli_name = env.get("TEAMCITY_EVAL_CLI", "teamcity")
-            cli_path = shutil.which(cli_name, path=env.get("PATH"))
-            if not cli_path:
-                raise EvalError(f"TeamCity CLI executable not found: {cli_name}")
             try:
-                with TeamCityCliBridge(
-                    cli=cli_path,
-                    server_url=url,
-                    token=token,
-                    workspace=workspace,
-                    checkout=checkout,
-                    target_project=project_id,
-                    allow_build_writes=case["kind"] == "first-green-build",
-                    pipeline_ids=lambda: tc.pipeline_ids(project_id),
-                    job_ids=lambda: [item["id"] for item in tc.build_types(project_id)],
-                    base_env=env,
-                ) as bridge:
+                uses_cli = tool_mode in ("cli-only", "cli+mcp")
+                if uses_cli:
+                    cli_name = env.get("TEAMCITY_EVAL_CLI", "teamcity")
+                    cli_path = shutil.which(cli_name, path=env.get("PATH"))
+                    if not cli_path:
+                        raise EvalError(f"TeamCity CLI executable not found: {cli_name}")
+                    bridge_context = TeamCityCliBridge(
+                        cli=cli_path,
+                        server_url=url,
+                        token=token,
+                        workspace=workspace,
+                        checkout=checkout,
+                        target_project=project_id,
+                        allow_build_writes=case["kind"] == "first-green-build",
+                        pipeline_ids=lambda: tc.pipeline_ids(project_id),
+                        job_ids=lambda: [item["id"] for item in tc.build_types(project_id)],
+                        base_env=env,
+                    )
+                else:
+                    bridge_context = contextlib.nullcontext()
+                with bridge_context as bridge:
+                    agent_env = (
+                        bridge.agent_environment(env)
+                        if uses_cli else agent_environment_without_cli(env, url)
+                    )
                     agent_run = invoke_agent(
-                        prompt, checkout, bridge.agent_environment(env), trace,
+                        prompt, checkout, agent_env, trace,
                         int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
-                        case.get("agentTools"),
+                        case.get("agentTools"), mcp_config,
                     )
             except BridgeError as exc:
                 raise EvalError(f"could not provide scoped TeamCity CLI access: {exc}") from exc
@@ -1341,6 +1443,11 @@ def main() -> int:
     parser.add_argument("--arm", choices=("skill", "baseline"),
                         default=os.environ.get("EVAL_ARM", "skill"),
                         help="'baseline' withholds the skill, to measure its effect")
+    parser.add_argument(
+        "--tool-mode", choices=TOOL_MODES,
+        default=os.environ.get("EVAL_TOOL_MODE", "cli-only"),
+        help="agent transport profile: cli-only, mcp-only, or cli+mcp",
+    )
     args = parser.parse_args()
 
     keep = args.keep or os.environ.get("EVAL_KEEP", "") not in ("", "0", "false")
@@ -1354,9 +1461,17 @@ def main() -> int:
         if not lifecycle_token:
             parser.error("lifecycle token descriptor is empty")
     try:
-        result = run(args.case, args.dry_run, keep, args.arm, lifecycle_token)
+        result = run(
+            args.case, args.dry_run, keep, args.arm, args.tool_mode, lifecycle_token
+        )
     except EvalError as exc:
-        result = {"caseId": args.case.stem, "status": "errored", "error": str(exc)}
+        result = {
+            "caseId": args.case.stem,
+            "arm": args.arm,
+            "toolMode": args.tool_mode,
+            "status": "errored",
+            "error": str(exc),
+        }
 
     rendered = json.dumps(publishable_result(result), indent=2)
     print(rendered)

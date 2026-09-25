@@ -131,6 +131,54 @@ class AgentTimeoutTest(unittest.TestCase):
         )
         self.assertNotIn("agentTraceTail", published)
 
+    def test_publishable_result_keeps_tool_mode_and_safe_agent_identity(self):
+        published = run_case.publishable_result(
+            {
+                "caseId": "example",
+                "status": "passed",
+                "toolMode": "cli+mcp",
+                "agentConfigId": "claude-teamcity",
+                "agentVersion": "1.2.3",
+                "checks": {},
+            }
+        )
+
+        self.assertEqual("cli+mcp", published["toolMode"])
+        self.assertEqual("claude-teamcity", published["agentConfigId"])
+        self.assertEqual("1.2.3", published["agentVersion"])
+
+    def test_tool_modes_are_explicit_and_mcp_never_falls_back_to_cli(self):
+        self.assertEqual("cli-only", run_case.resolve_tool_mode("cli-only"))
+        self.assertEqual("mcp-only", run_case.resolve_tool_mode("mcp-only"))
+        with self.assertRaises(run_case.EvalError):
+            run_case.resolve_tool_mode("automatic")
+        with self.assertRaises(run_case.EvalError):
+            run_case.mcp_config_for_mode({}, "mcp-only")
+
+    def test_mcp_only_environment_hides_teamcity_cli(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cli_dir = pathlib.Path(directory) / "cli"
+            other_dir = pathlib.Path(directory) / "other"
+            cli_dir.mkdir()
+            other_dir.mkdir()
+            (cli_dir / "teamcity").write_text("#!/bin/sh\n")
+
+            environment = run_case.agent_environment_without_cli(
+                {
+                    "TEAMCITY_TOKEN": "private",
+                    "TEAMCITY_EVAL_CLI": "teamcity",
+                    "TEAMCITY_EVAL_CLI_DIR": str(cli_dir),
+                    "PATH": str(cli_dir) + run_case.os.pathsep + str(other_dir),
+                },
+                "https://teamcity.example",
+            )
+
+        self.assertNotIn("TEAMCITY_TOKEN", environment)
+        self.assertNotIn("TEAMCITY_EVAL_CLI", environment)
+        self.assertNotIn("TEAMCITY_EVAL_CLI_DIR", environment)
+        self.assertEqual(str(other_dir), environment["PATH"])
+        self.assertEqual("https://teamcity.example", environment["TEAMCITY_URL"])
+
     def test_timed_out_agent_keeps_checks_but_cannot_pass(self):
         result = {"checks": {"build": {"passed": True}}}
 
@@ -169,6 +217,61 @@ class AgentTimeoutTest(unittest.TestCase):
 
         self.assertEqual("agent-timeout", category)
 
+    def test_collector_keeps_only_safe_transport_profile_fields(self):
+        raw = {
+            "caseId": "example",
+            "caseVersion": "a" * 64,
+            "toolMode": "cli+mcp",
+            "agentConfigId": "claude-teamcity",
+            "agentVersion": "1.2.3",
+        }
+
+        self.assertEqual("cli+mcp", collector.tool_mode_of(raw))
+        self.assertEqual(
+            ("a" * 64, "claude-teamcity", "1.2.3"),
+            collector.evaluation_profile(raw),
+        )
+        self.assertEqual(
+            ("legacy", "default", "default"),
+            collector.evaluation_profile(
+                {
+                    "caseVersion": "not-a-hash",
+                    "agentConfigId": "unsafe value",
+                    "agentVersion": "private/token",
+                }
+            ),
+        )
+
+    def test_collector_extracts_safe_transport_profile_from_artifact(self):
+        artifact = {
+            "caseId": "example",
+            "caseVersion": "b" * 64,
+            "toolMode": "mcp-only",
+            "agentConfigId": "claude-teamcity",
+            "agentVersion": "1.2.3",
+            "checks": {"build": {"passed": True}},
+        }
+
+        def fake_cli(_server, *arguments):
+            if arguments[1] == "artifacts":
+                return subprocess.CompletedProcess(
+                    [], 0, stdout=json.dumps({"file": [{"name": "eval-result.json"}]}), stderr=""
+                )
+            if arguments[1] == "download":
+                destination = pathlib.Path(arguments[arguments.index("--output") + 1])
+                (destination / "publish").mkdir()
+                (destination / "publish" / "eval-result.json").write_text(json.dumps(artifact))
+                return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+            self.fail(f"unexpected CLI call: {arguments}")
+
+        with mock.patch.object(collector, "cli", side_effect=fake_cli):
+            result = collector.download_result([], "https://teamcity.example", 99)
+
+        self.assertEqual("mcp-only", result["toolMode"])
+        self.assertEqual("b" * 64, result["caseVersion"])
+        self.assertEqual("claude-teamcity", result["agentConfigId"])
+        self.assertEqual("1.2.3", result["agentVersion"])
+
     def test_dependency_tree_is_deduplicated(self):
         job = {"id": 7, "name": "Run configuration eval", "dependencies": []}
         tree = {
@@ -201,7 +304,7 @@ class AgentTimeoutTest(unittest.TestCase):
             ]
         )
 
-        history = observed[("example", "skill")]["history"]
+        history = observed[("example", "cli-only", "skill")]["history"]
         self.assertEqual(2, history["sampleSize"])
         self.assertEqual(1, history["passCount"])
         self.assertEqual(0.5, history["passRate"])
@@ -220,7 +323,29 @@ class AgentTimeoutTest(unittest.TestCase):
             ]
         )
 
-        self.assertEqual(0, observed[("example", "skill")]["history"]["sampleSize"])
+        self.assertEqual(0, observed[("example", "cli-only", "skill")]["history"]["sampleSize"])
+
+    def test_pass_rate_does_not_mix_tool_modes(self):
+        def job(identifier, tool_mode, classification):
+            return {
+                "id": identifier,
+                "revision": "same",
+                "classification": classification,
+                "classificationDetail": classification,
+                "url": f"https://teamcity.example/{identifier}",
+                "result": {
+                    "caseId": "example",
+                    "toolMode": tool_mode,
+                    "arm": "skill",
+                },
+            }
+
+        observed = collector.latest_arm_observations(
+            [job(3, "cli-only", "passed"), job(2, "mcp-only", "skill-output-failed")]
+        )
+
+        self.assertEqual(1, observed[("example", "cli-only", "skill")]["history"]["sampleSize"])
+        self.assertEqual(1, observed[("example", "mcp-only", "skill")]["history"]["sampleSize"])
 
     def test_vcs_revision_reads_the_pipeline_head_change(self):
         self.assertEqual(

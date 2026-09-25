@@ -22,6 +22,7 @@ import datetime as dt
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -30,6 +31,9 @@ import tempfile
 HERE = pathlib.Path(__file__).resolve().parent
 EVAL_JOB_NAMES = {"Run configuration eval", "Run eval case"}
 ARMS = ("skill", "baseline")
+TOOL_MODES = ("cli-only", "mcp-only", "cli+mcp")
+SAFE_CASE_VERSION = re.compile(r"^[a-f0-9]{64}$")
+SAFE_AGENT_METADATA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 USAGE_FIELDS = (
     "inputTokens", "outputTokens", "cacheReadTokens",
     "cacheWriteTokens", "totalCostUsd",
@@ -103,6 +107,42 @@ def safe_agent_usage(value):
         and not isinstance(value.get(name), bool)
         and value[name] >= 0
     }
+
+
+def safe_case_version(value):
+    """Accept only the runner's SHA-256 contract fingerprint."""
+    return value if isinstance(value, str) and SAFE_CASE_VERSION.fullmatch(value) else None
+
+
+def safe_agent_metadata(value):
+    """Retain opaque, non-secret agent identity labels only."""
+    return value if isinstance(value, str) and SAFE_AGENT_METADATA.fullmatch(value) else None
+
+
+def tool_mode_of(result):
+    """Keep legacy artifacts comparable while separating new transport modes."""
+    mode = result.get("toolMode", "cli-only") if isinstance(result, dict) else "cli-only"
+    return mode if mode in TOOL_MODES else "unknown"
+
+
+def metric_score(result):
+    """Return the fraction of reported checks that passed, or None without checks."""
+    checks = result.get("checks") if isinstance(result, dict) else None
+    if not isinstance(checks, dict):
+        return None
+    values = [check.get("passed") for check in checks.values() if isinstance(check, dict)]
+    values = [value for value in values if isinstance(value, bool)]
+    return round(sum(values) / len(values), 3) if values else None
+
+
+def evaluation_profile(result):
+    """A stable identity for fair comparisons; legacy artifacts use defaults."""
+    result = result if isinstance(result, dict) else {}
+    return (
+        safe_case_version(result.get("caseVersion")) or "legacy",
+        safe_agent_metadata(result.get("agentConfigId")) or "default",
+        safe_agent_metadata(result.get("agentVersion")) or "default",
+    )
 
 
 def flatten_dependencies(tree):
@@ -248,9 +288,13 @@ def download_result(warnings, server, run_id):
         return {
             "caseId": result.get("caseId"),
             "caseStatus": result.get("caseStatus"),
+            "caseVersion": safe_case_version(result.get("caseVersion")),
             "status": result.get("status"),
             "gradeStatus": result.get("gradeStatus"),
             "arm": result.get("arm"),
+            "toolMode": tool_mode_of(result),
+            "agentConfigId": safe_agent_metadata(result.get("agentConfigId")),
+            "agentVersion": safe_agent_metadata(result.get("agentVersion")),
             "agentExitCode": result.get("agentExitCode"),
             "agentTimedOut": result.get("agentTimedOut"),
             "agentUsage": safe_agent_usage(result.get("agentUsage")),
@@ -380,14 +424,15 @@ def normalize_run(server, warnings, node):
 
 
 def latest_arm_observations(all_jobs, window_size=5, target_min_samples=3):
-    """Latest arm plus a bounded pass-rate window on the same harness SHA."""
+    """Latest arm plus a bounded pass-rate window per transport mode and SHA."""
     observed = {}
     history = {}
     for job in sorted(all_jobs, key=lambda item: item["id"], reverse=True):
         result = job.get("result") or {}
         case_id = result.get("caseId")
         arm = result.get("arm")
-        key = (case_id, arm)
+        tool_mode = tool_mode_of(result)
+        key = (case_id, tool_mode, arm)
         if not case_id or arm not in ARMS:
             continue
         history.setdefault(key, []).append(job)
@@ -398,23 +443,66 @@ def latest_arm_observations(all_jobs, window_size=5, target_min_samples=3):
                 "runId": job["id"],
                 "url": job["url"],
                 "arm": arm,
+                "toolMode": tool_mode,
                 "revision": job.get("revision"),
+                "caseVersion": evaluation_profile(result)[0],
+                "agentConfigId": evaluation_profile(result)[1],
+                "agentVersion": evaluation_profile(result)[2],
             }
     for key, observation in observed.items():
         latest_revision = observation.get("revision")
+        latest_profile = (
+            observation.get("caseVersion"),
+            observation.get("agentConfigId"),
+            observation.get("agentVersion"),
+        )
         samples = [] if not latest_revision else [
             job for job in history[key]
             if job.get("revision") == latest_revision
+            and evaluation_profile(job.get("result") or {}) == latest_profile
         ][:window_size]
         passed = sum(job["classification"] == "passed" for job in samples)
+        scores = [metric_score(job.get("result") or {}) for job in samples]
+        scores = [score for score in scores if score is not None]
         observation["history"] = {
             "sampleSize": len(samples),
             "passCount": passed,
             "passRate": round(passed / len(samples), 3) if samples else None,
+            "averageMetricScore": round(sum(scores) / len(scores), 3) if scores else None,
             "targetMinSamples": target_min_samples,
             "windowSize": window_size,
         }
     return observed
+
+
+def compare_arms(skill, baseline, target_min_samples=3):
+    """State when a paired comparison is meaningful, never inventing a lift."""
+    if not skill or not baseline:
+        return {"status": "missing-arm"}
+    if skill.get("revision") != baseline.get("revision"):
+        return {"status": "different-harness-revision"}
+    if (
+        skill.get("caseVersion"), skill.get("agentConfigId"), skill.get("agentVersion")
+    ) != (
+        baseline.get("caseVersion"), baseline.get("agentConfigId"), baseline.get("agentVersion")
+    ):
+        return {"status": "different-case-or-agent-config"}
+    skill_history = skill.get("history") or {}
+    baseline_history = baseline.get("history") or {}
+    if (
+        skill_history.get("sampleSize", 0) < target_min_samples
+        or baseline_history.get("sampleSize", 0) < target_min_samples
+    ):
+        return {"status": "insufficient-samples"}
+    skill_score = skill_history.get("averageMetricScore")
+    baseline_score = baseline_history.get("averageMetricScore")
+    if skill_score is None or baseline_score is None:
+        return {"status": "insufficient-samples"}
+    return {
+        "status": "skill-better" if skill_score > baseline_score else "skill-not-better",
+        "skillMetricScore": skill_score,
+        "baselineMetricScore": baseline_score,
+    }
 
 
 def collect(server, pipelines, limit, excluded_job_names):
@@ -486,9 +574,23 @@ def collect(server, pipelines, limit, excluded_job_names):
     observed = latest_arm_observations(all_jobs)
     for case in report["cases"]:
         if case["executionModel"] == "paired-arms":
-            case["arms"] = {arm: observed.get((case["id"], arm)) for arm in ARMS}
+            case["toolModes"] = {
+                mode: {
+                    arm: observed.get((case["id"], mode, arm))
+                    for arm in ARMS
+                }
+                for mode in TOOL_MODES
+            }
+            case["comparisons"] = {
+                mode: compare_arms(
+                    case["toolModes"][mode]["skill"],
+                    case["toolModes"][mode]["baseline"],
+                )
+                for mode in TOOL_MODES
+            }
         else:
-            case["arms"] = None
+            case["toolModes"] = None
+            case["comparisons"] = None
 
     counts = {}
     for job in all_jobs:
@@ -513,16 +615,18 @@ def collect(server, pipelines, limit, excluded_job_names):
             case["executionModel"] == "paired-arms" for case in report["cases"]
         ),
         "expectedArmSlots": sum(
-            2 for case in report["cases"] if case["executionModel"] == "paired-arms"
+            len(ARMS) * len(TOOL_MODES)
+            for case in report["cases"] if case["executionModel"] == "paired-arms"
         ),
-        "distinctCasesObserved": len({case_id for case_id, _arm in observed}),
+        "distinctCasesObserved": len({case_id for case_id, _mode, _arm in observed}),
         "distinctArmsObserved": len(observed),
         "jobRunsObserved": len(all_jobs),
         "classifications": counts,
         "agentUsage": usage_totals,
     }
     report["recommendations"] = [
-        "Complete skill and baseline arms on one pinned revision; a single skill-arm pass does not measure skill lift.",
+        "Complete baseline and skill arms in the same tool mode and harness revision; a single skill-arm pass does not measure skill lift.",
+        "Run each CLI-only, MCP-only, and CLI+MCP cell at least three times before treating a skill comparison as measured.",
         "Run teamcity-cli-not-curl with curl and the TeamCity CLI both available, so the tool-choice assertion is meaningful.",
         "Run queued-no-compatible-agent as paired arms to measure whether the skill prevents blind queue polling.",
         "Run the Spring Petclinic first-green case before the aspirational Kotlin Multiplatform case.",

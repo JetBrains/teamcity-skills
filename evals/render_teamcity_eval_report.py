@@ -30,6 +30,11 @@ COLORS = {
     "queued": "#6e6e6e",
     "canceled": "#6e6e6e",
 }
+TOOL_MODE_LABELS = {
+    "cli-only": "CLI only",
+    "mcp-only": "MCP only",
+    "cli+mcp": "CLI + MCP",
+}
 
 
 def esc(value):
@@ -56,10 +61,10 @@ def link(url, label):
     return f'<a href="{esc(url)}" target="_blank" rel="noreferrer">{esc(label)}</a>' if url else esc(label)
 
 
-def arm_cell(case, arm):
+def arm_cell(case, tool_mode, arm):
     if case.get("executionModel") != "paired-arms":
         return '<span class="muted">not arm-based</span>'
-    observation = (case.get("arms") or {}).get(arm)
+    observation = ((case.get("toolModes") or {}).get(tool_mode) or {}).get(arm)
     if not observation:
         return '<span class="muted">not run</span>'
     category = observation.get("classification", "unknown")
@@ -85,6 +90,58 @@ def arm_cell(case, arm):
     )
 
 
+def comparison_detail(case, tool_mode):
+    comparison = ((case.get("comparisons") or {}).get(tool_mode) or {})
+    status = comparison.get("status")
+    if not status:
+        return ""
+    labels = {
+        "skill-better": "skill better than baseline",
+        "skill-not-better": "skill not better than baseline",
+        "insufficient-samples": "comparison needs 3 samples per arm",
+        "different-harness-revision": "arms use different harness revisions",
+        "missing-arm": "comparison needs both arms",
+    }
+    return f'<div class="detail">{esc(labels.get(status, status))}</div>'
+
+
+def regression_gate(regressions):
+    """Render the safe regression verdict written next to the report."""
+    if not regressions:
+        return (
+            '<section class="section"><span class="muted">'
+            'Regression checks have not been collected for this report.</span></section>'
+        )
+    failures = regressions.get("failures") or []
+    if not failures:
+        return (
+            '<section class="section"><span class="status" style="color:#147d4b">'
+            'No mature skill-comparison regression is recorded.</span>'
+            '<div class="detail">A comparison becomes mature after three same-profile '
+            'samples per arm. Insufficient samples are not treated as a pass.</div></section>'
+        )
+    labels = {
+        "skill-vs-baseline": "skill is not better than baseline",
+        "skill-vs-previous-skill": "skill score decreased from the previous revision",
+    }
+    rows = "".join(
+        '<li><code>{}</code> / {}: {}</li>'.format(
+            esc(item.get("caseId")),
+            esc(TOOL_MODE_LABELS.get(item.get("toolMode"), item.get("toolMode"))),
+            esc(labels.get(item.get("kind"), item.get("status"))),
+        )
+        for item in failures
+    )
+    return (
+        '<section class="section"><span class="status" style="color:#c8511b">'
+        'Mature skill-comparison regression detected.</span>'
+        f'<ul>{rows}</ul>'
+        '<div class="detail">The report is informational by default; turn on '
+        'EVAL_REGRESSION_ENFORCEMENT only after the reference samples are approved.</div>'
+        '</section>'
+    )
+
+
 def usage_cell(run):
     usage = ((run.get("result") or {}).get("agentUsage") or {})
     if not usage:
@@ -106,7 +163,7 @@ def usage_cell(run):
     return esc(" / ".join(tokens) or "token counts not reported") + cost
 
 
-def render(data):
+def render(data, regressions=None):
     summary = data.get("summary", {})
     counts = summary.get("classifications", {})
     jobs = all_jobs(data)
@@ -122,13 +179,19 @@ def render(data):
         coverage = " / ".join(case.get("assertions") or [])
         if case.get("targets"):
             coverage += (" / " if coverage else "") + "targets: " + " / ".join(case["targets"])
+        mode_cells = ""
+        for tool_mode in TOOL_MODE_LABELS:
+            mode_cells += (
+                f'<td>{arm_cell(case, tool_mode, "skill")}'
+                f'{comparison_detail(case, tool_mode)}</td>'
+                f'<td>{arm_cell(case, tool_mode, "baseline")}</td>'
+            )
         matrix_rows.append(
             '<tr>'
             f'<td><code>{esc(case["id"])}</code><div class="detail">{esc(case["scope"])}</div></td>'
             f'<td>{esc(case["kind"])}<br><span class="gate">{esc(case["gate"])}</span></td>'
             f'<td>{esc(coverage)}</td>'
-            f'<td>{arm_cell(case, "skill")}</td>'
-            f'<td>{arm_cell(case, "baseline")}</td>'
+            f'{mode_cells}'
             '</tr>'
         )
 
@@ -141,6 +204,7 @@ def render(data):
             '<tr>'
             f'<td>{link(job.get("url"), str(job["id"]))}</td>'
             f'<td><code>{esc(case)}</code></td>'
+            f'<td>{esc(result.get("toolMode", "cli-only"))}</td>'
             f'<td>{esc(result.get("arm"))}</td>'
             f'<td><span class="status" style="color:{COLORS.get(category, "#6e6e6e")}">{esc(category)}</span></td>'
             f'<td>{esc(job.get("classificationDetail"))}</td>'
@@ -179,9 +243,10 @@ def render(data):
 body{{margin:0;background:#f6f7f8;color:#1d252c;font:14px/1.45 Inter,system-ui,sans-serif}}main{{max-width:1200px;margin:auto;padding:32px 24px 60px}}h1{{font-size:28px;margin:0}}h2{{font-size:16px;margin:30px 0 12px}}.meta{{color:#64717c;margin:4px 0 22px}}.metrics{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}}.section{{background:#fff;border:1px solid #dce1e5;border-radius:10px;padding:16px}}.value{{font-size:26px;font-weight:700}}.label,.muted,.detail,.gate{{color:#64717c}}.detail{{font-size:11px;margin-top:4px}}.barline{{display:flex;overflow:hidden;height:12px;border-radius:8px;background:#e9ecef;margin-top:16px}}.bar{{min-width:4px}}.legend{{display:flex;gap:14px;flex-wrap:wrap;margin:9px 0;color:#52606c;font-size:12px}}.legend i{{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}}.visually-hidden{{position:absolute;clip-path:inset(50%);overflow:hidden;width:1px;height:1px;white-space:nowrap}}code{{font-size:12px;overflow-wrap:anywhere}}table{{border-collapse:collapse;width:100%;min-width:900px;font-size:12px}}th{{text-align:left;color:#64717c;font-weight:600}}td,th{{padding:9px 8px;border-bottom:1px solid #e5e8eb;vertical-align:top}}a{{color:#2864b0;text-decoration:none}}.status{{font-weight:650}}ol{{margin:0;padding-left:22px}}li+li{{margin-top:8px}}@media(max-width:700px){{main{{padding:20px 14px}}.metrics{{grid-template-columns:1fr 1fr}}.table-wrap{{overflow:auto}}}}@media(max-width:420px){{.metrics{{grid-template-columns:1fr 1fr}}}}
 </style></head><body><main>
 <h1>TeamCity evaluation runs</h1><div class="meta">{esc(data.get("server"))} / collected {esc(data.get("generatedAt"))}</div>
-<section class="section"><div class="metrics"><div><div class="value">{summary.get("caseContracts", 0)}</div><div class="label">case contracts</div></div><div><div class="value">{summary.get("pairedCaseContracts", 0)}</div><div class="label">paired agent cases</div></div><div><div class="value">{summary.get("distinctArmsObserved", 0)}/{summary.get("expectedArmSlots", 0)}</div><div class="label">case arms observed</div></div><div><div class="value">{counts.get("running", 0) + counts.get("queued", 0)}</div><div class="label">active eval jobs</div></div></div><div class="barline">{bars}</div><div class="legend">{legend}</div><div class="detail">{esc(usage_line)}</div></section>
-<h2>Case x arm matrix</h2><section class="section table-wrap"><table><caption class="visually-hidden">Latest skill and baseline result for every evaluation contract</caption><thead><tr><th scope="col">Case</th><th scope="col">Contract</th><th scope="col">What is tested</th><th scope="col">Skill</th><th scope="col">Baseline</th></tr></thead><tbody>{"".join(matrix_rows)}</tbody></table></section>
-<h2>Recent execution ledger</h2><section class="section table-wrap"><table><caption class="visually-hidden">Recent unique evaluator jobs</caption><thead><tr><th scope="col">Job</th><th scope="col">Case</th><th scope="col">Arm</th><th scope="col">Verdict</th><th scope="col">Reason</th><th scope="col">Agent</th><th scope="col">Duration</th><th scope="col">Agent usage</th></tr></thead><tbody>{"".join(rows)}</tbody></table></section>
+<section class="section"><div class="metrics"><div><div class="value">{summary.get("caseContracts", 0)}</div><div class="label">case contracts</div></div><div><div class="value">{summary.get("pairedCaseContracts", 0)}</div><div class="label">paired agent cases</div></div><div><div class="value">{summary.get("distinctArmsObserved", 0)}/{summary.get("expectedArmSlots", 0)}</div><div class="label">mode x arm cells observed</div></div><div><div class="value">{counts.get("running", 0) + counts.get("queued", 0)}</div><div class="label">active eval jobs</div></div></div><div class="barline">{bars}</div><div class="legend">{legend}</div><div class="detail">{esc(usage_line)}</div></section>
+<h2>Case x tool mode x arm matrix</h2><section class="section table-wrap"><table><caption class="visually-hidden">Latest skill and baseline result for every evaluation contract and tool mode</caption><thead><tr><th scope="col" rowspan="2">Case</th><th scope="col" rowspan="2">Contract</th><th scope="col" rowspan="2">What is tested</th><th scope="colgroup" colspan="2">CLI only</th><th scope="colgroup" colspan="2">MCP only</th><th scope="colgroup" colspan="2">CLI + MCP</th></tr><tr><th scope="col">Skill</th><th scope="col">Baseline</th><th scope="col">Skill</th><th scope="col">Baseline</th><th scope="col">Skill</th><th scope="col">Baseline</th></tr></thead><tbody>{"".join(matrix_rows)}</tbody></table></section>
+<h2>Skill-comparison gate</h2>{regression_gate(regressions)}
+<h2>Recent execution ledger</h2><section class="section table-wrap"><table><caption class="visually-hidden">Recent unique evaluator jobs</caption><thead><tr><th scope="col">Job</th><th scope="col">Case</th><th scope="col">Tool mode</th><th scope="col">Arm</th><th scope="col">Verdict</th><th scope="col">Reason</th><th scope="col">Agent</th><th scope="col">Duration</th><th scope="col">Agent usage</th></tr></thead><tbody>{"".join(rows)}</tbody></table></section>
 <h2>Next useful evaluations</h2><section class="section"><ol>{recommendations}</ol></section>
 </main></body></html>'''
 
@@ -190,10 +255,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, type=pathlib.Path)
     parser.add_argument("--output", required=True, type=pathlib.Path)
+    parser.add_argument("--regressions", type=pathlib.Path,
+                        help="safe regressions.json generated from the same runs snapshot")
     args = parser.parse_args()
     data = json.loads(args.input.read_text())
+    regressions = json.loads(args.regressions.read_text()) if args.regressions else None
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(render(data))
+    args.output.write_text(render(data, regressions))
     print(f"wrote {args.output}")
 
 
