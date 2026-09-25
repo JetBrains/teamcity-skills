@@ -166,6 +166,7 @@ class AgentTimeoutTest(unittest.TestCase):
             environment = run_case.agent_environment_without_cli(
                 {
                     "TEAMCITY_TOKEN": "private",
+                    "EVAL_MCP_TOKEN": "mcp-private",
                     "TEAMCITY_EVAL_CLI": "teamcity",
                     "TEAMCITY_EVAL_CLI_DIR": str(cli_dir),
                     "PATH": str(cli_dir) + run_case.os.pathsep + str(other_dir),
@@ -174,6 +175,7 @@ class AgentTimeoutTest(unittest.TestCase):
             )
 
         self.assertNotIn("TEAMCITY_TOKEN", environment)
+        self.assertNotIn("EVAL_MCP_TOKEN", environment)
         self.assertNotIn("TEAMCITY_EVAL_CLI", environment)
         self.assertNotIn("TEAMCITY_EVAL_CLI_DIR", environment)
         self.assertEqual(str(other_dir), environment["PATH"])
