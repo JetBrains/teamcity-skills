@@ -41,6 +41,29 @@ done
   --limit "$report_limit" \
   --exclude-job-name "Publish evaluation report" \
   --output "$report_dir/runs.json"
+regression_failed=0
+case "${EVAL_REGRESSION_ENFORCEMENT:-false}" in
+  1|true|TRUE|yes|YES)
+    if ! "${python_command[@]}" evals/check_regressions.py \
+      --input "$report_dir/runs.json" \
+      --output "$report_dir/regressions.json" \
+      --enforce; then
+      regression_failed=1
+    fi
+    ;;
+  0|false|FALSE|no|NO|"")
+    "${python_command[@]}" evals/check_regressions.py \
+      --input "$report_dir/runs.json" \
+      --output "$report_dir/regressions.json"
+    ;;
+  *)
+    echo "EVAL_REGRESSION_ENFORCEMENT must be true or false." >&2
+    exit 2
+    ;;
+esac
 "${python_command[@]}" evals/render_teamcity_eval_report.py \
   --input "$report_dir/runs.json" \
+  --regressions "$report_dir/regressions.json" \
   --output "$report_dir/index.html"
+
+exit "$regression_failed"
