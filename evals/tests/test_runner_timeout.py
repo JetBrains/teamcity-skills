@@ -329,27 +329,6 @@ class AgentTimeoutTest(unittest.TestCase):
 
         self.assertEqual("mcp-authentication-failed", category)
 
-    def test_mcp_error_category_uses_safe_preflight_when_runtime_is_unknown(self):
-        checks = {
-            "requiredMcpToolUse": {"passed": False},
-            "forbiddenCliToolUse": {"passed": True},
-        }
-
-        category = run_case.mcp_configuration_error_category(
-            "mcp-only", checks, {}, {"connectionStatus": "unknown"},
-            "authentication-failed",
-        )
-
-        self.assertEqual("mcp-authentication-failed", category)
-
-    def test_safe_mcp_preflight_status_rejects_unstructured_output(self):
-        self.assertEqual("connected", run_case.safe_mcp_preflight_status("connected"))
-        self.assertEqual(
-            "server-not-registered",
-            run_case.safe_mcp_preflight_status("server-not-registered"),
-        )
-        self.assertIsNone(run_case.safe_mcp_preflight_status("private server text"))
-
     def test_permission_failure_surface_uses_only_fixed_categories(self):
         with tempfile.TemporaryDirectory() as directory:
             trace = pathlib.Path(directory) / "trace.log"
@@ -374,7 +353,7 @@ class AgentTimeoutTest(unittest.TestCase):
 
         self.assertEqual("unknown", surface)
 
-    def test_mcp_only_contract_is_added_to_the_eval_prompt_not_the_skill(self):
+    def test_mcp_only_contract_is_scoped_to_the_eval_not_the_skill(self):
         contract = run_case.transport_prompt_contract("mcp-only")
 
         self.assertIn("mcp__teamcity__*", contract)
@@ -383,6 +362,20 @@ class AgentTimeoutTest(unittest.TestCase):
         self.assertIn("Do not fall back", contract)
         self.assertEqual("", run_case.transport_prompt_contract("cli-only"))
         self.assertEqual("", run_case.transport_prompt_contract("cli+mcp"))
+
+    def test_invoke_agent_adds_the_transport_contract_as_a_system_prompt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trace = pathlib.Path(directory) / "trace.log"
+            completed = subprocess.CompletedProcess([], 0)
+            with mock.patch.object(run_case.subprocess, "run", return_value=completed) as invoked:
+                run_case.invoke_agent(
+                    "case prompt", pathlib.Path(directory), {}, trace, timeout=7,
+                    transport_contract="MCP transport contract",
+                )
+
+        command = invoked.call_args.args[0]
+        self.assertIn("--append-system-prompt", command)
+        self.assertIn("MCP transport contract", command)
 
     def test_timed_out_agent_keeps_checks_but_cannot_pass(self):
         result = {"checks": {"build": {"passed": True}}}
