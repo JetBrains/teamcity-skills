@@ -9,6 +9,8 @@ name: Run eval case
 #   env.EVAL_PARENT_PROJECT      parent project that holds temporary eval projects
 #   env.EVAL_AGENT_CMD           optional override of `claude -p`
 #   env.EVAL_TOOL_MODE           cli-only, mcp-only, or cli+mcp
+#   env.EVAL_STRICT_MCP_CONFIG    true by default; false only for a labelled
+#                                 managed-agent MCP diagnostic
 #   env.EVAL_MCP_CONFIG          optional MCP config path; if unset, the wrapper
 #                                creates a bearer-authenticated config from this
 #                                server's URL and secure env.EVAL_MCP_TOKEN
@@ -20,6 +22,9 @@ parameters:
   case: evals/first-green-build/cases/spring-petclinic-maven-yaml.json
   env.EVAL_PIPELINES: ""
   env.EVAL_TOOL_MODE: cli-only
+  # Standard MCP evals use only the generated per-run config. Set false only
+  # for a labelled diagnostic of a managed agent-provided MCP connection.
+  env.EVAL_STRICT_MCP_CONFIG: "true"
   env.EVAL_AGENT_CONFIG_ID: claude-default
   env.EVAL_AGENT_VERSION: ""
   env.EVAL_MCP_CONFIG: ""
