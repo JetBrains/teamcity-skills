@@ -86,6 +86,18 @@ def resolve_tool_mode(value: str) -> str:
     return value
 
 
+def strict_mcp_config(tool_mode: str, value: Optional[str]) -> bool:
+    """Parse the MCP isolation switch without broadening a CLI-only run."""
+    if tool_mode == "cli-only":
+        return True
+    normalized = (value or "true").strip().lower()
+    if normalized in ("1", "true", "yes"):
+        return True
+    if normalized in ("0", "false", "no"):
+        return False
+    raise EvalError("EVAL_STRICT_MCP_CONFIG must be true or false")
+
+
 def transport_prompt_contract(tool_mode: str) -> str:
     """Return the evaluation-only TeamCity transport contract.
 
@@ -1067,7 +1079,8 @@ def safe_agent_usage(value) -> dict:
 def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.Path,
                  timeout: int, tools: list = None,
                  mcp_config: Optional[pathlib.Path] = None,
-                 transport_contract: str = "") -> dict:
+                 transport_contract: str = "",
+                 use_strict_mcp_config: bool = True) -> dict:
     # The runner owns the output format, because grading reads the trace, and the
     # case owns the tool policy, because which tools exist is part of the question.
     command = env.get("EVAL_AGENT_CMD", "claude -p") + " --output-format stream-json --verbose"
@@ -1084,9 +1097,11 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
     if mcp_config:
         # Only the generated TeamCity server can contribute MCP tools.
         command += " --mcp-config " + shlex.quote(str(mcp_config))
-    # Do not inherit a developer's ambient MCP servers.  CLI-only must really
-    # be CLI-only, while MCP modes receive only the explicit server config.
-    command += " --strict-mcp-config"
+    if use_strict_mcp_config:
+        # Do not inherit a developer's ambient MCP servers. CLI-only must
+        # really be CLI-only, while standard MCP modes receive only the
+        # explicit server config.
+        command += " --strict-mcp-config"
     agent_env = dict(env)
     agent_env.pop("TEAMCITY_TOKEN", None)
     agent_env.pop("EVAL_MCP_TOKEN", None)
@@ -1382,6 +1397,9 @@ def run(
 
     tool_mode = resolve_tool_mode(tool_mode)
     env = dict(os.environ)
+    use_strict_mcp_config = strict_mcp_config(
+        tool_mode, env.get("EVAL_STRICT_MCP_CONFIG")
+    )
     environment_token = env.pop("TEAMCITY_TOKEN", None)
     # The runner uses this token directly. Remove it from this process before
     # any checkout-controlled agent can inspect inherited environments.
@@ -1491,6 +1509,7 @@ def run(
                 prompt, checkout, install_queue_stall_fixture(workspace, env), trace,
                 int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
                 case.get("agentTools"), mcp_config, transport_contract,
+                use_strict_mcp_config,
             )
         else:
             try:
@@ -1523,6 +1542,7 @@ def run(
                         prompt, checkout, agent_env, trace,
                         int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
                         case.get("agentTools"), mcp_config, transport_contract,
+                        use_strict_mcp_config,
                     )
             except BridgeError as exc:
                 raise EvalError(f"could not provide scoped TeamCity CLI access: {exc}") from exc
