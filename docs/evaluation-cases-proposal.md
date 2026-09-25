@@ -38,6 +38,32 @@ difference between the two arms is the skill's contribution.
 hides it: two runs can both be `failed` while the skill fixes three checks out
 of six.
 
+Every executable run also has an explicit transport mode. A comparison is
+valid only within one mode; it must never treat an MCP result as evidence for
+a CLI result:
+
+| Mode | Agent receives | Intended question |
+| --- | --- | --- |
+| `cli-only` | a scoped, authenticated first-class TeamCity CLI bridge | Does the skill lead the agent through the supported CLI workflow? |
+| `mcp-only` | only an explicit MCP configuration | Can the same work be done through MCP, without silently reaching the CLI? |
+| `cli+mcp` | the scoped CLI bridge and the explicit MCP configuration | Does having both supported surfaces improve the outcome? |
+
+`EVAL_TOOL_MODE` selects one of these modes; it defaults to `cli-only` for
+backward compatibility. The runner uses Claude's strict MCP configuration
+mode in all three cases: ambient developer MCP servers are never inherited.
+`mcp-only` removes discovered `teamcity` executables and runner credentials
+from the agent environment. `mcp-only` and `cli+mcp` require
+`EVAL_MCP_CONFIG` to name a server-provisioned configuration file. The file
+and any credentials it contains stay outside Git, the checkout, traces, and
+published artifacts. A missing configuration fails as infrastructure; the
+runner never falls back to CLI.
+
+The safe result identifies the transport mode, the SHA-256 fingerprint of the
+case contract, and optional opaque agent configuration/version labels. These
+three values define the comparison profile, together with the harness
+revision. A changed case, selected agent, or harness revision starts a new
+sample series rather than mixing unlike observations.
+
 All cases validate against `evals/schema.json`. Its `kind` field selects the
 strict contract for the case type while shared fields, including the pinned
 repository revision and user prompt, are defined once.
@@ -315,7 +341,10 @@ On demand, by label, or on a schedule:
 5. queue a personal build, inspect test occurrences and artifact metadata, and
    evaluate the assertions;
 6. publish only the minimal result JSON as a CI artifact;
-7. delete temporary TeamCity objects.
+7. mark temporary objects for the separate lifecycle collector. The runner
+   does not delete them inline: deletion is a distinct, reversible archive-then-
+   delete workflow. Registering that server-side cleanup pipeline is currently
+   blocked by the missing TeamCity `Create pipeline` permission.
 
 A failing `active` case fails the run. A failing `aspirational` case is
 reported and does not.
@@ -338,22 +367,42 @@ trace path in the JSON report.
 python3 evals/collect_teamcity_eval_runs.py \
   --server https://<teamcity-server> \
   --output /tmp/teamcity-eval-runs.json
+python3 evals/check_regressions.py \
+  --input /tmp/teamcity-eval-runs.json \
+  --output /tmp/teamcity-eval-regressions.json
 python3 evals/render_teamcity_eval_report.py \
   --input /tmp/teamcity-eval-runs.json \
+  --regressions /tmp/teamcity-eval-regressions.json \
   --output /tmp/teamcity-eval-runs.html
 ```
 
-The rendered report shows every contract as a row and keeps the latest `skill`
-and `baseline` observations in separate columns. Each arm also shows a pass
-rate over at most five executions of the same case, arm, and harness revision;
-three samples are the minimum for calling that rate measured. A missing VCS
-revision is never combined with another run. The access preflight contract is
-shown separately as non-arm-based until it has an executable runner. The
-execution ledger includes each evaluator build ID once and excludes validation,
+The rendered report shows every contract as a row with separate skill and
+baseline cells for `cli-only`, `mcp-only`, and `cli+mcp`. Each arm also shows a
+pass rate and average assertion score over at most five executions of the same
+case, mode, comparison profile, and harness revision; three scored samples are
+the minimum for calling either metric measured. A missing VCS revision is
+never combined with another run. The access preflight contract is shown
+separately as non-arm-based until it has an executable runner. The execution
+ledger includes each evaluator build ID once and excludes validation,
 self-check, and report jobs. The default collection window is 32 pipeline heads
 per evaluation pipeline so completed observations do not disappear as soon as
 several paired cases and retries have run; set `EVAL_REPORT_LIMIT` explicitly
 when a different retention window is needed.
+
+`evals/check_regressions.py` consumes the same safe `runs.json` and writes
+`regressions.json`. For an active paired case it reports two best-effort gates:
+
+- the skilled average assertion score must be strictly greater than the
+  baseline score in the same revision, profile, and transport mode;
+- the skilled score must not be lower than the previous qualified skilled
+  harness revision for that same case, profile, and transport mode.
+
+Each gate needs at least three scored samples on each side. Insufficient
+history is explicitly reported, not silently counted as a passing comparison.
+The report pipeline writes the safe verdict beside `runs.json` and `index.html`.
+It is warning-only by default; set `EVAL_REGRESSION_ENFORCEMENT=true` only after
+the reference samples are reviewed, to make mature findings fail the report job
+after its artifacts have been rendered.
 
 Every public result may include only the provider-reported numeric
 `agentUsage` allowlist: `inputTokens`, `outputTokens`, `cacheReadTokens`,

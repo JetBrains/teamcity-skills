@@ -29,14 +29,14 @@ class EvalReportTest(unittest.TestCase):
             "id": 42,
             "classification": "passed",
             "classificationDetail": "all recorded assertions passed",
-            "result": {"caseId": "example", "arm": "skill"},
+            "result": {"caseId": "example", "toolMode": "cli-only", "arm": "skill"},
             "durationSeconds": 10,
         }
         data = {
             "summary": {
                 "caseContracts": 2,
                 "pairedCaseContracts": 1,
-                "expectedArmSlots": 2,
+                "expectedArmSlots": 6,
                 "distinctArmsObserved": 1,
                 "jobRunsObserved": 1,
                 "classifications": {"passed": 1},
@@ -50,19 +50,28 @@ class EvalReportTest(unittest.TestCase):
                     "scope": "Grades configuration.",
                     "assertions": ["pipeline stored/read back"],
                     "targets": [],
-                    "arms": {
-                        "skill": {
-                            "classification": "passed",
-                            "detail": "all recorded assertions passed",
-                            "runId": 42,
-                            "history": {
-                                "sampleSize": 3,
-                                "passCount": 2,
-                                "passRate": 0.667,
-                                "targetMinSamples": 3,
+                    "toolModes": {
+                        "cli-only": {
+                            "skill": {
+                                "classification": "passed",
+                                "detail": "all recorded assertions passed",
+                                "runId": 42,
+                                "history": {
+                                    "sampleSize": 3,
+                                    "passCount": 2,
+                                    "passRate": 0.667,
+                                    "targetMinSamples": 3,
+                                },
                             },
+                            "baseline": None,
                         },
-                        "baseline": None,
+                        "mcp-only": {"skill": None, "baseline": None},
+                        "cli+mcp": {"skill": None, "baseline": None},
+                    },
+                    "comparisons": {
+                        "cli-only": {"status": "insufficient-samples"},
+                        "mcp-only": {"status": "missing-arm"},
+                        "cli+mcp": {"status": "missing-arm"},
                     },
                 },
                 {
@@ -73,7 +82,8 @@ class EvalReportTest(unittest.TestCase):
                     "scope": "Checks access.",
                     "assertions": ["authentication"],
                     "targets": [],
-                    "arms": None,
+                    "toolModes": None,
+                    "comparisons": None,
                 },
             ],
             "pipelines": [
@@ -82,10 +92,13 @@ class EvalReportTest(unittest.TestCase):
             ],
         }
 
-        report = renderer.render(data)
+        report = renderer.render(data, {"failures": []})
 
-        self.assertIn("Case x arm matrix", report)
-        self.assertIn('<th scope="col">Skill</th><th scope="col">Baseline</th>', report)
+        self.assertIn("Case x tool mode x arm matrix", report)
+        self.assertIn('<th scope="colgroup" colspan="2">CLI only</th>', report)
+        self.assertIn('<th scope="colgroup" colspan="2">MCP only</th>', report)
+        self.assertIn("comparison needs 3 samples per arm", report)
+        self.assertIn("No mature skill-comparison regression is recorded.", report)
         self.assertIn("not arm-based", report)
         self.assertIn("run 42", report)
         self.assertIn("same-revision pass rate: 2/3 (67%); measured", report)
@@ -127,6 +140,23 @@ class EvalReportTest(unittest.TestCase):
         self.assertIn("100 in / 20 out", report)
         self.assertIn("provider cost not reported", report)
         self.assertIn("provider cost unavailable", report)
+
+    def test_report_renders_safe_regression_finding(self):
+        report = renderer.render(
+            {"summary": {}, "cases": [], "pipelines": []},
+            {
+                "failures": [
+                    {
+                        "caseId": "example",
+                        "toolMode": "cli-only",
+                        "kind": "skill-vs-baseline",
+                    }
+                ]
+            },
+        )
+
+        self.assertIn("Mature skill-comparison regression detected.", report)
+        self.assertIn("example</code> / CLI only: skill is not better than baseline", report)
 
 
 if __name__ == "__main__":

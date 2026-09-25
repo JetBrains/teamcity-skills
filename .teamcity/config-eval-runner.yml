@@ -9,9 +9,16 @@ name: Run configuration eval
 # Parameters set at trigger time:
 #   case            path to the case JSON
 #   env.EVAL_ARM    "skill" (default) or "baseline", which withholds the skill
+#   env.EVAL_TOOL_MODE  cli-only, mcp-only, or cli+mcp. MCP modes require a
+#                       server-provisioned config file, never a config in Git.
 parameters:
   case: evals/pipeline-configuration/cases/cmp-unit-converter-targets.json
   env.EVAL_PIPELINES: ""
+  env.EVAL_TOOL_MODE: cli-only
+  env.EVAL_AGENT_CONFIG_ID: claude-default
+  env.EVAL_AGENT_VERSION: ""
+  env.EVAL_MCP_CONFIG: ""
+  env.EVAL_REGRESSION_ENFORCEMENT: "false"
 jobs:
   run_config_case:
     name: Run configuration eval
