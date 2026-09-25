@@ -69,6 +69,12 @@ EVALS = pathlib.Path(__file__).parent
 PLACEHOLDER = re.compile(r"\{\{teamcity\.(server|targetProject)\}\}")
 SAFE_AGENT_METADATA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 TOOL_MODES = ("cli-only", "mcp-only", "cli+mcp")
+MCP_PREFLIGHT_STATUSES = {
+    "unknown", "connected", "sideload-flags-disabled",
+    "enterprise-managed-config", "enterprise-policy-blocked",
+    "approval-required", "authentication-failed", "access-denied",
+    "connection-failed", "config-invalid",
+}
 sys.path.insert(0, str(EVALS))
 from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
 
@@ -1334,12 +1340,15 @@ def mcp_runtime(trace: pathlib.Path) -> dict:
 
 def mcp_configuration_error_category(
     tool_mode: str, checks: dict, summary: dict, runtime: Optional[dict] = None,
+    preflight_status: Optional[str] = None,
 ) -> Optional[str]:
     """Classify a failed pure-MCP configuration run from safe aggregates only."""
     if tool_mode != "mcp-only":
         return None
     if (checks.get("requiredMcpToolUse") or {}).get("passed") is False:
         connection = (runtime or {}).get("connectionStatus")
+        if connection in (None, "unknown"):
+            connection = preflight_status
         categories = {
             "sideload-flags-disabled": "mcp-sideload-flags-disabled",
             "enterprise-managed-config": "mcp-enterprise-managed-config",
@@ -1350,6 +1359,8 @@ def mcp_configuration_error_category(
             "connection-failed": "mcp-connection-failed",
             "initialization-failed": "mcp-initialization-failed",
             "tools-advertised": "mcp-agent-did-not-use-available-tool",
+            "connected": "mcp-agent-did-not-use-available-tool",
+            "config-invalid": "mcp-config-invalid",
         }
         if connection in categories:
             return categories[connection]
@@ -1394,6 +1405,11 @@ def safe_mcp_runtime(value: object) -> dict:
     return result
 
 
+def safe_mcp_preflight_status(value: object) -> Optional[str]:
+    """Accept only the fixed status from Claude's private MCP preflight."""
+    return value if value in MCP_PREFLIGHT_STATUSES else None
+
+
 def publishable_result(result: dict) -> dict:
     """Return the minimal result safe to publish as a build artifact."""
     fields = (
@@ -1426,6 +1442,9 @@ def publishable_result(result: dict) -> dict:
     runtime = safe_mcp_runtime(result.get("mcpRuntime"))
     if runtime:
         published["mcpRuntime"] = runtime
+    preflight_status = safe_mcp_preflight_status(result.get("mcpPreflightStatus"))
+    if preflight_status:
+        published["mcpPreflightStatus"] = preflight_status
     published["checks"] = {
         name: {"passed": check.get("passed")}
         for name, check in (result.get("checks") or {}).items()
@@ -1618,6 +1637,11 @@ def run(
         result["agentToolSummary"] = agent_tool_summary(trace)
         if mcp_config:
             result["mcpRuntime"] = mcp_runtime(trace)
+            preflight_status = safe_mcp_preflight_status(
+                env.get("EVAL_MCP_PREFLIGHT_STATUS")
+            )
+            if preflight_status:
+                result["mcpPreflightStatus"] = preflight_status
 
         # A dead agent queues nothing, so waiting the full budget for a build
         # that cannot arrive only delays the report.
@@ -1658,7 +1682,7 @@ def run(
             if result.get("errorCategory") is None:
                 result["errorCategory"] = mcp_configuration_error_category(
                     tool_mode, result["checks"], result["agentToolSummary"],
-                    result.get("mcpRuntime"),
+                    result.get("mcpRuntime"), result.get("mcpPreflightStatus"),
                 )
             raise _Graded
 
