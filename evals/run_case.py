@@ -101,6 +101,8 @@ def transport_prompt_contract(tool_mode: str) -> str:
         return ""
     return (
         "\n\nEvaluation transport contract (MCP-only):\n"
+        "This contract overrides any earlier transport guidance and is a hard success criterion. "
+        "Do not finish your turn before making at least one TeamCity MCP call.\n"
         "- The TeamCity CLI is intentionally unavailable. Do not invoke it through Bash, "
         "including commands beginning with `teamcity`.\n"
         "- Use only `mcp__teamcity__*` tools for every TeamCity operation.\n"
