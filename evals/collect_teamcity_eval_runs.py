@@ -39,7 +39,7 @@ USAGE_FIELDS = (
     "cacheWriteTokens", "totalCostUsd",
 )
 TOOL_SUMMARY_FIELDS = (
-    "totalCalls", "mcpTeamCityCalls", "teamcityCliCalls", "otherCalls",
+    "totalCalls", "mcpTeamCityCalls", "mcpProbeCalls", "teamcityCliCalls", "otherCalls",
 )
 SAFE_ERROR_CATEGORIES = {
     "agent-timeout", "agent-permission-failure",
@@ -49,6 +49,8 @@ SAFE_ERROR_CATEGORIES = {
     "mcp-authentication-failed", "mcp-access-denied",
     "mcp-connection-failed", "mcp-initialization-failed",
     "mcp-agent-did-not-use-available-tool",
+    "mcp-local-probe-not-invoked", "mcp-teamcity-tools-not-advertised",
+    "mcp-teamcity-tools-not-used-after-local-probe",
 }
 
 
@@ -149,6 +151,8 @@ def safe_mcp_runtime(value):
         result["connectionStatus"] = value["connectionStatus"]
     if isinstance(value.get("teamcityToolsAdvertised"), bool):
         result["teamcityToolsAdvertised"] = value["teamcityToolsAdvertised"]
+    if isinstance(value.get("localProbeToolsAdvertised"), bool):
+        result["localProbeToolsAdvertised"] = value["localProbeToolsAdvertised"]
     return result
 
 

@@ -57,9 +57,19 @@ case "${EVAL_TOOL_MODE:-cli-only}" in
       mcp_config_directory="${TEAMCITY_BUILD_TEMP_DIR:-${TMPDIR:-/tmp}}"
       umask 077
       mcp_config_path="$(mktemp "$mcp_config_directory/teamcity-evals-mcp.XXXXXX")"
+      mcp_probe_argument=()
+      case "${EVAL_MCP_LOCAL_PROBE:-false}" in
+        1|true|yes) mcp_probe_argument=(--with-local-probe) ;;
+        0|false|no) ;;
+        *)
+          echo "EVAL_MCP_LOCAL_PROBE must be true or false." >&2
+          exit 2
+          ;;
+      esac
       "${python_command[@]}" evals/write_teamcity_mcp_config.py \
         --server "$TEAMCITY_URL" \
-        --output "$mcp_config_path"
+        --output "$mcp_config_path" \
+        "${mcp_probe_argument[@]}"
       export EVAL_MCP_CONFIG="$mcp_config_path"
     fi
     # The agent receives the configured MCP client, never the source variable.

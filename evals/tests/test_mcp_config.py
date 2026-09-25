@@ -46,6 +46,41 @@ class TeamCityMcpConfigTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 mcp_config.config("https://teamcity.example", token)
 
+    def test_local_probe_is_opt_in_and_token_free(self):
+        contents = mcp_config.config(
+            "https://teamcity.example", "test-token", with_local_probe=True,
+        )
+
+        probe = contents["mcpServers"]["probe"]
+        self.assertEqual("stdio", probe["type"])
+        self.assertEqual(sys.executable, probe["command"])
+        self.assertEqual(1, len(probe["args"]))
+        self.assertTrue(probe["args"][0].endswith("evals/fixtures/mcp_probe.py"))
+        self.assertNotIn("headers", probe)
+
+    def test_local_probe_serves_a_fixed_ping(self):
+        fixture = EVALS / "fixtures" / "mcp_probe.py"
+        messages = [
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+                "protocolVersion": "2025-03-26",
+            }},
+            {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
+                "name": "ping", "arguments": {},
+            }},
+        ]
+        completed = subprocess.run(
+            [sys.executable, str(fixture)],
+            input="\n".join(json.dumps(message) for message in messages) + "\n",
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
+        )
+        replies = [json.loads(line) for line in completed.stdout.splitlines()]
+
+        self.assertEqual("2025-03-26", replies[0]["result"]["protocolVersion"])
+        self.assertEqual("ping", replies[1]["result"]["tools"][0]["name"])
+        self.assertEqual("ok", replies[2]["result"]["content"][0]["text"])
+
     def test_cli_writer_reads_token_only_from_environment(self):
         with tempfile.TemporaryDirectory() as directory:
             output = pathlib.Path(directory) / "mcp.json"

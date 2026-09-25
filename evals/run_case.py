@@ -32,6 +32,8 @@ Configuration comes from the environment, never from the case:
     EVAL_TOOL_MODE         "cli-only" (default), "mcp-only", or "cli+mcp"
     EVAL_MCP_CONFIG        server-provisioned MCP configuration for MCP modes;
                            it is never copied to a result artifact
+    EVAL_MCP_LOCAL_PROBE   opt-in token-free local MCP ping diagnostic; only
+                           valid for mcp-only and never used by normal runs
     EVAL_AGENT_CONFIG_ID   optional opaque selected-agent profile identifier
     EVAL_AGENT_VERSION     optional opaque selected-agent version identifier
 
@@ -98,7 +100,19 @@ def strict_mcp_config(tool_mode: str, value: Optional[str]) -> bool:
     raise EvalError("EVAL_STRICT_MCP_CONFIG must be true or false")
 
 
-def transport_prompt_contract(tool_mode: str) -> str:
+def local_mcp_probe(tool_mode: str, value: Optional[str]) -> bool:
+    """Parse the opt-in local MCP diagnostic without broadening normal runs."""
+    normalized = (value or "false").strip().lower()
+    if normalized in ("1", "true", "yes"):
+        if tool_mode != "mcp-only":
+            raise EvalError("EVAL_MCP_LOCAL_PROBE requires EVAL_TOOL_MODE=mcp-only")
+        return True
+    if normalized in ("0", "false", "no"):
+        return False
+    raise EvalError("EVAL_MCP_LOCAL_PROBE must be true or false")
+
+
+def transport_prompt_contract(tool_mode: str, use_local_mcp_probe: bool = False) -> str:
     """Return the evaluation-only TeamCity transport contract.
 
     The installed TeamCity skill is shared by normal users and all eval modes,
@@ -107,7 +121,7 @@ def transport_prompt_contract(tool_mode: str) -> str:
     """
     if tool_mode != "mcp-only":
         return ""
-    return (
+    contract = (
         "\n\nEvaluation transport contract (MCP-only):\n"
         "This contract overrides any earlier transport guidance and is a hard success criterion. "
         "Do not finish your turn before making at least one TeamCity MCP call.\n"
@@ -117,6 +131,12 @@ def transport_prompt_contract(tool_mode: str) -> str:
         "- Your first TeamCity operation must be a read-only MCP discovery operation.\n"
         "- Do not fall back to the TeamCity CLI if an MCP operation fails.\n"
     )
+    if use_local_mcp_probe:
+        contract += (
+            "- Before any TeamCity operation, call `mcp__probe__ping` with no inputs. "
+            "This token-free local diagnostic does not replace the required TeamCity discovery call.\n"
+        )
+    return contract
 
 
 def safe_agent_metadata(value: Optional[str]) -> Optional[str]:
@@ -126,7 +146,9 @@ def safe_agent_metadata(value: Optional[str]) -> Optional[str]:
     return None
 
 
-def mcp_config_for_mode(env: dict, tool_mode: str) -> Optional[pathlib.Path]:
+def mcp_config_for_mode(
+    env: dict, tool_mode: str, require_local_probe: bool = False,
+) -> Optional[pathlib.Path]:
     """Require a server-provisioned MCP config for MCP evaluation modes.
 
     The config itself can contain connection details and is deliberately never
@@ -143,6 +165,13 @@ def mcp_config_for_mode(env: dict, tool_mode: str) -> Optional[pathlib.Path]:
     path = pathlib.Path(configured)
     if not path.is_file():
         raise EvalError("EVAL_MCP_CONFIG does not name a readable file")
+    if require_local_probe:
+        try:
+            configured_servers = json.loads(path.read_text()).get("mcpServers", {})
+        except (json.JSONDecodeError, OSError, AttributeError):
+            raise EvalError("EVAL_MCP_CONFIG is not a readable local MCP diagnostic config")
+        if not isinstance(configured_servers.get("probe"), dict):
+            raise EvalError("EVAL_MCP_CONFIG does not include the required local MCP probe")
     return path
 
 
@@ -488,7 +517,9 @@ def grade(case: dict, observed: dict) -> dict:
     return checks
 
 
-def add_transport_checks(checks: dict, tool_mode: str, summary: dict) -> None:
+def add_transport_checks(
+    checks: dict, tool_mode: str, summary: dict, use_local_mcp_probe: bool = False,
+) -> None:
     """Add mode-specific assertions using only public numeric aggregates."""
     if tool_mode != "mcp-only":
         return
@@ -504,7 +535,16 @@ def add_transport_checks(checks: dict, tool_mode: str, summary: dict) -> None:
         "observed": cli_calls == 0,
         "detail": f"{cli_calls} TeamCity CLI call(s)",
     }
-    for name in ("requiredMcpToolUse", "forbiddenCliToolUse"):
+    names = ["requiredMcpToolUse", "forbiddenCliToolUse"]
+    if use_local_mcp_probe:
+        probe_calls = summary.get("mcpProbeCalls", 0)
+        checks["requiredLocalMcpProbeUse"] = {
+            "expected": True,
+            "observed": probe_calls > 0,
+            "detail": f"{probe_calls} local MCP probe call(s)",
+        }
+        names.append("requiredLocalMcpProbeUse")
+    for name in names:
         check = checks[name]
         check["passed"] = check["expected"] == check["observed"]
 
@@ -954,6 +994,7 @@ def agent_tool_summary(trace: pathlib.Path) -> dict:
     summary = {
         "totalCalls": 0,
         "mcpTeamCityCalls": 0,
+        "mcpProbeCalls": 0,
         "teamcityCliCalls": 0,
         "otherCalls": 0,
     }
@@ -978,6 +1019,9 @@ def agent_tool_summary(trace: pathlib.Path) -> dict:
             name = block.get("name")
             if isinstance(name, str) and name.startswith("mcp__teamcity__"):
                 summary["mcpTeamCityCalls"] += 1
+                continue
+            if isinstance(name, str) and name.startswith("mcp__probe__"):
+                summary["mcpProbeCalls"] += 1
                 continue
             command = (block.get("input") or {}).get("command")
             if (
@@ -1080,7 +1124,8 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
                  timeout: int, tools: list = None,
                  mcp_config: Optional[pathlib.Path] = None,
                  transport_contract: str = "",
-                 use_strict_mcp_config: bool = True) -> dict:
+                 use_strict_mcp_config: bool = True,
+                 use_local_mcp_probe: bool = False) -> dict:
     # The runner owns the output format, because grading reads the trace, and the
     # case owns the tool policy, because which tools exist is part of the question.
     command = env.get("EVAL_AGENT_CMD", "claude -p") + " --output-format stream-json --verbose"
@@ -1090,6 +1135,8 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
         # server-scoped permission wildcard authorizes those dynamic names for
         # a non-interactive Claude run without opening any ambient server.
         allowed_tools.append("mcp__teamcity__*")
+        if use_local_mcp_probe:
+            allowed_tools.append("mcp__probe__*")
     if allowed_tools:
         command += " --allowedTools " + " ".join(shlex.quote(t) for t in allowed_tools)
     if transport_contract:
@@ -1191,7 +1238,8 @@ def mcp_runtime(trace: pathlib.Path) -> dict:
     event itself.
     """
     status = "unknown"
-    tools_advertised = False
+    teamcity_tools_advertised = False
+    local_probe_tools_advertised = False
     patterns = (
         (
             "sideload-flags-disabled",
@@ -1251,42 +1299,59 @@ def mcp_runtime(trace: pathlib.Path) -> dict:
         if "mcp" not in encoded:
             continue
         if "mcp__teamcity__" in encoded:
-            tools_advertised = True
+            teamcity_tools_advertised = True
+        if "mcp__probe__" in encoded:
+            local_probe_tools_advertised = True
         if status != "unknown":
             continue
         for candidate, markers in patterns:
             if any(marker in encoded for marker in markers):
                 status = candidate
                 break
-    if status == "unknown" and tools_advertised:
+    if status == "unknown" and (teamcity_tools_advertised or local_probe_tools_advertised):
         status = "tools-advertised"
-    return {"connectionStatus": status, "teamcityToolsAdvertised": tools_advertised}
+    return {
+        "connectionStatus": status,
+        "teamcityToolsAdvertised": teamcity_tools_advertised,
+        "localProbeToolsAdvertised": local_probe_tools_advertised,
+    }
 
 
 def mcp_configuration_error_category(
     tool_mode: str, checks: dict, summary: dict, runtime: Optional[dict] = None,
+    use_local_mcp_probe: bool = False,
 ) -> Optional[str]:
     """Classify a failed pure-MCP configuration run from safe aggregates only."""
     if tool_mode != "mcp-only":
         return None
-    if (checks.get("requiredMcpToolUse") or {}).get("passed") is False:
-        connection = (runtime or {}).get("connectionStatus")
-        categories = {
-            "sideload-flags-disabled": "mcp-sideload-flags-disabled",
-            "enterprise-managed-config": "mcp-enterprise-managed-config",
-            "enterprise-policy-blocked": "mcp-enterprise-policy-blocked",
-            "approval-required": "mcp-approval-required",
-            "authentication-failed": "mcp-authentication-failed",
-            "access-denied": "mcp-access-denied",
-            "connection-failed": "mcp-connection-failed",
-            "initialization-failed": "mcp-initialization-failed",
-            "tools-advertised": "mcp-agent-did-not-use-available-tool",
-        }
-        if connection in categories:
-            return categories[connection]
-        return "mcp-not-invoked"
     if (checks.get("forbiddenCliToolUse") or {}).get("passed") is False:
         return "mcp-cli-invoked"
+    connection = (runtime or {}).get("connectionStatus")
+    categories = {
+        "sideload-flags-disabled": "mcp-sideload-flags-disabled",
+        "enterprise-managed-config": "mcp-enterprise-managed-config",
+        "enterprise-policy-blocked": "mcp-enterprise-policy-blocked",
+        "approval-required": "mcp-approval-required",
+        "authentication-failed": "mcp-authentication-failed",
+        "access-denied": "mcp-access-denied",
+        "connection-failed": "mcp-connection-failed",
+        "initialization-failed": "mcp-initialization-failed",
+    }
+    if use_local_mcp_probe:
+        if (checks.get("requiredLocalMcpProbeUse") or {}).get("passed") is False:
+            return categories.get(connection, "mcp-local-probe-not-invoked")
+        if (checks.get("requiredMcpToolUse") or {}).get("passed") is False:
+            if connection in categories:
+                return categories[connection]
+            if not (runtime or {}).get("teamcityToolsAdvertised", False):
+                return "mcp-teamcity-tools-not-advertised"
+            return "mcp-teamcity-tools-not-used-after-local-probe"
+    elif (checks.get("requiredMcpToolUse") or {}).get("passed") is False:
+        if connection in categories:
+            return categories[connection]
+        if connection == "tools-advertised":
+            return "mcp-agent-did-not-use-available-tool"
+        return "mcp-not-invoked"
     configured = (checks.get("configurationValidated") or {}).get("passed")
     if configured is not False:
         return None
@@ -1297,7 +1362,10 @@ def safe_agent_tool_summary(value: object) -> dict:
     """Keep only the fixed numeric tool-surface counters in public results."""
     if not isinstance(value, dict):
         return {}
-    names = ("totalCalls", "mcpTeamCityCalls", "teamcityCliCalls", "otherCalls")
+    names = (
+        "totalCalls", "mcpTeamCityCalls", "mcpProbeCalls",
+        "teamcityCliCalls", "otherCalls",
+    )
     return {
         name: value[name]
         for name in names
@@ -1308,7 +1376,7 @@ def safe_agent_tool_summary(value: object) -> dict:
 
 
 def safe_mcp_runtime(value: object) -> dict:
-    """Allowlist the two non-sensitive MCP initialization signals."""
+    """Allowlist fixed non-sensitive MCP initialization signals."""
     if not isinstance(value, dict):
         return {}
     allowed_statuses = {
@@ -1322,6 +1390,8 @@ def safe_mcp_runtime(value: object) -> dict:
         result["connectionStatus"] = value["connectionStatus"]
     if isinstance(value.get("teamcityToolsAdvertised"), bool):
         result["teamcityToolsAdvertised"] = value["teamcityToolsAdvertised"]
+    if isinstance(value.get("localProbeToolsAdvertised"), bool):
+        result["localProbeToolsAdvertised"] = value["localProbeToolsAdvertised"]
     return result
 
 
@@ -1400,6 +1470,9 @@ def run(
     use_strict_mcp_config = strict_mcp_config(
         tool_mode, env.get("EVAL_STRICT_MCP_CONFIG")
     )
+    use_local_mcp_probe = local_mcp_probe(
+        tool_mode, env.get("EVAL_MCP_LOCAL_PROBE")
+    )
     environment_token = env.pop("TEAMCITY_TOKEN", None)
     # The runner uses this token directly. Remove it from this process before
     # any checkout-controlled agent can inspect inherited environments.
@@ -1435,7 +1508,7 @@ def run(
     fixture_case = case["kind"] == "queue-stall-diagnosis"
     if fixture_case and tool_mode == "mcp-only":
         raise EvalError("queue-stall-diagnosis needs the CLI fixture; mcp-only is unsupported")
-    mcp_config = mcp_config_for_mode(env, tool_mode)
+    mcp_config = mcp_config_for_mode(env, tool_mode, use_local_mcp_probe)
     if fixture_case:
         # A reserved, non-routable host prevents a baseline arm from touching
         # the real TeamCity server if it ignores the first-class CLI fixture.
@@ -1497,7 +1570,9 @@ def run(
 
         prompt = case["prompt"].replace("{{teamcity.server}}", url) \
                                .replace("{{teamcity.targetProject}}", target_project)
-        transport_contract = transport_prompt_contract(tool_mode)
+        transport_contract = transport_prompt_contract(
+            tool_mode, use_local_mcp_probe
+        )
         if not fixture_case:
             prompt += (
                 "\n\nRepository context: the checked-out default branch is "
@@ -1509,7 +1584,7 @@ def run(
                 prompt, checkout, install_queue_stall_fixture(workspace, env), trace,
                 int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
                 case.get("agentTools"), mcp_config, transport_contract,
-                use_strict_mcp_config,
+                use_strict_mcp_config, use_local_mcp_probe,
             )
         else:
             try:
@@ -1542,7 +1617,7 @@ def run(
                         prompt, checkout, agent_env, trace,
                         int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
                         case.get("agentTools"), mcp_config, transport_contract,
-                        use_strict_mcp_config,
+                        use_strict_mcp_config, use_local_mcp_probe,
                     )
             except BridgeError as exc:
                 raise EvalError(f"could not provide scoped TeamCity CLI access: {exc}") from exc
@@ -1594,13 +1669,14 @@ def run(
             result["jobs"] = observed["jobs"]
             result["checks"] = grade_configuration(case, observed)
             add_transport_checks(
-                result["checks"], tool_mode, result["agentToolSummary"]
+                result["checks"], tool_mode, result["agentToolSummary"],
+                use_local_mcp_probe,
             )
             set_graded_status(result, agent_run)
             if result.get("errorCategory") is None:
                 result["errorCategory"] = mcp_configuration_error_category(
                     tool_mode, result["checks"], result["agentToolSummary"],
-                    result.get("mcpRuntime"),
+                    result.get("mcpRuntime"), use_local_mcp_probe,
                 )
             raise _Graded
 
