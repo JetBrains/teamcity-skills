@@ -57,12 +57,13 @@ from the agent environment. `mcp-only` and `cli+mcp` require
 is empty, `run-eval-case.sh` writes a mode-0600 file in the TeamCity build's
 temporary directory, containing `https://<this-server>/app/mcp` and a bearer
 authorization header. Its value comes only from the server-side secure
-parameter `env.EVAL_MCP_TOKEN`; it is never committed, printed, stored in an
-eval result, or published as an artifact. The wrapper removes both the
-temporary config and `EVAL_MCP_TOKEN` from the agent environment after setup.
-An installation without that secure parameter fails as infrastructure; the
-runner never falls back to CLI. A supplied `EVAL_MCP_CONFIG` still takes
-precedence for a server that needs a different server-managed layout.
+parameter `ai.build.analyzer.eval.mcp.auth.token`, mapped by the pipeline to
+`env.EVAL_MCP_TOKEN`. It is never committed, printed, stored in an eval result,
+or published as an artifact. The wrapper removes both the temporary config and
+`EVAL_MCP_TOKEN` from the agent environment after setup. An installation
+without that secure parameter fails as infrastructure; the runner never falls
+back to CLI. A supplied `EVAL_MCP_CONFIG` still takes precedence for a server
+that needs a different server-managed layout.
 
 The safe result identifies the transport mode, the SHA-256 fingerprint of the
 case contract, and optional opaque agent configuration/version labels. These
