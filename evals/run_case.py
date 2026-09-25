@@ -48,7 +48,6 @@ import contextlib
 import datetime
 import fnmatch
 import hashlib
-import http.cookiejar
 import json
 import os
 import pathlib
@@ -61,9 +60,6 @@ import sys
 import tempfile
 import time
 from typing import Optional
-import urllib.error
-import urllib.parse
-import urllib.request
 
 EVALS = pathlib.Path(__file__).parent
 PLACEHOLDER = re.compile(r"\{\{teamcity\.(server|targetProject)\}\}")
@@ -165,138 +161,69 @@ def agent_environment_without_cli(environment: dict, server_url: str) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# TeamCity REST
+# TeamCity CLI lifecycle
 # --------------------------------------------------------------------------- #
 
 class TeamCity:
-    def __init__(self, url: str, token: str):
+    """Run the evaluator's lifecycle through the first-class TeamCity CLI.
+
+    The coding agent gets a narrowed CLI bridge, while the evaluator itself
+    needs to create a disposable project and inspect only its result.  Both
+    layers must use the same public CLI surface: otherwise a passing
+    ``toolUse`` assertion would conceal REST calls made by the harness.
+    """
+
+    def __init__(self, cli: str, url: str, token: str, base_env: dict):
+        self.cli = cli
         self.url = url.rstrip("/")
         self.token = token
-        # TeamCity clusters can route configuration writes to a responsible
-        # node through the session cookie. Keep one opener for the full eval
-        # lifecycle so project creation and teardown reach the same node.
-        cookies = http.cookiejar.CookieJar()
-        self.opener = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(cookies)
-        )
-        self._configuration_node_id = None
-        self._configuration_node_discovered = False
+        self.base_env = dict(base_env)
 
-    def request(
-        self,
-        path: str,
-        method: str = "GET",
-        body=None,
-        accept="application/json",
-        timeout: int = 60,
-    ):
-        url = path if path.startswith("http") else f"{self.url}{path}"
-        data = json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(url, data=data, method=method)
-        req.add_header("Authorization", f"Bearer {self.token}")
-        req.add_header("Accept", accept)
-        if data:
-            req.add_header("Content-Type", "application/json")
+    def _run(self, arguments: list, json_output: bool = False) -> str:
+        environment = dict(self.base_env)
+        environment["TEAMCITY_URL"] = self.url
+        environment["TEAMCITY_TOKEN"] = self.token
+        environment.pop("TEAMCITY_GUEST", None)
         try:
-            with self.opener.open(req, timeout=timeout) as response:
-                payload = response.read()
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode(errors="replace")[:500]
-            raise EvalError(f"{method} {path} -> HTTP {exc.code}: {detail}") from None
-        if not payload:
-            return None
-        return json.loads(payload) if accept == "application/json" else payload
-
-    def request_text(
-        self,
-        path: str,
-        method: str = "PUT",
-        body: str = "",
-        accept: str = "text/plain",
-        timeout: int = 60,
-    ):
-        """Send a text/plain TeamCity REST request using the same safe session."""
-        url = path if path.startswith("http") else f"{self.url}{path}"
-        req = urllib.request.Request(url, data=body.encode(), method=method)
-        req.add_header("Authorization", f"Bearer {self.token}")
-        req.add_header("Accept", accept)
-        req.add_header("Content-Type", "text/plain")
+            completed = subprocess.run(
+                [self.cli, *arguments], env=environment, capture_output=True,
+                text=True, errors="replace", timeout=300,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise EvalError("TeamCity CLI lifecycle command could not run") from exc
+        if completed.returncode:
+            # Do not put CLI output into a published result: it can include
+            # server state beyond this one temporary eval project.
+            raise EvalError(
+                "TeamCity CLI lifecycle command failed: " + " ".join(arguments[:2])
+            )
+        if not json_output:
+            return completed.stdout
         try:
-            with self.opener.open(req, timeout=timeout) as response:
-                return response.read()
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode(errors="replace")[:500]
-            raise EvalError(f"{method} {path} -> HTTP {exc.code}: {detail}") from None
+            return json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            raise EvalError(
+                "TeamCity CLI lifecycle command returned malformed JSON: "
+                + " ".join(arguments[:2])
+            ) from exc
 
-    def configuration_write_path(self, path: str) -> str:
-        """Route project lifecycle writes to the cluster's configuration node.
-
-        In a TeamCity cluster, a load balancer may route a request to a node
-        without ``MAIN_NODE`` responsibility. The REST ``__nodeId`` query
-        parameter makes those writes deterministic. Older servers or narrowly
-        scoped tokens may not expose the node list, in which case retaining the
-        session cookie is the compatible fallback.
-        """
-        if not self._configuration_node_discovered:
-            self._configuration_node_discovered = True
-            try:
-                nodes = self.request("/app/rest/server/nodes?fields=node(id)")
-                for node in nodes.get("node", []):
-                    node_id = node.get("id")
-                    if not node_id:
-                        continue
-                    responsibilities = self.request(
-                        f"/app/rest/server/nodes/id:{urllib.parse.quote(node_id, safe='')}/"
-                        "effectiveResponsibilities?fields=responsibility(name)"
-                    )
-                    if any(
-                        item.get("name") == "MAIN_NODE"
-                        for item in responsibilities.get("responsibility", [])
-                    ):
-                        self._configuration_node_id = node_id
-                        break
-            except EvalError:
-                # Node discovery is optional: a standalone server and some
-                # restricted project tokens do not expose the cluster API.
-                pass
-
-        if not self._configuration_node_id:
-            return path
-        separator = "&" if "?" in path else "?"
-        node_id = urllib.parse.quote(self._configuration_node_id, safe="")
-        return f"{path}{separator}__nodeId={node_id}"
+    @staticmethod
+    def _records(payload: dict, key: str) -> list:
+        records = payload.get(key, []) if isinstance(payload, dict) else []
+        return records if isinstance(records, list) else []
 
     def create_project(self, name: str, parent: str) -> str:
-        created = self.request(
-            "/app/rest/projects",
-            method="POST",
-            body={"name": name, "parentProject": {"locator": f"id:{parent}"}},
+        created = self._run(
+            ["project", "create", name, "--parent", parent, "--json"], json_output=True
         )
-        return created["id"]
-
-    def delete_project(self, project_id: str) -> None:
-        self.request(
-            self.configuration_write_path(f"/app/rest/projects/id:{project_id}"),
-            method="DELETE",
-            accept="text/plain",
-            # In a multi-node server deletion can include child pipeline and
-            # build-configuration cleanup. The server often takes longer than
-            # the regular REST read timeout, even after accepting the request.
-            timeout=300,
-        )
+        project = created.get("project", created) if isinstance(created, dict) else {}
+        project_id = project.get("id") if isinstance(project, dict) else None
+        if not isinstance(project_id, str) or not project_id:
+            raise EvalError("TeamCity CLI project create returned no project ID")
+        return project_id
 
     def set_project_parameter(self, project_id: str, name: str, value: str) -> None:
-        project = urllib.parse.quote(project_id, safe="")
-        parameter = urllib.parse.quote(name, safe="")
-        path = self.configuration_write_path(
-            f"/app/rest/projects/id:{project}/parameters/{parameter}"
-        )
-        self.request_text(path, body=value)
-
-    def set_project_archived(self, project_id: str, archived: bool) -> None:
-        project = urllib.parse.quote(project_id, safe="")
-        path = self.configuration_write_path(f"/app/rest/projects/id:{project}/archived")
-        self.request_text(path, body="true" if archived else "false")
+        self._run(["project", "param", "set", project_id, name, value])
 
     def mark_temporary_project(self, project_id: str, ttl_hours: float = 6) -> None:
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -310,60 +237,36 @@ class TeamCity:
             self.set_project_parameter(project_id, name, value)
 
     def build_types(self, project_id: str):
-        locator = urllib.parse.quote(f"affectedProject:(id:{project_id})", safe="")
-        found = self.request(f"/app/rest/buildTypes?locator={locator}")
-        return found.get("buildType", [])
+        found = self._run(
+            ["job", "list", "--project", project_id, "--all", "--limit", "0", "--json"],
+            json_output=True,
+        )
+        return self._records(found, "buildType")
 
     def builds(self, project_id: str):
-        locator = urllib.parse.quote(
-            f"affectedProject:(id:{project_id}),defaultFilter:false,personal:any,"
-            f"branch:default:any,count:50",
-            safe="",
+        found = self._run(
+            ["run", "list", "--project", project_id, "--limit", "50", "--json"],
+            json_output=True,
         )
-        try:
-            found = self.request(f"/app/rest/builds?locator={locator}")
-        except EvalError as exc:
-            # Until the agent creates a build configuration the project holds
-            # none, and TeamCity answers 404 rather than an empty collection.
-            if "HTTP 404" in str(exc):
-                return []
-            raise
-        return found.get("build", [])
+        return self._records(found, "build")
 
     def build(self, build_id: int):
-        return self.request(
-            f"/app/rest/builds/id:{build_id}"
-            "?fields=id,number,state,status,statusText,webUrl,personal"
-        )
+        return self._run(["run", "view", str(build_id), "--json"], json_output=True)
 
     def pipeline_ids(self, project_id: str) -> list:
-        """Pipelines under a project, found through their head build configuration.
-
-        A pipeline lives in its own sub-project, but those sub-projects do not
-        come back from the projects endpoint under any locator tried; their head
-        build configuration does, and its projectId is the pipeline's id.
-        """
-        locator = urllib.parse.quote(f"affectedProject:(id:{project_id})", safe="")
-        found = self.request(f"/app/rest/buildTypes?locator={locator}&fields=buildType(projectId)")
-        seen = []
-        for bt in found.get("buildType", []):
-            pipeline_id = bt.get("projectId")
-            if pipeline_id and pipeline_id != project_id and pipeline_id not in seen:
-                seen.append(pipeline_id)
-        return seen
+        found = self._run(
+            ["pipeline", "list", "--project", project_id, "--limit", "0", "--json"],
+            json_output=True,
+        )
+        return [
+            item["id"] for item in self._records(found, "pipeline")
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        ]
 
     def pipeline(self, pipeline_id: str):
-        """The pipeline the server holds, or None if this project is not one.
-
-        The response carries the stored YAML alongside the VCS root it is bound
-        to, which is the only description available before a build has run.
-        """
-        try:
-            return self.request(f"/app/pipeline/{pipeline_id}")
-        except EvalError as exc:
-            if "HTTP 404" in str(exc):
-                return None
-            raise
+        """Read stored YAML through the CLI; it remains runner-private."""
+        yaml = self._run(["pipeline", "pull", pipeline_id])
+        return {"yaml": yaml}
 
     def jobs(self, project_id: str) -> list:
         """The jobs the agent defined, read from the pipeline YAML on the server.
@@ -416,27 +319,30 @@ class TeamCity:
         return collected
 
     def resulting_properties(self, build_id: int) -> dict:
-        # TeamCity 2026.3 rejects the legacy camel-case endpoint with HTTP 406.
-        # The hyphenated collection endpoint accepts JSON and keeps the request
-        # scoped to the property fields needed for toolchain evidence.
-        found = self.request(
-            f"/app/rest/builds/id:{build_id}/resulting-properties"
-            "?fields=property(name,value)"
-        )
-        return {p["name"]: p.get("value", "") for p in found.get("property", [])}
+        # The first-class CLI has no resulting-properties command.  Toolchain
+        # evidence is therefore taken from the server-stored pipeline YAML
+        # (environment and image declarations) rather than falling back to
+        # direct REST.
+        return {}
 
     def test_count(self, build_id: int) -> int:
-        locator = urllib.parse.quote(f"build:(id:{build_id})", safe="")
-        return self.request(f"/app/rest/testOccurrences?locator={locator}&fields=count")["count"]
+        found = self._run(
+            ["run", "tests", str(build_id), "--limit", "0", "--json"], json_output=True
+        )
+        if isinstance(found, dict) and isinstance(found.get("count"), int):
+            return found["count"]
+        return len(self._records(found, "testOccurrence"))
 
     def artifacts(self, build_id: int, path: str = "") -> list:
-        """Every published artifact path, walked recursively."""
-        try:
-            listing = self.request(f"/app/rest/builds/id:{build_id}/artifacts/children/{path}")
-        except EvalError:
-            return []
+        """Every artifact returned by the first-class CLI, walked recursively."""
+        command = ["run", "artifacts", str(build_id), "--json"]
+        if path:
+            command.extend(["--path", path])
+        listing = self._run(command, json_output=True)
         collected = []
-        for entry in listing.get("file", []):
+        for entry in self._records(listing, "file"):
+            if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
+                continue
             name = entry["name"]
             full = f"{path}/{name}".lstrip("/")
             if "children" in entry:
@@ -481,6 +387,13 @@ def toolchain_evidence(properties: dict, jdk: str, jobs: list = None) -> tuple:
         name: value for name, value in properties.items()
         if "java" in name.lower() or "jdk" in name.lower()
     }
+    # The CLI intentionally does not expose all resulting build properties.
+    # The stored pipeline is the authoritative pre-build declaration, so it is
+    # suitable evidence when the job selects JAVA_HOME/JDK explicitly.
+    for job in jobs or []:
+        for name, value in (job.get("environment") or {}).items():
+            if "java" in name.lower() or "jdk" in name.lower():
+                candidates[f"{job.get('id', 'job')}:{name}"] = str(value)
     matched = sorted(n for n, v in candidates.items() if version.search(v) or version.search(n))
     images = sorted({
         str(step["properties"]["docker-image"])
@@ -1516,7 +1429,13 @@ def run(
         if not url or not token:
             raise EvalError("TEAMCITY_URL and TEAMCITY_TOKEN must be set")
 
-    tc = None if fixture_case else TeamCity(url, token)
+    cli_path = None
+    if not fixture_case:
+        cli_name = env.get("TEAMCITY_EVAL_CLI", "teamcity")
+        cli_path = shutil.which(cli_name, path=env.get("PATH"))
+        if not cli_path:
+            raise EvalError(f"TeamCity CLI executable not found: {cli_name}")
+    tc = None if fixture_case else TeamCity(cli_path, url, token, env)
     parent = env.get("EVAL_PARENT_PROJECT", "_Root")
     workspace = pathlib.Path(tempfile.mkdtemp(prefix="eval-"))
     checkout = workspace / "checkout"

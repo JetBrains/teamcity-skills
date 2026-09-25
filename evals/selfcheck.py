@@ -126,7 +126,7 @@ def main() -> int:
     if not url or not token:
         sys.exit("TEAMCITY_URL and TEAMCITY_TOKEN must be set")
 
-    tc = run_case.TeamCity(url, token)
+    tc = run_case.TeamCity(teamcity_cli(), url, token, os.environ)
     parent = os.environ.get("EVAL_PARENT_PROJECT", "_Root")
     # Container PIDs repeat between TeamCity builds; they do not make a unique
     # project name. A short random suffix keeps a failed cleanup from blocking
