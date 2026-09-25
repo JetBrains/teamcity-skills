@@ -276,6 +276,7 @@ class AgentTimeoutTest(unittest.TestCase):
         contract = run_case.transport_prompt_contract("mcp-only")
 
         self.assertIn("mcp__teamcity__*", contract)
+        self.assertIn("hard success criterion", contract)
         self.assertIn("first TeamCity operation must be a read-only MCP discovery", contract)
         self.assertIn("Do not fall back", contract)
         self.assertEqual("", run_case.transport_prompt_contract("cli-only"))
