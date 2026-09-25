@@ -20,6 +20,10 @@ parameters:
   env.EVAL_AGENT_CONFIG_ID: claude-default
   env.EVAL_AGENT_VERSION: ""
   env.EVAL_MCP_CONFIG: ""
+  # The referenced parameter is configured as a TeamCity password parameter
+  # outside version control. This mapping is the only way it reaches the
+  # wrapper, which removes the environment variable before starting Claude.
+  env.EVAL_MCP_TOKEN: "%ai.build.analyzer.eval.mcp.auth.token%"
   env.EVAL_REGRESSION_ENFORCEMENT: "false"
 jobs:
   run_config_case:
