@@ -48,7 +48,13 @@ SAFE_ERROR_CATEGORIES = {
     "mcp-enterprise-policy-blocked", "mcp-approval-required",
     "mcp-authentication-failed", "mcp-access-denied",
     "mcp-connection-failed", "mcp-initialization-failed",
-    "mcp-agent-did-not-use-available-tool",
+    "mcp-agent-did-not-use-available-tool", "mcp-config-invalid",
+}
+MCP_PREFLIGHT_STATUSES = {
+    "unknown", "connected", "sideload-flags-disabled",
+    "enterprise-managed-config", "enterprise-policy-blocked",
+    "approval-required", "authentication-failed", "access-denied",
+    "connection-failed", "config-invalid",
 }
 
 
@@ -155,6 +161,10 @@ def safe_mcp_runtime(value):
 def safe_error_category(value):
     """Preserve only the runner's fixed, non-sensitive error taxonomy."""
     return value if value in SAFE_ERROR_CATEGORIES else None
+
+
+def safe_mcp_preflight_status(value):
+    return value if value in MCP_PREFLIGHT_STATUSES else None
 
 
 def safe_case_version(value):
@@ -351,6 +361,7 @@ def download_result(warnings, server, run_id):
                 else None
             ),
             "mcpRuntime": safe_mcp_runtime(result.get("mcpRuntime")),
+            "mcpPreflightStatus": safe_mcp_preflight_status(result.get("mcpPreflightStatus")),
             "errorCategory": error_category,
             "checks": {
                 name: {"passed": check.get("passed")}
