@@ -976,6 +976,54 @@ def tool_calls(trace: pathlib.Path) -> list:
     return calls
 
 
+def agent_tool_summary(trace: pathlib.Path) -> dict:
+    """Count tool surfaces without retaining names, inputs, or agent prose.
+
+    The raw stream can contain prompts, repository content, and bearer-adjacent
+    configuration paths.  A fixed numeric summary is sufficient to distinguish
+    "MCP was not attempted" from "MCP was attempted but did not complete the
+    requested configuration" without publishing any trajectory.
+    """
+    summary = {
+        "totalCalls": 0,
+        "mcpTeamCityCalls": 0,
+        "teamcityCliCalls": 0,
+        "otherCalls": 0,
+    }
+    try:
+        lines = trace.read_text(errors="replace").splitlines()
+    except OSError:
+        return summary
+    for line in lines:
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") != "assistant":
+            continue
+        for block in event.get("message", {}).get("content", []):
+            if block.get("type") != "tool_use":
+                continue
+            summary["totalCalls"] += 1
+            name = block.get("name")
+            if isinstance(name, str) and name.startswith("mcp__teamcity__"):
+                summary["mcpTeamCityCalls"] += 1
+                continue
+            command = (block.get("input") or {}).get("command")
+            if (
+                name == "Bash"
+                and isinstance(command, str)
+                and command.lstrip().startswith("teamcity")
+            ):
+                summary["teamcityCliCalls"] += 1
+                continue
+            summary["otherCalls"] += 1
+    return summary
+
+
 def agent_final_text(trace: pathlib.Path) -> str:
     """Return the agent's final prose without putting its trajectory in results."""
     latest = ""
@@ -1131,6 +1179,32 @@ def trace_error_category(trace: pathlib.Path) -> Optional[str]:
     return None
 
 
+def mcp_configuration_error_category(tool_mode: str, checks: dict, summary: dict) -> Optional[str]:
+    """Classify a failed pure-MCP configuration run from safe aggregates only."""
+    if tool_mode != "mcp-only":
+        return None
+    configured = (checks.get("configurationValidated") or {}).get("passed")
+    if configured is not False:
+        return None
+    if summary.get("mcpTeamCityCalls", 0) == 0:
+        return "mcp-not-invoked"
+    return "mcp-no-configuration"
+
+
+def safe_agent_tool_summary(value: object) -> dict:
+    """Keep only the fixed numeric tool-surface counters in public results."""
+    if not isinstance(value, dict):
+        return {}
+    names = ("totalCalls", "mcpTeamCityCalls", "teamcityCliCalls", "otherCalls")
+    return {
+        name: value[name]
+        for name in names
+        if isinstance(value.get(name), int)
+        and not isinstance(value.get(name), bool)
+        and value[name] >= 0
+    }
+
+
 def publishable_result(result: dict) -> dict:
     """Return the minimal result safe to publish as a build artifact."""
     fields = (
@@ -1155,6 +1229,9 @@ def publishable_result(result: dict) -> dict:
     usage = safe_agent_usage(result.get("agentUsage"))
     if usage:
         published["agentUsage"] = usage
+    tool_summary = safe_agent_tool_summary(result.get("agentToolSummary"))
+    if tool_summary:
+        published["agentToolSummary"] = tool_summary
     published["checks"] = {
         name: {"passed": check.get("passed")}
         for name, check in (result.get("checks") or {}).items()
@@ -1340,6 +1417,7 @@ def run(
         if usage:
             result["agentUsage"] = usage
         result["errorCategory"] = trace_error_category(trace)
+        result["agentToolSummary"] = agent_tool_summary(trace)
 
         # A dead agent queues nothing, so waiting the full budget for a build
         # that cannot arrive only delays the report.
@@ -1374,6 +1452,10 @@ def run(
             result["jobs"] = observed["jobs"]
             result["checks"] = grade_configuration(case, observed)
             set_graded_status(result, agent_run)
+            if result.get("errorCategory") is None:
+                result["errorCategory"] = mcp_configuration_error_category(
+                    tool_mode, result["checks"], result["agentToolSummary"]
+                )
             raise _Graded
 
         build = wait_for_build(tc, project_id, budget)

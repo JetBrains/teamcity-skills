@@ -131,6 +131,30 @@ class AgentTimeoutTest(unittest.TestCase):
         )
         self.assertNotIn("agentTraceTail", published)
 
+    def test_publishable_result_keeps_only_numeric_tool_summary(self):
+        published = run_case.publishable_result(
+            {
+                "agentToolSummary": {
+                    "totalCalls": 4,
+                    "mcpTeamCityCalls": 2,
+                    "teamcityCliCalls": 1,
+                    "otherCalls": 1,
+                    "toolName": "must not escape",
+                },
+                "checks": {},
+            }
+        )
+
+        self.assertEqual(
+            {
+                "totalCalls": 4,
+                "mcpTeamCityCalls": 2,
+                "teamcityCliCalls": 1,
+                "otherCalls": 1,
+            },
+            published["agentToolSummary"],
+        )
+
     def test_publishable_result_keeps_tool_mode_and_safe_agent_identity(self):
         published = run_case.publishable_result(
             {
@@ -198,6 +222,41 @@ class AgentTimeoutTest(unittest.TestCase):
         self.assertIn("Read", command)
         self.assertIn("mcp__teamcity__*", command)
         self.assertIn("--strict-mcp-config", command)
+
+    def test_agent_tool_summary_counts_surfaces_without_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trace = pathlib.Path(directory) / "trace.log"
+            trace.write_text("\n".join([
+                json.dumps({"type": "assistant", "message": {"content": [
+                    {"type": "tool_use", "name": "mcp__teamcity__projects_list", "input": {"secret": "no"}},
+                    {"type": "tool_use", "name": "Bash", "input": {"command": "teamcity pipeline list"}},
+                    {"type": "tool_use", "name": "Read", "input": {"file_path": "private"}},
+                ]}}),
+            ]))
+
+            summary = run_case.agent_tool_summary(trace)
+
+        self.assertEqual(
+            {"totalCalls": 3, "mcpTeamCityCalls": 1, "teamcityCliCalls": 1, "otherCalls": 1},
+            summary,
+        )
+
+    def test_mcp_configuration_error_category_distinguishes_no_mcp_call(self):
+        checks = {"configurationValidated": {"passed": False}}
+        self.assertEqual(
+            "mcp-not-invoked",
+            run_case.mcp_configuration_error_category(
+                "mcp-only", checks,
+                {"mcpTeamCityCalls": 0},
+            ),
+        )
+        self.assertEqual(
+            "mcp-no-configuration",
+            run_case.mcp_configuration_error_category(
+                "mcp-only", checks,
+                {"mcpTeamCityCalls": 1},
+            ),
+        )
 
     def test_timed_out_agent_keeps_checks_but_cannot_pass(self):
         result = {"checks": {"build": {"passed": True}}}
@@ -269,6 +328,11 @@ class AgentTimeoutTest(unittest.TestCase):
             "toolMode": "mcp-only",
             "agentConfigId": "claude-teamcity",
             "agentVersion": "1.2.3",
+            "agentToolSummary": {
+                "totalCalls": 2,
+                "mcpTeamCityCalls": 1,
+                "privateInput": "must not escape",
+            },
             "checks": {"build": {"passed": True}},
         }
 
@@ -291,6 +355,10 @@ class AgentTimeoutTest(unittest.TestCase):
         self.assertEqual("b" * 64, result["caseVersion"])
         self.assertEqual("claude-teamcity", result["agentConfigId"])
         self.assertEqual("1.2.3", result["agentVersion"])
+        self.assertEqual(
+            {"totalCalls": 2, "mcpTeamCityCalls": 1},
+            result["agentToolSummary"],
+        )
 
     def test_dependency_tree_is_deduplicated(self):
         job = {"id": 7, "name": "Run configuration eval", "dependencies": []}
