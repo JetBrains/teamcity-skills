@@ -38,6 +38,26 @@ else
   exit 1
 fi
 
+case "${EVAL_TOOL_MODE:-cli-only}" in
+  cli-only) ;;
+  mcp-only|cli+mcp)
+    if [ -z "${EVAL_MCP_CONFIG:-}" ]; then
+      : "${TEAMCITY_URL:?TEAMCITY_URL is required to create the TeamCity MCP config}"
+      mcp_config_directory="${TEAMCITY_BUILD_TEMP_DIR:-${TMPDIR:-/tmp}}"
+      umask 077
+      mcp_config_path="$(mktemp "$mcp_config_directory/teamcity-evals-mcp.XXXXXX")"
+      "${python_command[@]}" evals/write_teamcity_mcp_config.py \
+        --server "$TEAMCITY_URL" \
+        --output "$mcp_config_path"
+      export EVAL_MCP_CONFIG="$mcp_config_path"
+    fi
+    ;;
+  *)
+    echo "EVAL_TOOL_MODE must be cli-only, mcp-only, or cli+mcp." >&2
+    exit 2
+    ;;
+esac
+
 "${python_command[@]}" -m pip install --user --quiet PyYAML
 : "${TEAMCITY_TOKEN:?TEAMCITY_TOKEN is required}"
 # Keep the lifecycle token out of the agent's inherited environment. The runner
