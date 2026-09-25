@@ -7,6 +7,16 @@ set -euo pipefail
 case_path=${1:?case path is required}
 . evals/bootstrap-teamcity-cli.sh
 
+# A generated MCP config contains a server-provided bearer token. Keep its
+# lifetime to this script and remove it even when the runner fails.
+mcp_config_path=""
+cleanup_mcp_config() {
+  if [ -n "$mcp_config_path" ]; then
+    rm -f -- "$mcp_config_path"
+  fi
+}
+trap cleanup_mcp_config EXIT
+
 if command -v claude >/dev/null 2>&1; then
   claude --version
 elif command -v claude.cmd >/dev/null 2>&1; then
@@ -43,6 +53,7 @@ case "${EVAL_TOOL_MODE:-cli-only}" in
   mcp-only|cli+mcp)
     if [ -z "${EVAL_MCP_CONFIG:-}" ]; then
       : "${TEAMCITY_URL:?TEAMCITY_URL is required to create the TeamCity MCP config}"
+      : "${EVAL_MCP_TOKEN:?EVAL_MCP_TOKEN must be a secure TeamCity parameter for MCP modes}"
       mcp_config_directory="${TEAMCITY_BUILD_TEMP_DIR:-${TMPDIR:-/tmp}}"
       umask 077
       mcp_config_path="$(mktemp "$mcp_config_directory/teamcity-evals-mcp.XXXXXX")"
@@ -51,6 +62,8 @@ case "${EVAL_TOOL_MODE:-cli-only}" in
         --output "$mcp_config_path"
       export EVAL_MCP_CONFIG="$mcp_config_path"
     fi
+    # The agent receives the configured MCP client, never the source variable.
+    unset EVAL_MCP_TOKEN
     ;;
   *)
     echo "EVAL_TOOL_MODE must be cli-only, mcp-only, or cli+mcp." >&2

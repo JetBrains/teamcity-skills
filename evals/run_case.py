@@ -127,6 +127,7 @@ def agent_environment_without_cli(environment: dict, server_url: str) -> dict:
     result = dict(environment)
     result.pop("TEAMCITY_TOKEN", None)
     result.pop("TEAMCITY_GUEST", None)
+    result.pop("EVAL_MCP_TOKEN", None)
     result.pop("TEAMCITY_EVAL_CLI", None)
     result.pop("TEAMCITY_EVAL_CLI_DIR", None)
     path_entries = []
@@ -1081,6 +1082,7 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
     command += " --strict-mcp-config"
     agent_env = dict(env)
     agent_env.pop("TEAMCITY_TOKEN", None)
+    agent_env.pop("EVAL_MCP_TOKEN", None)
     with trace.open("w") as sink:
         sink.write(f"$ {command}\n--- prompt ---\n{prompt}\n--- output ---\n")
         sink.flush()
