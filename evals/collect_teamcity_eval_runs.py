@@ -44,6 +44,7 @@ TOOL_SUMMARY_FIELDS = (
 SAFE_ERROR_CATEGORIES = {
     "agent-timeout", "agent-permission-failure",
     "mcp-not-invoked", "mcp-cli-invoked", "mcp-no-configuration",
+    "mcp-sideload-flags-disabled", "mcp-enterprise-managed-config",
     "mcp-enterprise-policy-blocked", "mcp-approval-required",
     "mcp-authentication-failed", "mcp-access-denied",
     "mcp-connection-failed", "mcp-initialization-failed",
@@ -138,7 +139,8 @@ def safe_mcp_runtime(value):
     if not isinstance(value, dict):
         return {}
     allowed_statuses = {
-        "unknown", "tools-advertised", "enterprise-policy-blocked",
+        "unknown", "tools-advertised", "sideload-flags-disabled",
+        "enterprise-managed-config", "enterprise-policy-blocked",
         "approval-required", "authentication-failed", "access-denied",
         "connection-failed", "initialization-failed",
     }
