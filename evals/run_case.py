@@ -73,7 +73,8 @@ MCP_PREFLIGHT_STATUSES = {
     "unknown", "connected", "sideload-flags-disabled",
     "enterprise-managed-config", "enterprise-policy-blocked",
     "approval-required", "authentication-failed", "access-denied",
-    "connection-failed", "config-invalid",
+    "connection-failed", "config-invalid", "server-not-registered",
+    "probe-failed",
 }
 sys.path.insert(0, str(EVALS))
 from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
@@ -1361,6 +1362,8 @@ def mcp_configuration_error_category(
             "tools-advertised": "mcp-agent-did-not-use-available-tool",
             "connected": "mcp-agent-did-not-use-available-tool",
             "config-invalid": "mcp-config-invalid",
+            "server-not-registered": "mcp-server-not-registered",
+            "probe-failed": "mcp-preflight-failed",
         }
         if connection in categories:
             return categories[connection]

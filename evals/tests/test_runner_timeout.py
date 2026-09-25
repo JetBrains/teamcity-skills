@@ -344,6 +344,10 @@ class AgentTimeoutTest(unittest.TestCase):
 
     def test_safe_mcp_preflight_status_rejects_unstructured_output(self):
         self.assertEqual("connected", run_case.safe_mcp_preflight_status("connected"))
+        self.assertEqual(
+            "server-not-registered",
+            run_case.safe_mcp_preflight_status("server-not-registered"),
+        )
         self.assertIsNone(run_case.safe_mcp_preflight_status("private server text"))
 
     def test_permission_failure_surface_uses_only_fixed_categories(self):

@@ -65,7 +65,10 @@ case "${EVAL_TOOL_MODE:-cli-only}" in
     # Use the same Claude MCP client as the agent to probe this ephemeral
     # configuration. The command's text can include connection details, so it
     # is reduced to a fixed status before the runner starts.
-    mcp_preflight_output="$(claude --mcp-config "$EVAL_MCP_CONFIG" --strict-mcp-config mcp list 2>&1 || true)"
+    set +e
+    mcp_preflight_output="$(claude --mcp-config "$EVAL_MCP_CONFIG" --strict-mcp-config mcp get teamcity 2>&1)"
+    mcp_preflight_exit=$?
+    set -e
     mcp_preflight_text="$(printf '%s' "$mcp_preflight_output" | tr '[:upper:]' '[:lower:]')"
     case "$mcp_preflight_text" in
       *"disable sideload"*|*"disablesideloadflags"*) EVAL_MCP_PREFLIGHT_STATUS="sideload-flags-disabled" ;;
@@ -75,12 +78,19 @@ case "${EVAL_TOOL_MODE:-cli-only}" in
       *"unauthorized"*|*"authentication failed"*|*"401"*) EVAL_MCP_PREFLIGHT_STATUS="authentication-failed" ;;
       *"forbidden"*|*"403"*|*"permission denied"*) EVAL_MCP_PREFLIGHT_STATUS="access-denied" ;;
       *"failed to connect"*|*"connection refused"*|*"not connected"*) EVAL_MCP_PREFLIGHT_STATUS="connection-failed" ;;
+      *"mcp server not found"*|*"server not found"*) EVAL_MCP_PREFLIGHT_STATUS="server-not-registered" ;;
       *"invalid mcp configuration"*|*"mcp config"*"not valid json"*) EVAL_MCP_PREFLIGHT_STATUS="config-invalid" ;;
       *"connected"*) EVAL_MCP_PREFLIGHT_STATUS="connected" ;;
-      *) EVAL_MCP_PREFLIGHT_STATUS="unknown" ;;
+      *)
+        if [ "$mcp_preflight_exit" -eq 0 ]; then
+          EVAL_MCP_PREFLIGHT_STATUS="connected"
+        else
+          EVAL_MCP_PREFLIGHT_STATUS="probe-failed"
+        fi
+        ;;
     esac
     export EVAL_MCP_PREFLIGHT_STATUS
-    unset mcp_preflight_output mcp_preflight_text
+    unset mcp_preflight_output mcp_preflight_text mcp_preflight_exit
     # The agent receives the configured MCP client, never the source variable.
     unset EVAL_MCP_TOKEN
     ;;
