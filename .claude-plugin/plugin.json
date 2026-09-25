@@ -1,0 +1,7 @@
+{
+  "name": "teamcity",
+  "description": "TeamCity agent skills: drive the teamcity CLI, get a repository to its first green build, and migrate pipelines from other CI systems. Ships the skills only — install the teamcity CLI separately.",
+  "author": {
+    "name": "JetBrains"
+  }
+}

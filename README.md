@@ -25,6 +25,17 @@ for example `.claude/skills/`:
 cp -r skills/teamcity-first-green-build ~/.claude/skills/
 ```
 
+**As a Claude Code plugin.** This repository is also a plugin, so Claude Code
+can install every skill here in one step:
+
+```bash
+/plugin marketplace add JetBrains/teamcity-skills
+/plugin install teamcity@teamcity
+```
+
+The plugin ships the skills only. Commands they reference — such as the
+`teamcity` CLI — are installed separately.
+
 **From Go.** Skills with an `embed.go` are published as Go packages, so a
 program can depend on a specific, checksummed revision instead of vendoring a
 copy:

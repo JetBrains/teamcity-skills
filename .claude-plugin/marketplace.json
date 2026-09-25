@@ -1,0 +1,21 @@
+{
+  "name": "teamcity",
+  "owner": {
+    "name": "JetBrains",
+    "email": "teamcity-cli@jetbrains.com"
+  },
+  "metadata": {
+    "description": "TeamCity agent skills for Claude Code",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "teamcity",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/JetBrains/teamcity-skills.git"
+      },
+      "description": "TeamCity agent skills: drive the teamcity CLI, get a repository to its first green build, and migrate pipelines from other CI systems."
+    }
+  ]
+}
