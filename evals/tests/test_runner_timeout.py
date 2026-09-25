@@ -179,6 +179,24 @@ class AgentTimeoutTest(unittest.TestCase):
         self.assertEqual(str(other_dir), environment["PATH"])
         self.assertEqual("https://teamcity.example", environment["TEAMCITY_URL"])
 
+    def test_mcp_config_permits_only_the_declared_teamcity_mcp_tools(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            trace = root / "trace.log"
+            mcp_config = root / "mcp.json"
+            mcp_config.write_text("{}")
+            completed = subprocess.CompletedProcess([], 0)
+            with mock.patch.object(run_case.subprocess, "run", return_value=completed) as invoked:
+                run_case.invoke_agent(
+                    "prompt", root, {}, trace, timeout=7,
+                    tools=["Read"], mcp_config=mcp_config,
+                )
+
+        command = invoked.call_args.args[0]
+        self.assertIn("Read", command)
+        self.assertIn("mcp__teamcity__*", command)
+        self.assertIn("--strict-mcp-config", command)
+
     def test_timed_out_agent_keeps_checks_but_cannot_pass(self):
         result = {"checks": {"build": {"passed": True}}}
 

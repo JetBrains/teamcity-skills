@@ -1066,8 +1066,14 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
     # The runner owns the output format, because grading reads the trace, and the
     # case owns the tool policy, because which tools exist is part of the question.
     command = env.get("EVAL_AGENT_CMD", "claude -p") + " --output-format stream-json --verbose"
-    if tools:
-        command += " --allowedTools " + " ".join(shlex.quote(t) for t in tools)
+    allowed_tools = list(tools or [])
+    if mcp_config:
+        # The explicit case tool policy normally lists only built-in Claude
+        # tools. Permit only the server declared in the generated config, so an
+        # MCP-mode run can use TeamCity MCP but not ambient MCP servers.
+        allowed_tools.append("mcp__teamcity__*")
+    if allowed_tools:
+        command += " --allowedTools " + " ".join(shlex.quote(t) for t in allowed_tools)
     if mcp_config:
         command += " --mcp-config " + shlex.quote(str(mcp_config))
     # Do not inherit a developer's ambient MCP servers.  CLI-only must really
