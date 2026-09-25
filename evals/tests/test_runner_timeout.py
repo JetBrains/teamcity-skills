@@ -329,6 +329,23 @@ class AgentTimeoutTest(unittest.TestCase):
 
         self.assertEqual("mcp-authentication-failed", category)
 
+    def test_mcp_error_category_uses_safe_preflight_when_runtime_is_unknown(self):
+        checks = {
+            "requiredMcpToolUse": {"passed": False},
+            "forbiddenCliToolUse": {"passed": True},
+        }
+
+        category = run_case.mcp_configuration_error_category(
+            "mcp-only", checks, {}, {"connectionStatus": "unknown"},
+            "authentication-failed",
+        )
+
+        self.assertEqual("mcp-authentication-failed", category)
+
+    def test_safe_mcp_preflight_status_rejects_unstructured_output(self):
+        self.assertEqual("connected", run_case.safe_mcp_preflight_status("connected"))
+        self.assertIsNone(run_case.safe_mcp_preflight_status("private server text"))
+
     def test_permission_failure_surface_uses_only_fixed_categories(self):
         with tempfile.TemporaryDirectory() as directory:
             trace = pathlib.Path(directory) / "trace.log"
