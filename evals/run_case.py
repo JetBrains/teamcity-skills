@@ -1220,11 +1220,92 @@ def trace_error_category(trace: pathlib.Path) -> Optional[str]:
     return None
 
 
-def mcp_configuration_error_category(tool_mode: str, checks: dict, summary: dict) -> Optional[str]:
+def mcp_runtime(trace: pathlib.Path) -> dict:
+    """Summarize MCP initialization from non-assistant structured events only.
+
+    The trace contains private prompts, agent prose and tool arguments. The
+    startup/error events can safely answer whether TeamCity MCP tools became
+    available, and reduce failures to a fixed category without retaining the
+    event itself.
+    """
+    status = "unknown"
+    tools_advertised = False
+    patterns = (
+        (
+            "enterprise-policy-blocked",
+            ("blocked by enterprise policy", "deniedmcpservers", "allowedmcpservers",
+             "managed-mcp.json"),
+        ),
+        (
+            "approval-required",
+            ("pending approval", "approval required", "requires approval"),
+        ),
+        (
+            "authentication-failed",
+            ("unauthorized", "authentication failed", "http 401", "status 401"),
+        ),
+        (
+            "access-denied",
+            ("forbidden", "http 403", "status 403", "permission_denied"),
+        ),
+        (
+            "connection-failed",
+            ("failed to connect", "connection refused", "network error", "fetch failed"),
+        ),
+        (
+            "initialization-failed",
+            ("failed to initialize", "not connected", "server unavailable"),
+        ),
+    )
+    try:
+        lines = trace.read_text(errors="replace").splitlines()
+    except OSError:
+        return {"connectionStatus": status, "teamcityToolsAdvertised": tools_advertised}
+    for line in lines:
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") not in ("system", "error"):
+            continue
+        encoded = json.dumps(event, separators=(",", ":")).lower()
+        if "mcp" not in encoded:
+            continue
+        if "mcp__teamcity__" in encoded:
+            tools_advertised = True
+        if status != "unknown":
+            continue
+        for candidate, markers in patterns:
+            if any(marker in encoded for marker in markers):
+                status = candidate
+                break
+    if status == "unknown" and tools_advertised:
+        status = "tools-advertised"
+    return {"connectionStatus": status, "teamcityToolsAdvertised": tools_advertised}
+
+
+def mcp_configuration_error_category(
+    tool_mode: str, checks: dict, summary: dict, runtime: Optional[dict] = None,
+) -> Optional[str]:
     """Classify a failed pure-MCP configuration run from safe aggregates only."""
     if tool_mode != "mcp-only":
         return None
     if (checks.get("requiredMcpToolUse") or {}).get("passed") is False:
+        connection = (runtime or {}).get("connectionStatus")
+        categories = {
+            "enterprise-policy-blocked": "mcp-enterprise-policy-blocked",
+            "approval-required": "mcp-approval-required",
+            "authentication-failed": "mcp-authentication-failed",
+            "access-denied": "mcp-access-denied",
+            "connection-failed": "mcp-connection-failed",
+            "initialization-failed": "mcp-initialization-failed",
+            "tools-advertised": "mcp-agent-did-not-use-available-tool",
+        }
+        if connection in categories:
+            return categories[connection]
         return "mcp-not-invoked"
     if (checks.get("forbiddenCliToolUse") or {}).get("passed") is False:
         return "mcp-cli-invoked"
@@ -1246,6 +1327,23 @@ def safe_agent_tool_summary(value: object) -> dict:
         and not isinstance(value.get(name), bool)
         and value[name] >= 0
     }
+
+
+def safe_mcp_runtime(value: object) -> dict:
+    """Allowlist the two non-sensitive MCP initialization signals."""
+    if not isinstance(value, dict):
+        return {}
+    allowed_statuses = {
+        "unknown", "tools-advertised", "enterprise-policy-blocked",
+        "approval-required", "authentication-failed", "access-denied",
+        "connection-failed", "initialization-failed",
+    }
+    result = {}
+    if value.get("connectionStatus") in allowed_statuses:
+        result["connectionStatus"] = value["connectionStatus"]
+    if isinstance(value.get("teamcityToolsAdvertised"), bool):
+        result["teamcityToolsAdvertised"] = value["teamcityToolsAdvertised"]
+    return result
 
 
 def publishable_result(result: dict) -> dict:
@@ -1275,6 +1373,9 @@ def publishable_result(result: dict) -> dict:
     tool_summary = safe_agent_tool_summary(result.get("agentToolSummary"))
     if tool_summary:
         published["agentToolSummary"] = tool_summary
+    runtime = safe_mcp_runtime(result.get("mcpRuntime"))
+    if runtime:
+        published["mcpRuntime"] = runtime
     published["checks"] = {
         name: {"passed": check.get("passed")}
         for name, check in (result.get("checks") or {}).items()
@@ -1462,6 +1563,8 @@ def run(
             result["agentUsage"] = usage
         result["errorCategory"] = trace_error_category(trace)
         result["agentToolSummary"] = agent_tool_summary(trace)
+        if mcp_config:
+            result["mcpRuntime"] = mcp_runtime(trace)
 
         # A dead agent queues nothing, so waiting the full budget for a build
         # that cannot arrive only delays the report.
@@ -1501,7 +1604,8 @@ def run(
             set_graded_status(result, agent_run)
             if result.get("errorCategory") is None:
                 result["errorCategory"] = mcp_configuration_error_category(
-                    tool_mode, result["checks"], result["agentToolSummary"]
+                    tool_mode, result["checks"], result["agentToolSummary"],
+                    result.get("mcpRuntime"),
                 )
             raise _Graded
 

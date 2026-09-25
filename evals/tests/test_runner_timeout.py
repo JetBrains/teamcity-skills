@@ -271,6 +271,50 @@ class AgentTimeoutTest(unittest.TestCase):
             ),
         )
 
+    def test_mcp_runtime_classifies_only_safe_system_startup_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trace = pathlib.Path(directory) / "trace.log"
+            trace.write_text("\n".join([
+                json.dumps({
+                    "type": "system",
+                    "mcpServerStatus": {"teamcity": "Blocked by enterprise policy"},
+                }),
+                json.dumps({
+                    "type": "assistant",
+                    "message": {"content": [{"type": "text", "text": "private"}]},
+                }),
+            ]))
+
+            runtime = run_case.mcp_runtime(trace)
+
+        self.assertEqual("enterprise-policy-blocked", runtime["connectionStatus"])
+        self.assertFalse(runtime["teamcityToolsAdvertised"])
+
+    def test_mcp_runtime_detects_advertised_tools_without_retaining_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trace = pathlib.Path(directory) / "trace.log"
+            trace.write_text(json.dumps({
+                "type": "system",
+                "tools": ["mcp__teamcity__private_tool"],
+            }))
+
+            runtime = run_case.mcp_runtime(trace)
+
+        self.assertEqual("tools-advertised", runtime["connectionStatus"])
+        self.assertTrue(runtime["teamcityToolsAdvertised"])
+
+    def test_mcp_error_category_uses_runtime_without_copying_diagnostics(self):
+        checks = {
+            "requiredMcpToolUse": {"passed": False},
+            "forbiddenCliToolUse": {"passed": True},
+        }
+
+        category = run_case.mcp_configuration_error_category(
+            "mcp-only", checks, {}, {"connectionStatus": "authentication-failed"},
+        )
+
+        self.assertEqual("mcp-authentication-failed", category)
+
     def test_mcp_only_contract_is_added_to_the_eval_prompt_not_the_skill(self):
         contract = run_case.transport_prompt_contract("mcp-only")
 
@@ -356,6 +400,12 @@ class AgentTimeoutTest(unittest.TestCase):
                 "mcpTeamCityCalls": 1,
                 "privateInput": "must not escape",
             },
+            "mcpRuntime": {
+                "connectionStatus": "authentication-failed",
+                "teamcityToolsAdvertised": False,
+                "private": "must not escape",
+            },
+            "errorCategory": "mcp-authentication-failed",
             "checks": {"build": {"passed": True}},
         }
 
@@ -382,6 +432,11 @@ class AgentTimeoutTest(unittest.TestCase):
             {"totalCalls": 2, "mcpTeamCityCalls": 1},
             result["agentToolSummary"],
         )
+        self.assertEqual(
+            {"connectionStatus": "authentication-failed", "teamcityToolsAdvertised": False},
+            result["mcpRuntime"],
+        )
+        self.assertEqual("mcp-authentication-failed", result["errorCategory"])
 
     def test_dependency_tree_is_deduplicated(self):
         job = {"id": 7, "name": "Run configuration eval", "dependencies": []}
