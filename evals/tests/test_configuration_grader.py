@@ -235,6 +235,28 @@ class ConfigurationGraderTest(unittest.TestCase):
 
         self.assertTrue(checks["toolUse"]["passed"])
 
+    def test_mcp_only_requires_mcp_and_forbids_cli(self):
+        checks = run_case.grade_configuration(CASE, observed_jobs())
+        run_case.add_transport_checks(
+            checks,
+            "mcp-only",
+            {"mcpTeamCityCalls": 0, "teamcityCliCalls": 1},
+        )
+
+        self.assertFalse(checks["requiredMcpToolUse"]["passed"])
+        self.assertFalse(checks["forbiddenCliToolUse"]["passed"])
+
+    def test_mcp_only_transport_checks_pass_for_mcp_without_cli(self):
+        checks = run_case.grade_configuration(CASE, observed_jobs())
+        run_case.add_transport_checks(
+            checks,
+            "mcp-only",
+            {"mcpTeamCityCalls": 1, "teamcityCliCalls": 0},
+        )
+
+        self.assertTrue(checks["requiredMcpToolUse"]["passed"])
+        self.assertTrue(checks["forbiddenCliToolUse"]["passed"])
+
 
 if __name__ == "__main__":
     unittest.main()
