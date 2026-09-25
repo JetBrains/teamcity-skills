@@ -90,6 +90,25 @@ def resolve_tool_mode(value: str) -> str:
     return value
 
 
+def transport_prompt_contract(tool_mode: str) -> str:
+    """Return the evaluation-only TeamCity transport contract.
+
+    The installed TeamCity skill is shared by normal users and all eval modes,
+    so it must not be rewritten for one transport experiment. This contract
+    belongs to the eval runner's per-run prompt instead.
+    """
+    if tool_mode != "mcp-only":
+        return ""
+    return (
+        "\n\nEvaluation transport contract (MCP-only):\n"
+        "- The TeamCity CLI is intentionally unavailable. Do not invoke it through Bash, "
+        "including commands beginning with `teamcity`.\n"
+        "- Use only `mcp__teamcity__*` tools for every TeamCity operation.\n"
+        "- Your first TeamCity operation must be a read-only MCP discovery operation.\n"
+        "- Do not fall back to the TeamCity CLI if an MCP operation fails.\n"
+    )
+
+
 def safe_agent_metadata(value: Optional[str]) -> Optional[str]:
     """Keep only opaque, non-secret agent identity labels in public results."""
     if isinstance(value, str) and SAFE_AGENT_METADATA.fullmatch(value):
@@ -540,6 +559,27 @@ def grade(case: dict, observed: dict) -> dict:
     for check in checks.values():
         check["passed"] = check["expected"] == check["observed"] or check["expected"] is check["observed"]
     return checks
+
+
+def add_transport_checks(checks: dict, tool_mode: str, summary: dict) -> None:
+    """Add mode-specific assertions using only public numeric aggregates."""
+    if tool_mode != "mcp-only":
+        return
+    mcp_calls = summary.get("mcpTeamCityCalls", 0)
+    cli_calls = summary.get("teamcityCliCalls", 0)
+    checks["requiredMcpToolUse"] = {
+        "expected": True,
+        "observed": mcp_calls > 0,
+        "detail": f"{mcp_calls} TeamCity MCP call(s)",
+    }
+    checks["forbiddenCliToolUse"] = {
+        "expected": True,
+        "observed": cli_calls == 0,
+        "detail": f"{cli_calls} TeamCity CLI call(s)",
+    }
+    for name in ("requiredMcpToolUse", "forbiddenCliToolUse"):
+        check = checks[name]
+        check["passed"] = check["expected"] == check["observed"]
 
 
 # --------------------------------------------------------------------------- #
@@ -1183,11 +1223,13 @@ def mcp_configuration_error_category(tool_mode: str, checks: dict, summary: dict
     """Classify a failed pure-MCP configuration run from safe aggregates only."""
     if tool_mode != "mcp-only":
         return None
+    if (checks.get("requiredMcpToolUse") or {}).get("passed") is False:
+        return "mcp-not-invoked"
+    if (checks.get("forbiddenCliToolUse") or {}).get("passed") is False:
+        return "mcp-cli-invoked"
     configured = (checks.get("configurationValidated") or {}).get("passed")
     if configured is not False:
         return None
-    if summary.get("mcpTeamCityCalls", 0) == 0:
-        return "mcp-not-invoked"
     return "mcp-no-configuration"
 
 
@@ -1363,6 +1405,7 @@ def run(
 
         prompt = case["prompt"].replace("{{teamcity.server}}", url) \
                                .replace("{{teamcity.targetProject}}", target_project)
+        prompt += transport_prompt_contract(tool_mode)
         if not fixture_case:
             prompt += (
                 "\n\nRepository context: the checked-out default branch is "
@@ -1451,6 +1494,9 @@ def run(
             result["toolCalls"] = observed["toolCalls"]
             result["jobs"] = observed["jobs"]
             result["checks"] = grade_configuration(case, observed)
+            add_transport_checks(
+                result["checks"], tool_mode, result["agentToolSummary"]
+            )
             set_graded_status(result, agent_run)
             if result.get("errorCategory") is None:
                 result["errorCategory"] = mcp_configuration_error_category(
