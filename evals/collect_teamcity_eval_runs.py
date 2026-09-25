@@ -38,6 +38,9 @@ USAGE_FIELDS = (
     "inputTokens", "outputTokens", "cacheReadTokens",
     "cacheWriteTokens", "totalCostUsd",
 )
+TOOL_SUMMARY_FIELDS = (
+    "totalCalls", "mcpTeamCityCalls", "teamcityCliCalls", "otherCalls",
+)
 
 
 def teamcity_cli():
@@ -104,6 +107,19 @@ def safe_agent_usage(value):
         name: value[name]
         for name in USAGE_FIELDS
         if isinstance(value.get(name), (int, float))
+        and not isinstance(value.get(name), bool)
+        and value[name] >= 0
+    }
+
+
+def safe_agent_tool_summary(value):
+    """Retain fixed numeric tool-surface counters, never calls or inputs."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        name: value[name]
+        for name in TOOL_SUMMARY_FIELDS
+        if isinstance(value.get(name), int)
         and not isinstance(value.get(name), bool)
         and value[name] >= 0
     }
@@ -298,6 +314,7 @@ def download_result(warnings, server, run_id):
             "agentExitCode": result.get("agentExitCode"),
             "agentTimedOut": result.get("agentTimedOut"),
             "agentUsage": safe_agent_usage(result.get("agentUsage")),
+            "agentToolSummary": safe_agent_tool_summary(result.get("agentToolSummary")),
             "errorCategory": error_category,
             "checks": {
                 name: {"passed": check.get("passed")}
