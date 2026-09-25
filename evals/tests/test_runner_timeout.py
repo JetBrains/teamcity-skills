@@ -291,6 +291,19 @@ class AgentTimeoutTest(unittest.TestCase):
         self.assertEqual("enterprise-policy-blocked", runtime["connectionStatus"])
         self.assertFalse(runtime["teamcityToolsAdvertised"])
 
+    def test_mcp_runtime_classifies_safe_plain_startup_policy_warning(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trace = pathlib.Path(directory) / "trace.log"
+            trace.write_text(
+                "--- prompt ---\nprivate\n--- output ---\n"
+                "Warning: an enterprise MCP config (managed-mcp.json) is present and "
+                "has exclusive control over MCP servers.\n"
+            )
+
+            runtime = run_case.mcp_runtime(trace)
+
+        self.assertEqual("enterprise-managed-config", runtime["connectionStatus"])
+
     def test_mcp_runtime_detects_advertised_tools_without_retaining_names(self):
         with tempfile.TemporaryDirectory() as directory:
             trace = pathlib.Path(directory) / "trace.log"
