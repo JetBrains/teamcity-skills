@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "clean-spring-boot-maven",
   "kind": "first-green-build",
-  "status": "draft",
+  "status": "active",
   "skill": "teamcity-first-green-build",
   "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} and get the first build green. Keep the repository source unchanged, use Maven verification on an explicit Java 21 image, import the Maven JUnit XML reports, and publish the application JAR.",
   "teamcity": {
