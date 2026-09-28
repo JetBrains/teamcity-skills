@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "clean-spring-boot-maven-pipeline",
   "kind": "pipeline-configuration",
-  "status": "active",
+  "status": "draft",
   "skill": "teamcity-first-green-build",
-  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository: inspect the repository, create the VCS root and the smallest useful pipeline, validate the configuration against the server, and stop there. Do not queue any build.",
+  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository: inspect the repository, create the VCS root and the smallest useful pipeline, use an explicit Java 21 container image for its Maven verification step, publish the application JAR, validate the configuration against the server, and stop there. Do not queue any build.",
   "teamcity": {
     "server": "runner-configured",
     "targetProject": "runner-configured"
@@ -38,6 +38,11 @@
         "stepType": "maven",
         "property": "goals",
         "matches": "(?i)(^|\\s)(verify|package)(\\s|$)"
+      },
+      {
+        "stepType": "maven",
+        "property": "docker-image",
+        "matches": "(?i)(?:temurin|openjdk|jdk)[^\\n]*21|21[^\\n]*(?:jdk|java)"
       }
     ],
     "requiredArtifactRules": ["(?i)\\.jar"],
@@ -50,6 +55,11 @@
             "stepType": "maven",
             "property": "goals",
             "matches": "(?i)(^|\\s)(verify|package)(\\s|$)"
+          },
+          {
+            "stepType": "maven",
+            "property": "docker-image",
+            "matches": "(?i)(?:temurin|openjdk|jdk)[^\\n]*21|21[^\\n]*(?:jdk|java)"
           }
         ],
         "requiredArtifactRules": ["(?i)\\.jar"]

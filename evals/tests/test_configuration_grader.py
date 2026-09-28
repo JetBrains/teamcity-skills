@@ -16,6 +16,8 @@ def load_module(name, filename):
 
 run_case = load_module("run_case_configuration_test", "run_case.py")
 TOOL_USE_CASE = EVALS / "pipeline-configuration/cases/teamcity-cli-not-curl.json"
+CLEAN_SPRING_CASE = EVALS / "pipeline-configuration/cases/clean-spring-boot-maven-pipeline.json"
+SPRING_DEMO_CASE = EVALS / "pipeline-configuration/cases/spring-boot-demo-gradle-testcontainers-pipeline.json"
 
 
 CASE = {
@@ -117,6 +119,73 @@ class ConfigurationGraderTest(unittest.TestCase):
         matched, _ = run_case.toolchain_evidence({}, "25", jobs)
 
         self.assertFalse(matched)
+
+    def test_clean_spring_requires_a_java_21_maven_image(self):
+        case = json.loads(CLEAN_SPRING_CASE.read_text())
+        observed = {
+            "jobs": [
+                job(
+                    "verify",
+                    "Maven verify",
+                    "Linux",
+                    [step("maven", goals="clean verify", **{"docker-image": "eclipse-temurin:17-jdk"})],
+                    "target/app.jar",
+                )
+            ],
+            "mutations": [],
+            "toolCalls": [],
+        }
+
+        checks = run_case.grade_configuration(case, observed)
+        self.assertFalse(checks["requiredStepProperties"]["passed"])
+
+        observed["jobs"][0]["steps"][0]["properties"]["docker-image"] = "eclipse-temurin:21-jdk"
+        checks = run_case.grade_configuration(case, observed)
+        self.assertTrue(checks["requiredStepProperties"]["passed"])
+
+    def test_spring_demo_keeps_docker_backed_tests_out_of_package_job(self):
+        case = json.loads(SPRING_DEMO_CASE.read_text())
+        jdk_image = "eclipse-temurin:21-jdk"
+        observed = {
+            "jobs": [
+                job(
+                    "build-package",
+                    "Build package",
+                    "self-hosted Docker available",
+                    [
+                        step(
+                            "gradle",
+                            tasks="generateJooq openApiGenerate bootJar",
+                            **{"docker-image": jdk_image},
+                        )
+                    ],
+                    "build/libs/spring-boot-demo-local.jar",
+                ),
+                job(
+                    "testcontainers-tests",
+                    "Testcontainers tests",
+                    "self-hosted Docker available",
+                    [
+                        step("script", **{"script-content": "docker info"}),
+                        step(
+                            "gradle",
+                            tasks="generateJooq openApiGenerate test",
+                            **{"docker-image": jdk_image},
+                        ),
+                    ],
+                    "build/test-results/test/TEST-example.xml",
+                ),
+            ],
+            "mutations": [],
+            "toolCalls": [],
+        }
+
+        checks = run_case.grade_configuration(case, observed)
+        self.assertTrue(checks["requiredJobs"]["passed"])
+
+        observed["jobs"][0]["steps"][0]["properties"]["tasks"] += " test"
+        checks = run_case.grade_configuration(case, observed)
+        self.assertFalse(checks["requiredJobs"]["passed"])
 
     def test_per_job_contracts_accept_correct_topology(self):
         checks = run_case.grade_configuration(CASE, observed_jobs())

@@ -607,6 +607,29 @@ def grade_configuration(case: dict, observed: dict) -> dict:
             "detail": f"missing {missing}" if missing else "all present",
         }
 
+    if "forbiddenStepProperties" in expected:
+        used = []
+        for forbidden in expected["forbiddenStepProperties"]:
+            pattern = re.compile(forbidden["matches"]) if "matches" in forbidden else None
+            if any(
+                step["type"] == forbidden["stepType"]
+                and forbidden["property"] in step["properties"]
+                and (
+                    pattern is None
+                    or pattern.search(str(step["properties"][forbidden["property"]]))
+                )
+                for job in jobs for step in job["steps"]
+            ):
+                used.append(
+                    f"{forbidden['stepType']}.{forbidden['property']}"
+                    + (f" ~ {forbidden['matches']}" if pattern else "")
+                )
+        checks["forbiddenStepProperties"] = {
+            "expected": True,
+            "observed": not used,
+            "detail": f"present {used}" if used else "none present",
+        }
+
     if "requiredArtifactRules" in expected:
         rules = "\n".join(job["artifactRules"] for job in jobs)
         missing = [r for r in expected["requiredArtifactRules"] if not re.search(r, rules)]
@@ -666,6 +689,22 @@ def grade_configuration(case: dict, observed: dict) -> dict:
                 if not satisfied:
                     failures.append(
                         f"{matcher!r} missing {want['stepType']}.{want['property']}"
+                    )
+
+            for forbidden in contract.get("forbiddenStepProperties", []):
+                pattern = re.compile(forbidden["matches"]) if "matches" in forbidden else None
+                if any(
+                    step["type"] == forbidden["stepType"]
+                    and forbidden["property"] in step["properties"]
+                    and (
+                        pattern is None
+                        or pattern.search(str(step["properties"][forbidden["property"]]))
+                    )
+                    for step in job["steps"]
+                ):
+                    failures.append(
+                        f"{matcher!r} contains forbidden "
+                        f"{forbidden['stepType']}.{forbidden['property']}"
                     )
 
             missing_artifacts = [

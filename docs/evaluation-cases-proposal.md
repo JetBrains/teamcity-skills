@@ -105,8 +105,8 @@ and is not covered by this contract.
 
 ### Current Evaluation Cases
 
-The suite currently contains 12 contracts over 7 unique repositories: 2
-first-green builds, 8 configuration-only evaluations, 1 deterministic queue
+The suite currently contains 15 contracts over 8 unique repositories: 4
+first-green builds, 9 configuration-only evaluations, 1 deterministic queue
 stall diagnosis, and 1 TeamCity access preflight. Configuration-only and queue
 diagnosis cases are the default expansion path because they exercise Claude
 without compiling the target project.
@@ -119,7 +119,10 @@ without compiling the target project.
 | `teamcity-cli-not-curl` | The agent uses authenticated first-class TeamCity commands rather than raw REST through `curl`, `wget`, `/app/rest/`, or `teamcity api`. |
 | `queued-no-compatible-agent` | Once a run has already been queued for over two minutes, the agent checks inventory, job incompatibility reasons, and unresolved stored-pipeline parameters by its second status observation, then stops instead of polling or requeueing. The runner simulates the queue and consumes no target build agent. |
 | `spring-petclinic-maven-pipeline` | The configuration-only Spring Petclinic case uses its documented Maven verification path and publishes the JAR. |
-| `clean-spring-boot-maven-pipeline` | A Maven-only Spring Boot project receives a Maven verification job and JAR publication contract; a later first-green case must prove Java 21. |
+| `clean-spring-boot-maven-pipeline` | A Maven-only Spring Boot project receives a Java 21 Maven verification job and JAR publication contract without running the target project. |
+| `clean-spring-boot-maven` | The Clean Spring project must reach a first green Maven verification build on Java 21, import its JUnit XML, and publish its JAR. |
+| `spring-boot-demo-gradle-testcontainers-pipeline` | A Kotlin/Gradle Spring Boot project gets separate Java 21 build/package and Docker-backed Testcontainers test jobs. Both generate its JOOQ/OpenAPI sources; the package job must not silently run tests. |
+| `spring-boot-demo-gradle-testcontainers` | The same repository must reach a first green Java 21 build with generated sources, Docker-backed Testcontainers tests, JUnit XML, and a published JAR. |
 | `spring-boot-kotlin-gradle-java25-pipeline` | A Spring Boot 4/Gradle repository gets exactly one Gradle build job using an exact JDK 25 container and publishes its JAR even when the ephemeral host does not preinstall JDK 25. |
 | `kmm-basic-sample-mobile-targets` | JetBrains' official basic KMP sample gets exactly three shared-test, Android, and macOS/iOS jobs; the APK and simulator app must be published by their corresponding jobs. |
 | `jetcaster-kmp-multi-targets` | Jetcaster preserves exactly seven independent test, Android, iOS, desktop-platform, and Wasm jobs, with each task, platform agent, and artifact checked inside the corresponding job. |
@@ -232,10 +235,11 @@ rules, agent requirements - in minutes, without a build agent, and without the
 failure modes of a real build. A green-build case costs tens of minutes and
 cloud-agent provisioning, so it cannot cover many repositories; this one can.
 
-`stack.jdk` remains useful input metadata for a configuration-only case, but it
-is not runtime evidence. Only a first-green case checks TeamCity's resulting
-build properties and can prove that the requested JDK actually executed the
-build.
+`stack.jdk` remains useful input metadata for a configuration-only case. A
+configuration contract can additionally require an explicit JDK image or
+environment declaration, but only a first-green case checks TeamCity's
+resulting build properties and can prove that the requested JDK actually
+executed the build.
 
 The runner reads the build configurations the agent created, skipping the
 composite pipeline heads a pipeline materialises per chain, and checks:
@@ -245,6 +249,7 @@ composite pipeline heads a pipeline materialises per chain, and checks:
 | `minimumJobs` | Did independent targets get a job each, or one job that builds everything? |
 | `requiredStepTypes` | Was the dedicated runner used where the skill requires one? |
 | `requiredStepProperties` | Do the steps carry the properties the server's schema needs, with the values the case demands? |
+| `forbiddenStepProperties` | Does a job avoid a command which belongs in a separate job, rather than silently collapsing the topology? |
 | `requiredArtifactRules` | Is anything published at all, and the right thing? |
 | `requiredAgentRequirements` | Does an iOS job name a macOS agent, rather than a generic requirement? |
 | `sourceMutations` | Were the sources left alone? |
@@ -640,6 +645,7 @@ artifacts.
 | --- | --- | --- |
 | [spring-projects/spring-petclinic](https://github.com/spring-projects/spring-petclinic) | Spring Boot 4, Maven, Java 17, H2 by default with optional PostgreSQL | Maven verification, JDK 17, and JAR publication |
 | [kawser2133/clean-spring-boot-project](https://github.com/kawser2133/clean-spring-boot-project) | Spring Boot, Maven, Java 21, JPA, Security, Mail, Actuator | Maven and JDK 21 setup |
+| [usmanzaheer1995/spring-boot-demo](https://github.com/usmanzaheer1995/spring-boot-demo) | Spring Boot, Kotlin, Gradle, Java 21, JOOQ/OpenAPI generation, Testcontainers | Separate generated-source build/package and Docker-backed test jobs |
 | [unildhiman90/RecipeApp-KMP-Compose-Multiplatform](https://github.com/unildhiman90/RecipeApp-KMP-Compose-Multiplatform) | Compose Multiplatform, Android and iOS | Gradle setup; macOS agent requirement for iOS |
 | [tkuenneth/CMP-Unit-Converter](https://github.com/tkuenneth/CMP-Unit-Converter) | Compose Multiplatform, Android, iOS, desktop, Java 17, KSP | Android, iOS, and desktop target selection |
 | [inassar0/kotlin-multiplatform-template](https://github.com/inassar0/kotlin-multiplatform-template) | Kotlin Multiplatform template, Android, iOS, desktop, Java 17 | Baseline for generated YAML and Kotlin DSL |
