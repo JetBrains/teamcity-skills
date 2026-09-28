@@ -589,8 +589,14 @@ class AgentTimeoutTest(unittest.TestCase):
 
         self.assertEqual("mcp-only", result["toolMode"])
         self.assertEqual("b" * 64, result["caseVersion"])
-        self.assertEqual("claude-teamcity", result["agentConfigId"])
-        self.assertEqual("1.2.3", result["agentVersion"])
+        self.assertEqual(
+            collector.agent_metadata_fingerprint("claude-teamcity"),
+            result["agentConfigId"],
+        )
+        self.assertEqual(
+            collector.agent_metadata_fingerprint("1.2.3"),
+            result["agentVersion"],
+        )
         self.assertEqual(
             {"totalCalls": 2, "mcpTeamCityCalls": 1},
             result["agentToolSummary"],
@@ -677,10 +683,11 @@ class AgentTimeoutTest(unittest.TestCase):
         self.assertEqual(1, observed[("example", "mcp-only", "skill")]["history"]["sampleSize"])
 
     def test_vcs_revision_reads_the_pipeline_head_change(self):
+        revision = "0123456789abcdef" + "0" * 24
         self.assertEqual(
-            "0123456789abcdef",
+            revision,
             collector.vcs_revision(
-                {"lastChanges": {"change": [{"version": "0123456789abcdef"}]}}
+                {"lastChanges": {"change": [{"version": revision}]}}
             ),
         )
 

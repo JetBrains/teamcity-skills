@@ -82,6 +82,10 @@ not contain or assume OAuth sessions, OAuth tokens, other credentials, or
 personal staging URLs. The runner supplies the server URL, target project, and
 cleanup scope.
 
+Never commit real TeamCity server hostnames in eval code, documentation, tests,
+or fixtures. Use `teamcity.example` in examples; supply the actual server URL
+only at runtime.
+
 ### Prompt Placeholders
 
 `teamcity.server` and `teamcity.targetProject` are the sentinel value
@@ -374,6 +378,14 @@ categories. In particular it keeps skill-output failures apart from agent
 permission, JCP injection, VCS, and container-runtime failures. It never
 includes an agent trajectory, prompt, raw build log, temporary project ID, or
 trace path in the JSON report.
+
+The shareable `runs.json` and HTML report omit raw TeamCity `statusText`, agent
+names, server and build URLs, and server-side pipeline and job configuration
+IDs. The collector accepts only known case IDs, fixed statuses, fixed check
+names, and Boolean check outcomes from historical result artifacts. Agent
+configuration and version labels are fingerprinted so runs remain comparable
+without exposing the raw labels. Numeric evaluator run IDs and Git revisions
+remain for deduplication and SHA-scoped history.
 
 ```bash
 python3 evals/collect_teamcity_eval_runs.py \

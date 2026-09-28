@@ -19,7 +19,9 @@ TeamCity token argument: the CLI's configured authentication is used.
 
 import argparse
 import datetime as dt
+import hashlib
 import json
+import math
 import os
 import pathlib
 import re
@@ -33,7 +35,10 @@ EVAL_JOB_NAMES = {"Run configuration eval", "Run eval case"}
 ARMS = ("skill", "baseline")
 TOOL_MODES = ("cli-only", "mcp-only", "cli+mcp")
 SAFE_CASE_VERSION = re.compile(r"^[a-f0-9]{64}$")
+SAFE_REVISION = re.compile(r"^[a-fA-F0-9]{40}$")
 SAFE_AGENT_METADATA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+SAFE_BUILD_STATES = {"queued", "running", "finished"}
+SAFE_BUILD_STATUSES = {"SUCCESS", "FAILURE", "ERROR", "UNKNOWN", "CANCELED"}
 USAGE_FIELDS = (
     "inputTokens", "outputTokens", "cacheReadTokens",
     "cacheWriteTokens", "totalCostUsd",
@@ -52,6 +57,26 @@ SAFE_ERROR_CATEGORIES = {
     "mcp-local-probe-not-invoked", "mcp-teamcity-tools-not-advertised",
     "mcp-teamcity-tools-not-used-after-local-probe",
 }
+SAFE_CASE_STATUSES = {"active", "draft", "aspirational"}
+SAFE_RESULT_STATUSES = {"passed", "failed", "errored", "dry-run"}
+SAFE_GRADE_STATUSES = {"passed", "failed"}
+# These are the fixed check keys emitted by run_case.py, plus the legacy "build"
+# key. Never publish a free-form check name from an older result artifact.
+SAFE_CHECK_NAMES = {
+    "configurationValidated", "firstBuild", "testsExecutedAndReported",
+    "artifactsPublished", "toolchain", "sourceMutations",
+    "requiredMcpToolUse", "forbiddenCliToolUse", "requiredLocalMcpProbeUse",
+    "minimumJobs", "jobCount", "requiredStepTypes", "requiredStepProperties",
+    "forbiddenStepProperties", "requiredArtifactRules", "requiredAgentRequirements",
+    "requiredJobs", "toolUse", "compatibilityCheckpoint", "statusCheckLimit",
+    "diagnosticAgentInventory", "diagnosticJobIncompatibility",
+    "diagnosticStoredParameters", "requiredDiagnostics", "waitLimit",
+    "noBlindRetry", "diagnosisReported", "build",
+}
+
+
+def known_value(value, allowed):
+    return value if isinstance(value, str) and value in allowed else None
 
 
 def teamcity_cli():
@@ -91,8 +116,8 @@ def iso_time(value):
         return None
     try:
         return dt.datetime.strptime(value, "%Y%m%dT%H%M%S%z").isoformat()
-    except ValueError:
-        return value
+    except (TypeError, ValueError):
+        return None
 
 
 def duration_seconds(run):
@@ -108,7 +133,8 @@ def duration_seconds(run):
 
 def vcs_revision(run):
     changes = (run.get("lastChanges") or {}).get("change") or []
-    return changes[0].get("version") if changes else None
+    version = changes[0].get("version") if changes else None
+    return version if isinstance(version, str) and SAFE_REVISION.fullmatch(version) else None
 
 
 def safe_agent_usage(value):
@@ -120,6 +146,7 @@ def safe_agent_usage(value):
         if isinstance(value.get(name), (int, float))
         and not isinstance(value.get(name), bool)
         and value[name] >= 0
+        and math.isfinite(value[name])
     }
 
 
@@ -147,8 +174,9 @@ def safe_mcp_runtime(value):
         "connection-failed", "initialization-failed",
     }
     result = {}
-    if value.get("connectionStatus") in allowed_statuses:
-        result["connectionStatus"] = value["connectionStatus"]
+    status = known_value(value.get("connectionStatus"), allowed_statuses)
+    if status:
+        result["connectionStatus"] = status
     if isinstance(value.get("teamcityToolsAdvertised"), bool):
         result["teamcityToolsAdvertised"] = value["teamcityToolsAdvertised"]
     if isinstance(value.get("localProbeToolsAdvertised"), bool):
@@ -158,7 +186,7 @@ def safe_mcp_runtime(value):
 
 def safe_error_category(value):
     """Preserve only the runner's fixed, non-sensitive error taxonomy."""
-    return value if value in SAFE_ERROR_CATEGORIES else None
+    return known_value(value, SAFE_ERROR_CATEGORIES)
 
 
 def safe_case_version(value):
@@ -167,14 +195,20 @@ def safe_case_version(value):
 
 
 def safe_agent_metadata(value):
-    """Retain opaque, non-secret agent identity labels only."""
+    """Validate bounded agent profile labels before fingerprinting."""
     return value if isinstance(value, str) and SAFE_AGENT_METADATA.fullmatch(value) else None
+
+
+def agent_metadata_fingerprint(value):
+    """Preserve profile equality without publishing a raw agent label."""
+    label = safe_agent_metadata(value)
+    return hashlib.sha256(label.encode()).hexdigest() if label else None
 
 
 def tool_mode_of(result):
     """Keep legacy artifacts comparable while separating new transport modes."""
     mode = result.get("toolMode", "cli-only") if isinstance(result, dict) else "cli-only"
-    return mode if mode in TOOL_MODES else "unknown"
+    return known_value(mode, TOOL_MODES) or "unknown"
 
 
 def metric_score(result):
@@ -285,7 +319,7 @@ def inventory():
     return cases
 
 
-def download_result(warnings, server, run_id):
+def download_result(warnings, server, run_id, known_case_ids=None):
     """Read only eval-result.json; agent traces must not enter the report."""
     artifact_list = cli(server, "run", "artifacts", str(run_id), "--path", "publish", "--json")
     if artifact_list.returncode:
@@ -322,9 +356,14 @@ def download_result(warnings, server, run_id):
         except json.JSONDecodeError:
             warnings.append(f"Run {run_id} published malformed eval-result.json")
             return None
+        if not isinstance(result, dict):
+            warnings.append(f"Run {run_id} published malformed eval-result.json")
+            return None
         # Current runners publish only a minimal verdict. Support legacy
         # results defensively without copying their raw diagnostics onward.
-        checks = result.get("checks") or {}
+        checks = result.get("checks") if isinstance(result.get("checks"), dict) else {}
+        if known_case_ids is None:
+            known_case_ids = {case["id"] for case in inventory()}
         trace_tail = "\n".join(
             line for line in result.get("agentTraceTail") or [] if isinstance(line, str)
         ).lower()
@@ -336,17 +375,23 @@ def download_result(warnings, server, run_id):
         ):
             error_category = "agent-permission-failure"
         return {
-            "caseId": result.get("caseId"),
-            "caseStatus": result.get("caseStatus"),
+            "caseId": known_value(result.get("caseId"), known_case_ids),
+            "caseStatus": known_value(result.get("caseStatus"), SAFE_CASE_STATUSES),
             "caseVersion": safe_case_version(result.get("caseVersion")),
-            "status": result.get("status"),
-            "gradeStatus": result.get("gradeStatus"),
-            "arm": result.get("arm"),
+            "status": known_value(result.get("status"), SAFE_RESULT_STATUSES),
+            "gradeStatus": known_value(result.get("gradeStatus"), SAFE_GRADE_STATUSES),
+            "arm": known_value(result.get("arm"), ARMS),
             "toolMode": tool_mode_of(result),
-            "agentConfigId": safe_agent_metadata(result.get("agentConfigId")),
-            "agentVersion": safe_agent_metadata(result.get("agentVersion")),
-            "agentExitCode": result.get("agentExitCode"),
-            "agentTimedOut": result.get("agentTimedOut"),
+            "agentConfigId": agent_metadata_fingerprint(result.get("agentConfigId")),
+            "agentVersion": agent_metadata_fingerprint(result.get("agentVersion")),
+            "agentExitCode": (
+                result.get("agentExitCode")
+                if type(result.get("agentExitCode")) is int else None
+            ),
+            "agentTimedOut": (
+                result.get("agentTimedOut")
+                if isinstance(result.get("agentTimedOut"), bool) else None
+            ),
             "agentUsage": safe_agent_usage(result.get("agentUsage")),
             "agentToolSummary": safe_agent_tool_summary(result.get("agentToolSummary")),
             "permissionFailureSurface": (
@@ -357,9 +402,12 @@ def download_result(warnings, server, run_id):
             "mcpRuntime": safe_mcp_runtime(result.get("mcpRuntime")),
             "errorCategory": error_category,
             "checks": {
-                name: {"passed": check.get("passed")}
+                name: {
+                    "passed": check.get("passed")
+                    if isinstance(check.get("passed"), bool) else None
+                }
                 for name, check in checks.items()
-                if isinstance(check, dict)
+                if name in SAFE_CHECK_NAMES and isinstance(check, dict)
             },
         }
 
@@ -451,24 +499,16 @@ def classify(server, run, result):
     return log_category(server, run["id"])
 
 
-def normalize_run(server, warnings, node):
+def normalize_run(server, warnings, node, known_case_ids=None):
     detailed = cli_json(warnings, server, "run", "view", str(node["id"]), "--json") or node
     result = None
     if (detailed.get("state") or "").lower() == "finished":
-        result = download_result(warnings, server, detailed["id"])
+        result = download_result(warnings, server, detailed["id"], known_case_ids)
     category, detail = classify(server, detailed, result)
-    triggered = detailed.get("triggered") or {}
     return {
         "id": detailed["id"],
-        "number": detailed.get("number"),
-        "name": detailed.get("buildType", {}).get("name") or node.get("name"),
-        "job": detailed.get("buildTypeId") or node.get("buildTypeId"),
-        "state": detailed.get("state"),
-        "status": detailed.get("status"),
-        "statusText": detailed.get("statusText"),
-        "url": detailed.get("webUrl"),
-        "agent": (detailed.get("agent") or {}).get("name"),
-        "trigger": triggered.get("type"),
+        "state": known_value(detailed.get("state"), SAFE_BUILD_STATES),
+        "status": known_value(detailed.get("status"), SAFE_BUILD_STATUSES),
         "queuedAt": iso_time(detailed.get("queuedDate")),
         "startedAt": iso_time(detailed.get("startDate")),
         "finishedAt": iso_time(detailed.get("finishDate")),
@@ -498,7 +538,6 @@ def latest_arm_observations(all_jobs, window_size=5, target_min_samples=3):
                 "classification": job["classification"],
                 "detail": job["classificationDetail"],
                 "runId": job["id"],
-                "url": job["url"],
                 "arm": arm,
                 "toolMode": tool_mode,
                 "revision": job.get("revision"),
@@ -565,20 +604,22 @@ def compare_arms(skill, baseline, target_min_samples=3):
 def collect(server, pipelines, limit, excluded_job_names):
     warnings = []
     report = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "server": server.rstrip("/"),
         "cases": inventory(),
         "pipelines": [],
         "warnings": warnings,
     }
     all_jobs_by_id = {}
     normalized_by_id = {}
+    known_case_ids = {case["id"] for case in report["cases"]}
 
     def normalized(node):
         identifier = node["id"]
         if identifier not in normalized_by_id:
-            normalized_by_id[identifier] = normalize_run(server, warnings, node)
+            normalized_by_id[identifier] = normalize_run(
+                server, warnings, node, known_case_ids
+            )
         return normalized_by_id[identifier]
 
     for pipeline in pipelines:
@@ -612,12 +653,8 @@ def collect(server, pipelines, limit, excluded_job_names):
                 )
             normalized_head = {
                 "id": head["id"],
-                "number": detailed_head.get("number"),
-                "state": detailed_head.get("state"),
-                "status": detailed_head.get("status"),
-                "statusText": detailed_head.get("statusText"),
-                "url": detailed_head.get("webUrl"),
-                "trigger": (detailed_head.get("triggered") or {}).get("type"),
+                "state": known_value(detailed_head.get("state"), SAFE_BUILD_STATES),
+                "status": known_value(detailed_head.get("status"), SAFE_BUILD_STATUSES),
                 "queuedAt": iso_time(detailed_head.get("queuedDate")),
                 "startedAt": iso_time(detailed_head.get("startDate")),
                 "finishedAt": iso_time(detailed_head.get("finishDate")),
@@ -625,7 +662,7 @@ def collect(server, pipelines, limit, excluded_job_names):
                 "jobs": jobs,
             }
             heads.append(normalized_head)
-        report["pipelines"].append({"id": pipeline, "runs": heads})
+        report["pipelines"].append({"id": f"pipeline-{len(report['pipelines']) + 1}", "runs": heads})
 
     all_jobs = list(all_jobs_by_id.values())
     observed = latest_arm_observations(all_jobs)

@@ -1,6 +1,10 @@
+import ast
 import importlib.util
+import json
 import pathlib
+import subprocess
 import unittest
+from unittest import mock
 
 
 EVALS = pathlib.Path(__file__).resolve().parents[1]
@@ -18,6 +22,126 @@ collector = load_module("collect_eval_runs_test", "collect_teamcity_eval_runs.py
 
 
 class EvalReportTest(unittest.TestCase):
+    def test_report_check_allowlist_covers_runner_check_keys(self):
+        tree = ast.parse((EVALS / "run_case.py").read_text())
+        names = {
+            node.slice.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Subscript)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "checks"
+            and isinstance(node.slice, ast.Constant)
+            and isinstance(node.slice.value, str)
+        }
+        names.update({
+            value.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "diagnostic_checks"
+                for target in node.targets
+            )
+            and isinstance(node.value, ast.Dict)
+            for value in node.value.values
+            if isinstance(value, ast.Constant) and isinstance(value.value, str)
+        })
+        self.assertLessEqual(names, collector.SAFE_CHECK_NAMES)
+
+    def test_legacy_result_strings_do_not_escape_into_shareable_report(self):
+        private = "internal-only-canary"
+        artifact = {
+            "caseId": private,
+            "caseStatus": private,
+            "status": "failed",
+            "gradeStatus": private,
+            "arm": "skill",
+            "agentConfigId": private,
+            "agentVersion": private,
+            "agentExitCode": private,
+            "checks": {
+                private: {"passed": False},
+                "firstBuild": {"passed": False},
+            },
+        }
+
+        def cli(_server, *arguments):
+            if arguments[1] == "artifacts":
+                return subprocess.CompletedProcess(
+                    [], 0, stdout=json.dumps({"file": [{"name": "eval-result.json"}]}), stderr=""
+                )
+            if arguments[1] == "download":
+                destination = pathlib.Path(arguments[arguments.index("--output") + 1])
+                (destination / "eval-result.json").write_text(json.dumps(artifact))
+                return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+            self.fail(f"unexpected CLI call: {arguments}")
+
+        with mock.patch.object(collector, "cli", side_effect=cli):
+            result = collector.download_result([], "https://teamcity.example", 42, {"example"})
+
+        category, detail = collector.classify(
+            "https://teamcity.example",
+            {"id": 42, "state": "finished", "status": "FAILURE"},
+            result,
+        )
+        self.assertEqual("skill-output-failed", category)
+        self.assertEqual("failed assertions: firstBuild", detail)
+        self.assertIsNone(result["caseId"])
+        self.assertIsNone(result["caseStatus"])
+        self.assertIsNone(result["gradeStatus"])
+        self.assertIsNone(result["agentExitCode"])
+        self.assertEqual({"firstBuild": {"passed": False}}, result["checks"])
+        self.assertNotIn(private, json.dumps(result))
+
+    def test_shareable_report_excludes_internal_teamcity_details(self):
+        private = "internal-only-canary"
+        server = f"https://{private}.example"
+
+        def cli_json(_warnings, _server, *args):
+            if args[:2] == ("run", "list"):
+                return {"build": [{"id": 43, "name": "Pipeline Head"}]}
+            if args[:2] == ("run", "tree"):
+                return {"dependencies": [{"id": 42, "name": "Run eval case"}]}
+            if args[:2] == ("run", "view"):
+                return {
+                    "id": int(args[2]),
+                    "state": "finished",
+                    "status": private,
+                    "statusText": private,
+                    "webUrl": f"{server}/build/{args[2]}",
+                    "agent": {"name": private},
+                    "buildTypeId": f"{private}-job",
+                    "triggered": {"type": private},
+                    "queuedDate": private,
+                    "lastChanges": {"change": [{"version": private}]},
+                }
+            self.fail(f"unexpected CLI call: {args}")
+
+        result = {
+            "caseId": "example",
+            "arm": "skill",
+            "toolMode": "cli-only",
+            "status": "passed",
+            "checks": {"firstBuild": {"passed": True}},
+        }
+        with mock.patch.object(collector, "cli_json", side_effect=cli_json), \
+                mock.patch.object(collector, "download_result", return_value=result), \
+                mock.patch.object(collector, "inventory", return_value=[]):
+            report = collector.collect(server, [f"{private}-pipeline"], 1, [])
+
+        self.assertNotIn(private, json.dumps(report))
+        self.assertEqual(3, report["schemaVersion"])
+        self.assertEqual("pipeline-1", report["pipelines"][0]["id"])
+        self.assertEqual(42, report["pipelines"][0]["runs"][0]["jobs"][0]["id"])
+
+        # Older snapshots may still carry these fields; the HTML does not show them.
+        report["server"] = server
+        job = report["pipelines"][0]["runs"][0]["jobs"][0]
+        job.update(agent=private, statusText=private, url=f"{server}/build/42")
+        html = renderer.render(report)
+        self.assertNotIn(private, html)
+        self.assertNotIn('<th scope="col">Agent</th>', html)
+        self.assertNotIn("<a href=", html)
+
     def test_inventory_hides_internal_source_mutation_guard(self):
         cases = collector.inventory()
 

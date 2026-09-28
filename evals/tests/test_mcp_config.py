@@ -28,12 +28,12 @@ class TeamCityMcpConfigTest(unittest.TestCase):
                 "mcpServers": {
                     "teamcity": {
                         "type": "http",
-                        "url": "https://teamcity-nightly.labs.intellij.net/app/mcp",
+                        "url": "https://teamcity.example/app/mcp",
                         "headers": {"Authorization": "Bearer test-token"},
                     }
                 }
             },
-            mcp_config.config("https://teamcity-nightly.labs.intellij.net/", "test-token"),
+            mcp_config.config("https://teamcity.example/", "test-token"),
         )
 
     def test_config_rejects_non_https_or_embedded_query(self):
