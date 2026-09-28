@@ -20,6 +20,7 @@ def load_module(name, filename):
 
 run_case = load_module("run_case_queue_stall_test", "run_case.py")
 CASE = EVALS / "queue-stall-diagnosis/cases/queued-no-compatible-agent.json"
+JAVA25_CASE = EVALS / "queue-stall-diagnosis/cases/java25-agent-requirement-blocks-provisioning.json"
 
 
 class QueueStallDiagnosisTest(unittest.TestCase):
@@ -44,7 +45,7 @@ class QueueStallDiagnosisTest(unittest.TestCase):
 
         checks = run_case.grade_queue_stall(self.case, observed)
 
-        self.assertTrue(all(check["passed"] for check in checks.values()))
+        self.assertTrue(all(check["passed"] for check in checks.values()), checks)
 
     def test_grader_accepts_first_class_job_view_diagnostic(self):
         observed = {
@@ -122,6 +123,54 @@ class QueueStallDiagnosisTest(unittest.TestCase):
                 check=True,
             )
             self.assertIn("%env.JDK_25%", output.read_text())
+
+            agent = subprocess.run(
+                [*fixture_cli, "agent", "view", "101", "--json"],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            capabilities = json.loads(agent.stdout)["parameters"]
+            self.assertNotIn("env.JDK_25", capabilities)
+            self.assertEqual("false", capabilities["env.DOCKER_AVAILABLE"])
+
+    def test_java25_case_requires_dispatch_and_provisioning_diagnosis(self):
+        case = json.loads(JAVA25_CASE.read_text())
+        observed = {
+            "toolCalls": [
+                'Bash {"command": "teamcity run view 73142 --json"}',
+                'Bash {"command": "teamcity agent list --connected --json"}',
+                'Bash {"command": "teamcity agent view 101 --json"}',
+                'Bash {"command": "teamcity agent jobs 101 --incompatible --json"}',
+                'Bash {"command": "teamcity pipeline pull QueueFixture --output /tmp/queue.yml"}',
+                'Grep {"pattern": "%[^%]+%", "path": "/tmp/queue.yml"}',
+            ],
+            "finalText": (
+                "No compatible agent has JDK 25. The env.JDK_25 requirement is "
+                "unresolved before dispatch and Docker is unavailable. "
+                "Remove the agent requirement, then install JDK 25 in a build "
+                "step after dispatch and set JAVA_HOME."
+            ),
+            "mutations": [],
+        }
+
+        checks = run_case.grade_queue_stall(case, observed)
+        self.assertTrue(all(check["passed"] for check in checks.values()), checks)
+
+        observed["finalText"] = (
+            "No compatible agent has JDK 25. The env.JDK_25 requirement is "
+            "unresolved before dispatch and Docker is unavailable. "
+            "Download JDK 25 in a build step."
+        )
+        checks = run_case.grade_queue_stall(case, observed)
+        self.assertFalse(checks["diagnosisReported"]["passed"])
+
+        observed["toolCalls"] = [
+            call for call in observed["toolCalls"] if "teamcity agent view" not in call
+        ]
+        checks = run_case.grade_queue_stall(case, observed)
+        self.assertFalse(checks["diagnosticAgentRuntimeCapabilities"]["passed"])
 
 
 if __name__ == "__main__":

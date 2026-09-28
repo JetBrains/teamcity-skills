@@ -17,6 +17,7 @@ evals/
   first-green-build/
     cases/
       spring-petclinic-maven-yaml.json
+      spring-boot-kotlin-gradle-java25.json
   pipeline-configuration/
     cases/
       cmp-unit-converter-targets.json
@@ -25,6 +26,7 @@ evals/
   queue-stall-diagnosis/
     cases/
       queued-no-compatible-agent.json
+      java25-agent-requirement-blocks-provisioning.json
   teamcity-access-preflight/
     cases/
       teamcity-mcp-access-permissions.json
@@ -109,9 +111,9 @@ and is not covered by this contract.
 
 ### Current Evaluation Cases
 
-The suite currently contains 15 contracts over 8 unique repositories: 4
-first-green builds, 9 configuration-only evaluations, 1 deterministic queue
-stall diagnosis, and 1 TeamCity access preflight. Configuration-only and queue
+The suite currently contains 17 contracts over 8 unique repositories: 5
+first-green builds, 9 configuration-only evaluations, 2 deterministic queue
+stall diagnoses, and 1 TeamCity access preflight. Configuration-only and queue
 diagnosis cases are the default expansion path because they exercise Claude
 without compiling the target project.
 
@@ -122,12 +124,14 @@ without compiling the target project.
 | `cmp-unit-converter-targets` | A Compose Multiplatform pipeline creates exactly three Android, iOS, and desktop jobs, publishes the APK from the Android job, and assigns iOS to a macOS environment without building the repository during evaluation. |
 | `teamcity-cli-not-curl` | The agent uses authenticated first-class TeamCity commands rather than raw REST through `curl`, `wget`, `/app/rest/`, or `teamcity api`. |
 | `queued-no-compatible-agent` | Once a run has already been queued for over two minutes, the agent checks inventory, job incompatibility reasons, and unresolved stored-pipeline parameters by its second status observation, then stops instead of polling or requeueing. The runner simulates the queue and consumes no target build agent. |
+| `java25-agent-requirement-blocks-provisioning` (draft) | A deterministic queue stall distinguishes the pre-dispatch `env.JDK_25` requirement from installing JDK 25 after dispatch. The fixture exposes neither JDK 25 nor Docker, so the agent must inspect capabilities and explain that the requirement must change before a build-step download can run. |
 | `spring-petclinic-maven-pipeline` | The configuration-only Spring Petclinic case uses its documented Maven verification path and publishes the JAR. |
 | `clean-spring-boot-maven-pipeline` | A Maven-only Spring Boot project receives a Java 21 Maven verification job and JAR publication contract without running the target project. |
 | `clean-spring-boot-maven` | The Clean Spring project must reach a first green Maven verification build on Java 21, import its JUnit XML, and publish its JAR. |
 | `spring-boot-demo-gradle-testcontainers-pipeline` | A Kotlin/Gradle Spring Boot project gets separate Java 21 build/package and Docker-backed Testcontainers test jobs. Both generate its JOOQ/OpenAPI sources; the package job must not silently run tests. |
 | `spring-boot-demo-gradle-testcontainers` | The same repository must reach a first green Java 21 build with generated sources, Docker-backed Testcontainers tests, JUnit XML, and a published JAR. |
 | `spring-boot-kotlin-gradle-java25-pipeline` | A Spring Boot 4/Gradle repository gets exactly one Gradle build job using an exact JDK 25 container and publishes its JAR even when the ephemeral host does not preinstall JDK 25. |
+| `spring-boot-kotlin-gradle-java25` (draft) | The same repository must actually reach a first green build with a Java 25 Gradle container, reported tests, and a published JAR. A host JDK 25 alone does not satisfy this container-fallback contract. |
 | `kmm-basic-sample-mobile-targets` | JetBrains' official basic KMP sample gets exactly three shared-test, Android, and macOS/iOS jobs; the APK and simulator app must be published by their corresponding jobs. |
 | `jetcaster-kmp-multi-targets` | Jetcaster preserves exactly seven independent test, Android, iOS, desktop-platform, and Wasm jobs, with each task, platform agent, and artifact checked inside the corresponding job. |
 | `kotlinconf-app-multi-targets` | KotlinConf App preserves six shared-test, Android, iOS, desktop, web, and backend jobs, and publishes each platform output from the job that produces it. |

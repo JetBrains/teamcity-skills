@@ -69,9 +69,10 @@ SAFE_CHECK_NAMES = {
     "minimumJobs", "jobCount", "requiredStepTypes", "requiredStepProperties",
     "forbiddenStepProperties", "requiredArtifactRules", "requiredAgentRequirements",
     "requiredJobs", "toolUse", "compatibilityCheckpoint", "statusCheckLimit",
-    "diagnosticAgentInventory", "diagnosticJobIncompatibility",
+    "diagnosticAgentInventory", "diagnosticAgentRuntimeCapabilities",
+    "diagnosticJobIncompatibility",
     "diagnosticStoredParameters", "requiredDiagnostics", "waitLimit",
-    "noBlindRetry", "diagnosisReported", "build",
+    "noBlindRetry", "diagnosisReported", "containerImage", "build",
 }
 
 
