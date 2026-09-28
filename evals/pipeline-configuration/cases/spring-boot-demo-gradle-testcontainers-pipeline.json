@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "spring-boot-demo-gradle-testcontainers-pipeline",
   "kind": "pipeline-configuration",
-  "status": "draft",
+  "status": "active",
   "skill": "teamcity-first-green-build",
   "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository and stop after server validation; do not queue a build. The repository is Kotlin/Gradle on Java 21. Keep its generated-source build work separate from its Testcontainers test work: create exactly one build/package job and one test job. Both jobs need a Java 21 image and a Docker-capable self-hosted agent selected through a concrete TeamCity runs-on requirement discovered from agent capabilities. The build/package job must run generateJooq and openApiGenerate before packaging the JAR, but must not run Gradle test. The test job must check Docker availability, prepare the generated sources, run Gradle test, and publish JUnit XML. Do not modify repository sources.",
   "teamcity": {
