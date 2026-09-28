@@ -17,7 +17,8 @@ Read and follow the canonical workflow:
 Read shared guidance only when relevant:
 
 - `shared/project-inspection.md` for local repository inspection.
-- `shared/build-step-selection.md` for choosing TeamCity build steps.
+- `shared/build-step-selection.md` for choosing TeamCity build steps and the
+  required build status service messages.
 - `shared/token-safety.md` when credentials are involved.
 - `shared/build-log-debugging.md` when diagnosing failed builds.
 
