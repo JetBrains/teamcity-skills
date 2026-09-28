@@ -60,6 +60,7 @@ elif args[:2] == ["agent", "view"]:
             "teamcity.agent.jvm.os.name": "Linux",
             "env.JDK_17": "/opt/jdk-17",
             "env.JDK_21": "/opt/jdk-21",
+            "env.DOCKER_AVAILABLE": "false",
         },
     })
 elif args[:2] == ["agent", "jobs"] and "--incompatible" in args:

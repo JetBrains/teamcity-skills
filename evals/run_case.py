@@ -506,6 +506,23 @@ def grade(case: dict, observed: dict) -> dict:
         "observed": jdk if matched else "not-evidenced",
         "detail": f"matched: {evidence}" if matched else f"no JDK {jdk} among: {evidence}",
     }
+    if "requiredContainerImage" in expected:
+        has_matching_image = any(
+            re.search(expected["requiredContainerImage"], step["properties"]["docker-image"])
+            for job in observed.get("jobs", [])
+            for step in job.get("steps", [])
+            if step.get("type") == "gradle"
+            and isinstance(step.get("properties"), dict)
+            and isinstance(step["properties"].get("docker-image"), str)
+        )
+        checks["containerImage"] = {
+            "expected": True,
+            "observed": has_matching_image,
+            "detail": (
+                "matching Gradle container image configured" if has_matching_image
+                else "no matching Gradle container image"
+            ),
+        }
     checks["sourceMutations"] = {
         "expected": expected["sourceMutations"],
         "observed": "none" if not observed["mutations"] else "changed",
@@ -760,6 +777,9 @@ STATUS_CALL = re.compile(TEAMCITY_COMMAND + r"(?:run\s+view|queue\s+list)\b", re
 WAIT_CALL = re.compile(TEAMCITY_COMMAND + r"run\s+watch\b|\bsleep\s+\d+", re.I)
 DIAGNOSTIC_CALLS = {
     "agent-inventory": re.compile(TEAMCITY_COMMAND + r"agent\s+list\b", re.I),
+    "agent-runtime-capabilities": re.compile(
+        TEAMCITY_COMMAND + r"agent\s+view\b", re.I
+    ),
     "job-incompatibility-reasons": re.compile(
         TEAMCITY_COMMAND + r"(?:agent\s+jobs\b[^\n]*--incompatible\b|job\s+view\b)", re.I
     ),
@@ -771,8 +791,22 @@ CONCLUSION_PATTERNS = {
     ),
     "unresolved-parameter": re.compile(
         r"\bunresolved\s+(?:teamcity\s+)?parameters?\b|"
-        r"\bparameters?\b[^.\n]*(?:undefined|not\s+defined|cannot\s+resolve)",
+        r"\b(?:parameters?|env\.JDK_25|requirements?)\b[^.\n]{0,120}"
+        r"(?:unresolved|undefined|not\s+defined|cannot\s+resolve)",
         re.I,
+    ),
+    "no-container-runtime": re.compile(
+        r"\b(?:no|without|missing)\s+(?:working\s+)?(?:docker|container\s+runtime)\b|"
+        r"\b(?:docker|container\s+runtime)\b[^.\n]{0,80}"
+        r"(?:unavailable|not\s+available|not\s+installed|missing|absent)",
+        re.I,
+    ),
+    "jdk25-provision-after-dispatch": re.compile(
+        r"(?=.*\b(?:remove|relax|change|replace)\b[^.\n]{0,120}"
+        r"\b(?:agent\s+)?requirements?\b)"
+        r"(?=.*\b(?:install|download|provision)\b[^.\n]{0,120}"
+        r"\b(?:jdk|java)\s*25\b)",
+        re.I | re.S,
     ),
 }
 
@@ -844,6 +878,7 @@ def grade_queue_stall(case: dict, observed: dict) -> dict:
     ]
     diagnostic_checks = {
         "agent-inventory": "diagnosticAgentInventory",
+        "agent-runtime-capabilities": "diagnosticAgentRuntimeCapabilities",
         "job-incompatibility-reasons": "diagnosticJobIncompatibility",
         "stored-configuration-parameters": "diagnosticStoredParameters",
     }
@@ -858,7 +893,7 @@ def grade_queue_stall(case: dict, observed: dict) -> dict:
         "observed": not missing_diagnostics,
         "detail": (
             f"missing: {missing_diagnostics}" if missing_diagnostics
-            else "agent inventory, incompatibility reasons, and stored parameters inspected"
+            else "all required diagnostics inspected"
         ),
     }
 

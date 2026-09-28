@@ -686,6 +686,7 @@
           "items": {
             "enum": [
               "agent-inventory",
+              "agent-runtime-capabilities",
               "job-incompatibility-reasons",
               "stored-configuration-parameters"
             ]
@@ -710,7 +711,9 @@
           "items": {
             "enum": [
               "no-compatible-agent",
-              "unresolved-parameter"
+              "unresolved-parameter",
+              "no-container-runtime",
+              "jdk25-provision-after-dispatch"
             ]
           }
         },
@@ -756,6 +759,11 @@
               "type": "string"
             }
           }
+        },
+        "requiredContainerImage": {
+          "description": "A matching container image must be configured on the Gradle build step, in addition to the successful build and JDK evidence.",
+          "type": "string",
+          "minLength": 1
         },
         "firstBuild": {
           "const": "SUCCESS"
