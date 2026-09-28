@@ -1,9 +1,35 @@
+# IDE and local notes
 .idea/
+*.iml
+.ai/
+drafts/
+
+# macOS
 .DS_Store
+
+# Local environments and credentials
+.env
+.env.*
+*.env
+*.env.*
+!*.env.example
+!*.env.*.example
+
+# Build output
+.gradle/
+build/
+*/build/
+out/
+*.test
+
+# Python
 __pycache__/
 *.py[cod]
 .venv/
+
+# Eval output and agent telemetry
 eval-result.json
 agent-trace-*.log
 cleanup-report.json
 .teamcity/evaluation-report/
+.teamcity/jcp-central/
