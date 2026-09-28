@@ -91,6 +91,9 @@ Pull requests are welcome, including new skills.
 - Prefer many focused documents over one large one.
 - Do not commit generated or copied artifacts.
 - Make it possible to review what a skill does from the layout alone.
+- Bump the versions your change affects, and tag a release after the merge. A
+  merge alone reaches no user. See [AGENTS.md](AGENTS.md), which applies to a
+  person and to an AI agent.
 
 Please open an issue first if you are planning something large, so we can agree
 on the shape before you write it.
