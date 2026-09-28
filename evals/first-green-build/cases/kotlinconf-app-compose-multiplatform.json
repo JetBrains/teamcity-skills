@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "id": "kotlinconf-app-compose-multiplatform",
+  "kind": "first-green-build",
+  "status": "draft",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} for https://github.com/JetBrains/kotlinconf-app and reach the first green build.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/JetBrains/kotlinconf-app.git",
+    "revision": "7011707b0a2d6c7ceacc44e467ae21524c7db26e",
+    "defaultBranch": "main",
+    "root": "."
+  },
+  "stack": {
+    "family": "compose-multiplatform",
+    "buildTool": "gradle",
+    "gradle": "9.6.1",
+    "jdk": "21",
+    "kotlin": "2.4.10"
+  },
+  "requestedConfiguration": {
+    "format": "yaml",
+    "sourcePath": ".teamcity.yml",
+    "requiredStepProperties": [
+      {
+        "stepType": "script",
+        "property": "script-content"
+      },
+      {
+        "stepType": "gradle",
+        "property": "tasks"
+      }
+    ]
+  },
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "verification": {
+    "command": "./gradlew --no-daemon :app:shared:jvmTest :app:desktopApp:jar :app:androidApp:assembleDebug :app:androidApp:testDebugUnitTest :app:shared:linkDebugFrameworkIosSimulatorArm64 :app:webApp:composeCompatibilityBrowserDistribution :backend:jar :backend:test",
+    "commands": [
+      "./gradlew --no-daemon :app:shared:jvmTest :app:desktopApp:jar",
+      "./gradlew --no-daemon :app:desktopApp:createReleaseDistributable --stacktrace",
+      "./gradlew --no-daemon :app:androidApp:assembleDebug :app:androidApp:testDebugUnitTest --stacktrace",
+      "./gradlew --no-daemon :app:shared:linkDebugFrameworkIosSimulatorArm64",
+      "./gradlew --no-daemon :app:webApp:composeCompatibilityBrowserDistribution",
+      "./gradlew --no-daemon :backend:jar :backend:test"
+    ],
+    "testReportPaths": [
+      "app/shared/build/test-results/jvmTest/*.xml",
+      "app/androidApp/build/test-results/testDebugUnitTest/*.xml",
+      "backend/build/test-results/test/*.xml"
+    ],
+    "artifactPaths": [
+      "app/desktopApp/build/libs/*.jar",
+      "app/desktopApp/build/compose/binaries/main/*",
+      "app/androidApp/build/outputs/apk/debug/*.apk",
+      "app/shared/build/eval-artifacts/*-ios-simulator.framework.zip",
+      "app/webApp/build/dist/composeWebCompatibility/productionExecutable/**",
+      "backend/build/libs/*.jar"
+    ]
+  },
+  "expected": {
+    "configurationValidated": true,
+    "testsExecutedAndReported": true,
+    "artifactsPublished": true,
+    "sourceMutations": "none",
+    "toolchain": {
+      "jdk": "21"
+    },
+    "firstBuild": "SUCCESS",
+    "targets": [
+      {
+        "id": "jvm-desktop",
+        "name": "JVM desktop build and test",
+        "status": "SUCCESS",
+        "tests": "reported",
+        "artifactPaths": [
+          "app/desktopApp/build/libs/*.jar"
+        ],
+        "requiresExactSourceToolchain": true
+      },
+      {
+        "id": "desktop-release",
+        "name": "Desktop release distributable",
+        "status": "SUCCESS",
+        "tests": "not-applicable",
+        "artifactPaths": [
+          "app/desktopApp/build/compose/binaries/main/*"
+        ],
+        "requiresExactSourceToolchain": true
+      },
+      {
+        "id": "android",
+        "name": "Android debug build and unit tests",
+        "status": "SUCCESS",
+        "tests": "reported",
+        "artifactPaths": [
+          "app/androidApp/build/outputs/apk/debug/*.apk"
+        ],
+        "requiresExactSourceToolchain": true
+      },
+      {
+        "id": "ios-simulator",
+        "name": "iOS simulator framework",
+        "status": "SUCCESS",
+        "tests": "not-applicable",
+        "artifactPaths": [
+          "app/shared/build/eval-artifacts/*-ios-simulator.framework.zip"
+        ],
+        "requiresExactSourceToolchain": true
+      },
+      {
+        "id": "web",
+        "name": "Web distribution",
+        "status": "SUCCESS",
+        "tests": "not-applicable",
+        "artifactPaths": [
+          "app/webApp/build/dist/composeWebCompatibility/productionExecutable/**"
+        ],
+        "requiresExactSourceToolchain": true
+      },
+      {
+        "id": "backend",
+        "name": "Backend build and test",
+        "status": "SUCCESS",
+        "tests": "reported",
+        "artifactPaths": [
+          "backend/build/libs/*.jar"
+        ],
+        "requiresExactSourceToolchain": true
+      }
+    ]
+  }
+}

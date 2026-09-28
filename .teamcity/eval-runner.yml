@@ -1,0 +1,82 @@
+name: Run eval case
+# Executes one first-green-build case end to end. Triggered manually: set the
+# case parameter to the case file to run.
+#
+# The server supplies the environment; the case never names it.
+#   env.TEAMCITY_URL             this server
+#   env.TEAMCITY_TOKEN           TeamCity Password/secure parameter; the runner
+#                                uses it to create temporary projects
+#   env.EVAL_PARENT_PROJECT      parent project that holds temporary eval projects
+#   env.EVAL_AGENT_CMD           optional override of `claude -p`
+#   env.EVAL_TOOL_MODE           cli-only, mcp-only, or cli+mcp
+#   env.EVAL_STRICT_MCP_CONFIG    true by default; false only for a labelled
+#                                 managed-agent MCP diagnostic
+#   env.EVAL_MCP_LOCAL_PROBE      true only for the mcp-only transport
+#                                 diagnostic; it adds a token-free local stdio
+#                                 ping server
+#   env.EVAL_MCP_CONFIG          optional MCP config path; if unset, the wrapper
+#                                creates a bearer-authenticated config from this
+#                                server's URL and secure env.EVAL_MCP_TOKEN
+#
+# In TeamCity UI, add the JCP Central AI Agent build feature, select Claude
+# Code and a JCP Central connection. The feature provides `claude` and injects
+# short-lived authentication for this build; no agent token belongs in YAML.
+parameters:
+  case: evals/first-green-build/cases/spring-petclinic-maven-yaml.json
+  env.EVAL_PIPELINES: ""
+  env.EVAL_TOOL_MODE: cli-only
+  # Standard MCP evals use only the generated per-run config. Set false only
+  # for a labelled diagnostic of a managed agent-provided MCP connection.
+  env.EVAL_STRICT_MCP_CONFIG: "true"
+  env.EVAL_MCP_LOCAL_PROBE: "false"
+  env.EVAL_AGENT_CONFIG_ID: claude-default
+  env.EVAL_AGENT_VERSION: ""
+  env.EVAL_MCP_CONFIG: ""
+  # Server-side password parameter; its value is never stored in this file.
+  env.EVAL_MCP_TOKEN: "%ai.build.analyzer.eval.mcp.auth.token%"
+  env.EVAL_REGRESSION_ENFORCEMENT: "false"
+jobs:
+  run_case:
+    name: Run eval case
+    # This job orchestrates the evaluation only. KMP target jobs created by
+    # Claude must declare their own Linux/macOS agent requirements.
+    runs-on: self-hosted
+    files-publication:
+      - path: eval-result.json
+        publish-artifact: true
+        share-with-jobs: false
+    steps:
+      - type: script
+        name: Run the case
+        script-content: |-
+          :; exec bash evals/run-eval-case.sh "%case%"
+          @goto :windows
+          :windows
+          @echo off
+          "C:\Program Files\Git\bin\bash.exe" evals/run-eval-case.sh "%case%"
+          @if errorlevel 1 exit /b 1
+          @exit /b 0
+    # Configure the JCP Central AI Agent feature and select this installation's
+    # connection in TeamCity. Connection IDs are server-local and never belong
+    # in this portable definition.
+  publish_eval_report:
+    name: Publish evaluation report
+    runs-on: self-hosted
+    dependencies:
+      - run_case:
+          run-job-if-upstream-fails: true
+    files-publication:
+      - path: .teamcity/evaluation-report/**
+        publish-artifact: true
+        share-with-jobs: false
+    steps:
+      - type: script
+        name: Collect and render evaluation report
+        script-content: |-
+          :; exec bash evals/run-eval-report.sh
+          @goto :windows
+          :windows
+          @echo off
+          "C:\\Program Files\\Git\\bin\\bash.exe" evals/run-eval-report.sh
+          @if errorlevel 1 exit /b 1
+          @exit /b 0

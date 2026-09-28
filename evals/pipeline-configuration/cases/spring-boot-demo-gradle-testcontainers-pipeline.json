@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "id": "spring-boot-demo-gradle-testcontainers-pipeline",
+  "kind": "pipeline-configuration",
+  "status": "active",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository and stop after server validation; do not queue a build. The repository is Kotlin/Gradle on Java 21. Keep its generated-source build work separate from its Testcontainers test work: create exactly one build/package job and one test job. Both jobs need a Java 21 image and a Docker-capable self-hosted agent selected through a concrete TeamCity runs-on requirement discovered from agent capabilities. The build/package job must run generateJooq and openApiGenerate before packaging the JAR, but must not run Gradle test. The test job must check Docker availability, prepare the generated sources, run Gradle test, and publish JUnit XML. Do not modify repository sources.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/usmanzaheer1995/spring-boot-demo.git",
+    "revision": "940cdb0b4d15c178ca1624095e24b69914b2c9cd",
+    "defaultBranch": "main",
+    "root": "."
+  },
+  "stack": {
+    "family": "spring-boot",
+    "buildTool": "gradle",
+    "gradle": "8.5",
+    "jdk": "21",
+    "kotlin": "1.9.21",
+    "springBoot": "3.2.1"
+  },
+  "requestedConfiguration": {
+    "format": "yaml",
+    "sourcePath": ".teamcity.yml"
+  },
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "expected": {
+    "configurationValidated": true,
+    "sourceMutations": "none",
+    "minimumJobs": 2,
+    "expectedJobCount": 2,
+    "requiredStepTypes": ["gradle", "script"],
+    "requiredStepProperties": [
+      {
+        "stepType": "gradle",
+        "property": "tasks",
+        "matches": "(?i)generateJooq"
+      },
+      {
+        "stepType": "gradle",
+        "property": "tasks",
+        "matches": "(?i)openApiGenerate"
+      },
+      {
+        "stepType": "gradle",
+        "property": "tasks",
+        "matches": "(?i)(?:bootJar|assemble|build)"
+      },
+      {
+        "stepType": "gradle",
+        "property": "tasks",
+        "matches": "(?i)(^|\\s)test(\\s|$)"
+      },
+      {
+        "stepType": "gradle",
+        "property": "docker-image",
+        "matches": "(?i)(?:temurin|openjdk|jdk)[^\\n]*21|21[^\\n]*(?:jdk|java)"
+      },
+      {
+        "stepType": "script",
+        "property": "script-content",
+        "matches": "(?i)docker\\s+info"
+      }
+    ],
+    "requiredArtifactRules": [
+      "(?i)\\.jar",
+      "(?i)(?:test-results|TEST-).*\\.xml"
+    ],
+    "requiredAgentRequirements": ["(?i)docker"],
+    "requiredJobs": [
+      {
+        "jobMatches": "(?i)(?:build|package)",
+        "requiredStepTypes": ["gradle"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i)generateJooq"
+          },
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i)openApiGenerate"
+          },
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i)(?:bootJar|assemble|build)"
+          },
+          {
+            "stepType": "gradle",
+            "property": "docker-image",
+            "matches": "(?i)(?:temurin|openjdk|jdk)[^\\n]*21|21[^\\n]*(?:jdk|java)"
+          }
+        ],
+        "forbiddenStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i)(^|\\s)test(\\s|$)"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)\\.jar"],
+        "requiredAgentRequirements": ["(?i)docker"]
+      },
+      {
+        "jobMatches": "(?i)(?:test|integration)",
+        "requiredStepTypes": ["gradle", "script"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i)generateJooq"
+          },
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i)openApiGenerate"
+          },
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i)(^|\\s)test(\\s|$)"
+          },
+          {
+            "stepType": "gradle",
+            "property": "docker-image",
+            "matches": "(?i)(?:temurin|openjdk|jdk)[^\\n]*21|21[^\\n]*(?:jdk|java)"
+          },
+          {
+            "stepType": "script",
+            "property": "script-content",
+            "matches": "(?i)docker\\s+info"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)(?:test-results|TEST-).*\\.xml"],
+        "requiredAgentRequirements": ["(?i)docker"]
+      }
+    ]
+  }
+}

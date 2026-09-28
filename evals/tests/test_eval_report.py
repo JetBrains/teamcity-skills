@@ -1,0 +1,287 @@
+import ast
+import importlib.util
+import json
+import pathlib
+import subprocess
+import unittest
+from unittest import mock
+
+
+EVALS = pathlib.Path(__file__).resolve().parents[1]
+
+
+def load_module(name, filename):
+    spec = importlib.util.spec_from_file_location(name, EVALS / filename)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+renderer = load_module("render_eval_report_test", "render_teamcity_eval_report.py")
+collector = load_module("collect_eval_runs_test", "collect_teamcity_eval_runs.py")
+
+
+class EvalReportTest(unittest.TestCase):
+    def test_report_check_allowlist_covers_runner_check_keys(self):
+        tree = ast.parse((EVALS / "run_case.py").read_text())
+        names = {
+            node.slice.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Subscript)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "checks"
+            and isinstance(node.slice, ast.Constant)
+            and isinstance(node.slice.value, str)
+        }
+        names.update({
+            value.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "diagnostic_checks"
+                for target in node.targets
+            )
+            and isinstance(node.value, ast.Dict)
+            for value in node.value.values
+            if isinstance(value, ast.Constant) and isinstance(value.value, str)
+        })
+        self.assertLessEqual(names, collector.SAFE_CHECK_NAMES)
+
+    def test_legacy_result_strings_do_not_escape_into_shareable_report(self):
+        private = "internal-only-canary"
+        artifact = {
+            "caseId": private,
+            "caseStatus": private,
+            "status": "failed",
+            "gradeStatus": private,
+            "arm": "skill",
+            "agentConfigId": private,
+            "agentVersion": private,
+            "agentExitCode": private,
+            "checks": {
+                private: {"passed": False},
+                "firstBuild": {"passed": False},
+            },
+        }
+
+        def cli(_server, *arguments):
+            if arguments[1] == "artifacts":
+                return subprocess.CompletedProcess(
+                    [], 0, stdout=json.dumps({"file": [{"name": "eval-result.json"}]}), stderr=""
+                )
+            if arguments[1] == "download":
+                destination = pathlib.Path(arguments[arguments.index("--output") + 1])
+                (destination / "eval-result.json").write_text(json.dumps(artifact))
+                return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+            self.fail(f"unexpected CLI call: {arguments}")
+
+        with mock.patch.object(collector, "cli", side_effect=cli):
+            result = collector.download_result([], "https://teamcity.example", 42, {"example"})
+
+        category, detail = collector.classify(
+            "https://teamcity.example",
+            {"id": 42, "state": "finished", "status": "FAILURE"},
+            result,
+        )
+        self.assertEqual("skill-output-failed", category)
+        self.assertEqual("failed assertions: firstBuild", detail)
+        self.assertIsNone(result["caseId"])
+        self.assertIsNone(result["caseStatus"])
+        self.assertIsNone(result["gradeStatus"])
+        self.assertIsNone(result["agentExitCode"])
+        self.assertEqual({"firstBuild": {"passed": False}}, result["checks"])
+        self.assertNotIn(private, json.dumps(result))
+
+    def test_shareable_report_excludes_internal_teamcity_details(self):
+        private = "internal-only-canary"
+        server = f"https://{private}.example"
+
+        def cli_json(_warnings, _server, *args):
+            if args[:2] == ("run", "list"):
+                return {"build": [{"id": 43, "name": "Pipeline Head"}]}
+            if args[:2] == ("run", "tree"):
+                return {"dependencies": [{"id": 42, "name": "Run eval case"}]}
+            if args[:2] == ("run", "view"):
+                return {
+                    "id": int(args[2]),
+                    "state": "finished",
+                    "status": private,
+                    "statusText": private,
+                    "webUrl": f"{server}/build/{args[2]}",
+                    "agent": {"name": private},
+                    "buildTypeId": f"{private}-job",
+                    "triggered": {"type": private},
+                    "queuedDate": private,
+                    "lastChanges": {"change": [{"version": private}]},
+                }
+            self.fail(f"unexpected CLI call: {args}")
+
+        result = {
+            "caseId": "example",
+            "arm": "skill",
+            "toolMode": "cli-only",
+            "status": "passed",
+            "checks": {"firstBuild": {"passed": True}},
+        }
+        with mock.patch.object(collector, "cli_json", side_effect=cli_json), \
+                mock.patch.object(collector, "download_result", return_value=result), \
+                mock.patch.object(collector, "inventory", return_value=[]):
+            report = collector.collect(server, [f"{private}-pipeline"], 1, [])
+
+        self.assertNotIn(private, json.dumps(report))
+        self.assertEqual(3, report["schemaVersion"])
+        self.assertEqual("pipeline-1", report["pipelines"][0]["id"])
+        self.assertEqual(42, report["pipelines"][0]["runs"][0]["jobs"][0]["id"])
+
+        # Older snapshots may still carry these fields; the HTML does not show them.
+        report["server"] = server
+        job = report["pipelines"][0]["runs"][0]["jobs"][0]
+        job.update(agent=private, statusText=private, url=f"{server}/build/42")
+        html = renderer.render(report)
+        self.assertNotIn(private, html)
+        self.assertNotIn('<th scope="col">Agent</th>', html)
+        self.assertNotIn("<a href=", html)
+
+    def test_inventory_hides_internal_source_mutation_guard(self):
+        cases = collector.inventory()
+
+        self.assertTrue(cases)
+        self.assertTrue(all("source fidelity" not in case["assertions"] for case in cases))
+
+    def test_report_renders_separate_arm_columns_and_unique_jobs(self):
+        job = {
+            "id": 42,
+            "classification": "passed",
+            "classificationDetail": "all recorded assertions passed",
+            "result": {"caseId": "example", "toolMode": "cli-only", "arm": "skill"},
+            "durationSeconds": 10,
+        }
+        data = {
+            "summary": {
+                "caseContracts": 2,
+                "pairedCaseContracts": 1,
+                "expectedArmSlots": 6,
+                "distinctArmsObserved": 1,
+                "jobRunsObserved": 1,
+                "classifications": {"passed": 1},
+            },
+            "cases": [
+                {
+                    "id": "example",
+                    "kind": "pipeline-configuration",
+                    "gate": "active",
+                    "executionModel": "paired-arms",
+                    "scope": "Grades configuration.",
+                    "assertions": ["pipeline stored/read back"],
+                    "targets": [],
+                    "toolModes": {
+                        "cli-only": {
+                            "skill": {
+                                "classification": "passed",
+                                "detail": "all recorded assertions passed",
+                                "runId": 42,
+                                "history": {
+                                    "sampleSize": 3,
+                                    "passCount": 2,
+                                    "passRate": 0.667,
+                                    "targetMinSamples": 3,
+                                },
+                            },
+                            "baseline": None,
+                        },
+                        "mcp-only": {"skill": None, "baseline": None},
+                        "cli+mcp": {"skill": None, "baseline": None},
+                    },
+                    "comparisons": {
+                        "cli-only": {"status": "insufficient-samples"},
+                        "mcp-only": {"status": "missing-arm"},
+                        "cli+mcp": {"status": "missing-arm"},
+                    },
+                },
+                {
+                    "id": "preflight",
+                    "kind": "teamcity-access-preflight",
+                    "gate": "active",
+                    "executionModel": "preflight",
+                    "scope": "Checks access.",
+                    "assertions": ["authentication"],
+                    "targets": [],
+                    "toolModes": None,
+                    "comparisons": None,
+                },
+            ],
+            "pipelines": [
+                {"id": "one", "runs": [{"jobs": [job]}]},
+                {"id": "two", "runs": [{"jobs": [job]}]},
+            ],
+        }
+
+        report = renderer.render(data, {"failures": []})
+
+        self.assertIn("Case x tool mode x arm matrix", report)
+        self.assertIn('<th scope="colgroup" colspan="2">CLI only</th>', report)
+        self.assertIn('<th scope="colgroup" colspan="2">MCP only</th>', report)
+        self.assertIn("comparison needs 3 samples per arm", report)
+        self.assertIn("No mature skill-comparison regression is recorded.", report)
+        self.assertIn("not arm-based", report)
+        self.assertIn("run 42", report)
+        self.assertIn("same-revision pass rate: 2/3 (67%); measured", report)
+        self.assertIn("token/cost telemetry has not been reported", report)
+        self.assertEqual(1, report.count("<td>42</td>"))
+
+    def test_report_shows_run_usage_and_distinguishes_missing_cost(self):
+        job = {
+            "id": 42,
+            "classification": "passed",
+            "classificationDetail": "passed",
+            "result": {
+                "caseId": "example",
+                "arm": "skill",
+                "agentUsage": {"inputTokens": 100, "outputTokens": 20},
+            },
+        }
+        data = {
+            "summary": {
+                "jobRunsObserved": 1,
+                "classifications": {"passed": 1},
+                "agentUsage": {
+                    "runsMeasured": 1,
+                    "inputTokens": 100,
+                    "outputTokens": 20,
+                    "fieldsMeasured": {
+                        "inputTokens": 1,
+                        "outputTokens": 1,
+                        "totalCostUsd": 0,
+                    },
+                },
+            },
+            "cases": [],
+            "pipelines": [{"id": "one", "runs": [{"jobs": [job]}]}],
+        }
+
+        report = renderer.render(data)
+
+        self.assertIn("100 in / 20 out", report)
+        self.assertIn("provider cost not reported", report)
+        self.assertIn("provider cost unavailable", report)
+
+    def test_report_renders_safe_regression_finding(self):
+        report = renderer.render(
+            {"summary": {}, "cases": [], "pipelines": []},
+            {
+                "failures": [
+                    {
+                        "caseId": "example",
+                        "toolMode": "cli-only",
+                        "kind": "skill-vs-baseline",
+                    }
+                ]
+            },
+        )
+
+        self.assertIn("Mature skill-comparison regression detected.", report)
+        self.assertIn("example</code> / CLI only: skill is not better than baseline", report)
+
+
+if __name__ == "__main__":
+    unittest.main()

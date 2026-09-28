@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "teamcity-cli-not-curl",
+  "kind": "pipeline-configuration",
+  "status": "active",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository: create the VCS root and the pipeline, validate the configuration against the server, and stop there. Do not queue any build.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/tkuenneth/CMP-Unit-Converter.git",
+    "revision": "fd427a05fd8fd27bef0bbef1971ec5397e12de9d",
+    "defaultBranch": "main",
+    "root": "."
+  },
+  "stack": {
+    "family": "compose-multiplatform",
+    "buildTool": "gradle",
+    "gradle": "9.7.0",
+    "jdk": "17"
+  },
+  "requestedConfiguration": {
+    "format": "yaml",
+    "sourcePath": ".teamcity.yml"
+  },
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "expected": {
+    "configurationValidated": true,
+    "sourceMutations": "none",
+    "minimumJobs": 1,
+    "toolUse": {
+      "required": ["Bash .*\\bteamcity\\b"],
+      "forbidden": [
+        "Bash .*\\b(curl|wget)\\b",
+        "Bash .*/app/rest/",
+        "Bash .*\\bteamcity(?:\\.cmd)?\\s+api\\b"
+      ]
+    }
+  }
+}

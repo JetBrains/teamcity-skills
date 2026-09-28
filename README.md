@@ -65,6 +65,13 @@ others.
 Also: [`prompts/`](prompts/) for reusable prompts, and [`examples/`](examples/)
 for a small project you can try the skills against.
 
+## Evaluation suite
+
+The `evals/` directory contains versioned evaluation contracts for TeamCity
+skills. See [`docs/evaluation-cases-proposal.md`](docs/evaluation-cases-proposal.md)
+for the methodology and run steps. The `.teamcity.yml` validation job checks
+the contracts in CI.
+
 ## Anatomy of a skill
 
 ```text

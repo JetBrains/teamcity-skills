@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "id": "spring-boot-kotlin-gradle-java25-pipeline",
+  "kind": "pipeline-configuration",
+  "status": "active",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Create a single-job TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository. Preserve its Gradle build and exact Java 25 requirement even when the host agent does not preinstall JDK 25, publish the application JAR, validate the configuration against the server, and stop there. Do not queue any build.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/phoenigm/spring-boot-kotlin-gradle-template.git",
+    "revision": "247663dee82c9182215112cc5cdd5255d58eddea",
+    "defaultBranch": "master",
+    "root": "."
+  },
+  "stack": {
+    "family": "spring-boot",
+    "buildTool": "gradle",
+    "gradle": "9.2.1",
+    "jdk": "25",
+    "kotlin": "2.3.0-RC",
+    "springBoot": "4.0.0"
+  },
+  "requestedConfiguration": {
+    "format": "yaml",
+    "sourcePath": ".teamcity.yml"
+  },
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "expected": {
+    "configurationValidated": true,
+    "sourceMutations": "none",
+    "minimumJobs": 1,
+    "expectedJobCount": 1,
+    "requiredStepTypes": ["gradle"],
+    "requiredStepProperties": [
+      {
+        "stepType": "gradle",
+        "property": "tasks",
+        "matches": "(?i)(^|\\s)(clean\\s+)?(?:test|build)(?:\\s|$)"
+      },
+      {
+        "stepType": "gradle",
+        "property": "docker-image",
+        "matches": "(?i)(?:temurin|openjdk|jdk)[^\\n]*25|25[^\\n]*(?:jdk|java)"
+      }
+    ],
+    "requiredArtifactRules": ["(?i)\\.jar"],
+    "requiredJobs": [
+      {
+        "jobMatches": ".*",
+        "requiredStepTypes": ["gradle"],
+        "requiredStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i)(^|\\s)(clean\\s+)?(?:test|build)(?:\\s|$)"
+          },
+          {
+            "stepType": "gradle",
+            "property": "docker-image",
+            "matches": "(?i)(?:temurin|openjdk|jdk)[^\\n]*25|25[^\\n]*(?:jdk|java)"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)\\.jar"]
+      }
+    ]
+  }
+}
