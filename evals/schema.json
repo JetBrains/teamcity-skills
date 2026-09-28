@@ -499,6 +499,30 @@
             }
           }
         },
+        "forbiddenStepProperties": {
+          "description": "Step properties that must not be present. Use this when distinct jobs must not silently collapse into one command.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["stepType", "property"],
+            "properties": {
+              "stepType": {
+                "type": "string",
+                "minLength": 1
+              },
+              "property": {
+                "type": "string",
+                "minLength": 1
+              },
+              "matches": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
         "requiredArtifactRules": {
           "description": "Regular expressions that the union of the jobs' artifact rules must each match. An empty artifact rule set is the failure this catches.",
           "type": "array",
@@ -565,6 +589,29 @@
                 }
               },
               "requiredStepProperties": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["stepType", "property"],
+                  "properties": {
+                    "stepType": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "property": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "matches": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              },
+              "forbiddenStepProperties": {
                 "type": "array",
                 "minItems": 1,
                 "items": {
