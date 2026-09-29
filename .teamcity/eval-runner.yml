@@ -40,7 +40,9 @@ jobs:
     name: Run eval case
     # This job orchestrates the evaluation only. KMP target jobs created by
     # Claude must declare their own Linux/macOS agent requirements.
-    runs-on: self-hosted
+    runs-on:
+      self-hosted:
+        - os-family: Linux
     files-publication:
       - path: eval-result.json
         publish-artifact: true
@@ -61,7 +63,9 @@ jobs:
     # in this portable definition.
   publish_eval_report:
     name: Publish evaluation report
-    runs-on: self-hosted
+    runs-on:
+      self-hosted:
+        - os-family: Linux
     dependencies:
       - run_case:
           run-job-if-upstream-fails: true
