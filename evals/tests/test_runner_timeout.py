@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 import pathlib
 import subprocess
@@ -22,6 +23,103 @@ collector = load_module("collect_timeout_test", "collect_teamcity_eval_runs.py")
 
 
 class AgentTimeoutTest(unittest.TestCase):
+    def test_phase_monitor_records_fixed_durations_and_safe_events(self):
+        ticks = iter((0, 1, 3, 8, 10))
+        output = io.StringIO()
+        with mock.patch.object(run_case.sys, "stderr", output):
+            phases = run_case.PhaseMonitor(heartbeat_seconds=3600, clock=lambda: next(ticks))
+            phases.enter("preparation")
+            phases.enter("agent")
+            phases.enter("buildWait")
+            timings = phases.finish()
+
+        self.assertEqual(
+            {
+                "preparationSeconds": 2,
+                "agentSeconds": 5,
+                "buildWaitSeconds": 2,
+                "totalSeconds": 10,
+            },
+            timings,
+        )
+        self.assertIn("[eval-timing] agent finished in 5s", output.getvalue())
+
+    def test_phase_timings_allowlist_rejects_private_and_invalid_values(self):
+        published = run_case.publishable_result({
+            "checks": {},
+            "phaseTimings": {
+                "bootstrapSeconds": 8,
+                "agentSeconds": 123.4567,
+                "buildWaitSeconds": 60,
+                "totalSeconds": float("inf"),
+                "privateProjectId": "do-not-publish",
+                "gradingSeconds": True,
+            },
+        })
+
+        self.assertEqual(
+            {"bootstrapSeconds": 8, "agentSeconds": 123.457, "buildWaitSeconds": 60},
+            published["phaseTimings"],
+        )
+        self.assertNotIn("do-not-publish", json.dumps(published))
+
+    def test_build_wait_distinguishes_no_build_from_unfinished_build(self):
+        tc = mock.Mock()
+        tc.builds.return_value = []
+        with self.assertRaises(run_case.NoBuildQueued):
+            run_case.wait_for_build(tc, "project", timeout=0)
+
+        tc.builds.return_value = [{"id": 42}]
+        tc.build.return_value = {"id": 42, "state": "running"}
+        with mock.patch.object(run_case.time, "time", side_effect=(0, 0, 2)), \
+                mock.patch.object(run_case.time, "sleep"):
+            with self.assertRaises(run_case.BuildWaitTimeout):
+                run_case.wait_for_build(tc, "project", timeout=1)
+
+    def test_first_green_error_publishes_phase_timings_and_fixed_wait_reason(self):
+        with tempfile.TemporaryDirectory() as directory:
+            case_path = pathlib.Path(directory) / "case.json"
+            case_path.write_text(json.dumps({
+                "id": "example-first-green",
+                "kind": "first-green-build",
+                "status": "draft",
+                "prompt": "create a build",
+                "repository": {"defaultBranch": "main"},
+            }))
+            teamcity = mock.Mock()
+            teamcity.create_project.return_value = "private-project"
+            bridge = mock.MagicMock()
+            bridge.__enter__.return_value.agent_environment.return_value = {}
+            environment = {
+                "TEAMCITY_URL": "https://teamcity.example",
+                "TEAMCITY_TOKEN": "private-token",
+                "EVAL_WRAPPER_BOOTSTRAP_SECONDS": "3",
+            }
+            with mock.patch.dict(run_case.os.environ, environment, clear=True), \
+                    mock.patch.object(run_case.shutil, "which", return_value="teamcity"), \
+                    mock.patch.object(run_case, "TeamCity", return_value=teamcity), \
+                    mock.patch.object(run_case, "TeamCityCliBridge", return_value=bridge), \
+                    mock.patch.object(run_case, "checkout_repository"), \
+                    mock.patch.object(run_case, "invoke_agent", return_value={
+                        "exitCode": 0, "timedOut": False, "timeoutSeconds": 7,
+                    }), \
+                    mock.patch.object(run_case, "agent_usage", return_value={}), \
+                    mock.patch.object(run_case, "trace_error_category", return_value=None), \
+                    mock.patch.object(run_case, "permission_failure_surface", return_value=None), \
+                    mock.patch.object(run_case, "agent_tool_summary", return_value={}), \
+                    mock.patch.object(run_case, "wait_for_build", side_effect=run_case.NoBuildQueued("private")), \
+                    mock.patch.object(run_case.sys, "stderr", io.StringIO()):
+                result = run_case.run(case_path, False, False, "baseline", "cli-only")
+
+        published = run_case.publishable_result(result)
+        self.assertEqual("errored", published["status"])
+        self.assertEqual("build-not-queued", published["errorCategory"])
+        self.assertEqual(3, published["phaseTimings"]["bootstrapSeconds"])
+        self.assertIn("agentSeconds", published["phaseTimings"])
+        self.assertIn("buildWaitSeconds", published["phaseTimings"])
+        self.assertNotIn("private-project", json.dumps(published))
+        self.assertNotIn("private-token", json.dumps(published))
+
     def test_invoke_agent_turns_timeout_into_structured_outcome(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
@@ -526,6 +624,15 @@ class AgentTimeoutTest(unittest.TestCase):
 
         self.assertEqual("agent-timeout", category)
 
+    def test_collector_classifies_build_wait_failures_without_raw_errors(self):
+        run = {"id": 1, "state": "finished", "status": "FAILURE"}
+        category, detail = collector.classify(
+            "https://teamcity.example", run,
+            {"status": "errored", "errorCategory": "build-not-queued"},
+        )
+        self.assertEqual("build-not-queued", category)
+        self.assertIn("no build appeared", detail)
+
     def test_collector_keeps_only_safe_transport_profile_fields(self):
         raw = {
             "caseId": "example",
@@ -569,6 +676,12 @@ class AgentTimeoutTest(unittest.TestCase):
                 "private": "must not escape",
             },
             "errorCategory": "mcp-authentication-failed",
+            "phaseTimings": {
+                "agentSeconds": 42.25,
+                "buildWaitSeconds": 60,
+                "totalSeconds": float("inf"),
+                "private": "must not escape",
+            },
             "checks": {"build": {"passed": True}},
         }
 
@@ -606,6 +719,10 @@ class AgentTimeoutTest(unittest.TestCase):
             result["mcpRuntime"],
         )
         self.assertEqual("mcp-authentication-failed", result["errorCategory"])
+        self.assertEqual(
+            {"agentSeconds": 42.25, "buildWaitSeconds": 60},
+            result["phaseTimings"],
+        )
 
     def test_dependency_tree_is_deduplicated(self):
         job = {"id": 7, "name": "Run configuration eval", "dependencies": []}
