@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "tdd-spring-maven",
+  "kind": "first-green-build",
+  "status": "draft",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} and get the first build green. Keep the repository source unchanged, run Maven verification in an explicit Java 21 image, import the Maven JUnit XML reports, and publish the application JAR.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/alecmus/tdd-spring.git",
+    "revision": "7ab2c3132f3268fe222f148cbcd85fcc3a09614d",
+    "defaultBranch": "main",
+    "root": "."
+  },
+  "stack": {
+    "family": "spring-boot",
+    "buildTool": "maven",
+    "maven": "3.9.9",
+    "jdk": "21",
+    "springBoot": "3.4.0"
+  },
+  "requestedConfiguration": {
+    "format": "yaml",
+    "sourcePath": ".teamcity.yml"
+  },
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "verification": {
+    "command": "./mvnw -B -ntp clean verify",
+    "testReportPaths": [
+      "target/surefire-reports/*.xml"
+    ],
+    "artifactPaths": [
+      "target/*.jar"
+    ]
+  },
+  "expected": {
+    "configurationValidated": true,
+    "testsExecutedAndReported": true,
+    "artifactsPublished": true,
+    "sourceMutations": "none",
+    "toolchain": {
+      "jdk": "21"
+    },
+    "firstBuild": "SUCCESS"
+  }
+}

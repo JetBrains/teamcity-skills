@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "id": "tdd-spring-maven-pipeline",
+  "kind": "pipeline-configuration",
+  "status": "draft",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository: inspect the repository, create the VCS root and the smallest useful pipeline, use an explicit Java 21 container image for Maven verification, publish the application JAR, validate the configuration against the server, and stop there. Do not queue any build.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/alecmus/tdd-spring.git",
+    "revision": "7ab2c3132f3268fe222f148cbcd85fcc3a09614d",
+    "defaultBranch": "main",
+    "root": "."
+  },
+  "stack": {
+    "family": "spring-boot",
+    "buildTool": "maven",
+    "maven": "3.9.9",
+    "jdk": "21",
+    "springBoot": "3.4.0"
+  },
+  "requestedConfiguration": {
+    "format": "yaml",
+    "sourcePath": ".teamcity.yml"
+  },
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "expected": {
+    "configurationValidated": true,
+    "sourceMutations": "none",
+    "minimumJobs": 1,
+    "expectedJobCount": 1,
+    "requiredStepTypes": ["maven"],
+    "requiredStepProperties": [
+      {
+        "stepType": "maven",
+        "property": "goals",
+        "matches": "(?i)(^|\\s)(verify|package)(\\s|$)"
+      },
+      {
+        "stepType": "maven",
+        "property": "docker-image",
+        "matches": "(?i)(?:temurin|openjdk|jdk)[^\\n]*21|21[^\\n]*(?:jdk|java)"
+      }
+    ],
+    "requiredArtifactRules": ["(?i)\\.jar"],
+    "requiredJobs": [
+      {
+        "jobMatches": ".*",
+        "requiredStepTypes": ["maven"],
+        "requiredStepProperties": [
+          {
+            "stepType": "maven",
+            "property": "goals",
+            "matches": "(?i)(^|\\s)(verify|package)(\\s|$)"
+          },
+          {
+            "stepType": "maven",
+            "property": "docker-image",
+            "matches": "(?i)(?:temurin|openjdk|jdk)[^\\n]*21|21[^\\n]*(?:jdk|java)"
+          }
+        ],
+        "requiredArtifactRules": ["(?i)\\.jar"]
+      }
+    ]
+  }
+}
