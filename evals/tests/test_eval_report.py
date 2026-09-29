@@ -22,6 +22,49 @@ collector = load_module("collect_eval_runs_test", "collect_teamcity_eval_runs.py
 
 
 class EvalReportTest(unittest.TestCase):
+    def test_result_revision_scopes_history_when_teamcity_has_no_changes(self):
+        revision = "a" * 40
+        result = {
+            "caseId": "example",
+            "arm": "skill",
+            "toolMode": "cli-only",
+            "status": "passed",
+            "harnessRevision": revision,
+            "checks": {"firstBuild": {"passed": True}},
+        }
+        with mock.patch.object(
+            collector, "cli_json",
+            return_value={"id": 42, "state": "finished", "status": "SUCCESS"},
+        ), mock.patch.object(collector, "download_result", return_value=result):
+            job = collector.normalize_run("https://teamcity.example", [], {"id": 42})
+
+        self.assertEqual(revision, job["revision"])
+        observation = collector.latest_arm_observations([job])[("example", "cli-only", "skill")]
+        self.assertEqual(1, observation["history"]["sampleSize"])
+        self.assertEqual(1, observation["history"]["passCount"])
+
+    def test_conflicting_revisions_are_not_treated_as_evidence(self):
+        warnings = []
+        result = {
+            "caseId": "example",
+            "arm": "skill",
+            "toolMode": "cli-only",
+            "status": "passed",
+            "harnessRevision": "a" * 40,
+        }
+        detailed = {
+            "id": 42,
+            "state": "finished",
+            "status": "SUCCESS",
+            "lastChanges": {"change": [{"version": "b" * 40}]},
+        }
+        with mock.patch.object(collector, "cli_json", return_value=detailed), \
+                mock.patch.object(collector, "download_result", return_value=result):
+            job = collector.normalize_run("https://teamcity.example", warnings, {"id": 42})
+
+        self.assertIsNone(job["revision"])
+        self.assertEqual(1, len(warnings))
+
     def test_report_check_allowlist_covers_runner_check_keys(self):
         tree = ast.parse((EVALS / "run_case.py").read_text())
         names = {
@@ -52,6 +95,7 @@ class EvalReportTest(unittest.TestCase):
         artifact = {
             "caseId": private,
             "caseStatus": private,
+            "harnessRevision": private,
             "status": "failed",
             "gradeStatus": private,
             "arm": "skill",
@@ -87,6 +131,7 @@ class EvalReportTest(unittest.TestCase):
         self.assertEqual("failed assertions: firstBuild", detail)
         self.assertIsNone(result["caseId"])
         self.assertIsNone(result["caseStatus"])
+        self.assertIsNone(result["harnessRevision"])
         self.assertIsNone(result["gradeStatus"])
         self.assertIsNone(result["agentExitCode"])
         self.assertEqual({"firstBuild": {"passed": False}}, result["checks"])
