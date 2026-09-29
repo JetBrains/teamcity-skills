@@ -265,6 +265,51 @@ class EvalReportTest(unittest.TestCase):
         self.assertIn("provider cost not reported", report)
         self.assertIn("provider cost unavailable", report)
 
+    def test_report_shows_agent_and_post_agent_wait_separately(self):
+        job = {
+            "id": 42,
+            "classification": "build-not-queued",
+            "classificationDetail": "no build appeared during the post-agent wait",
+            "durationSeconds": 6900,
+            "result": {
+                "caseId": "example",
+                "arm": "skill",
+                "phaseTimings": {
+                    "bootstrapSeconds": 8,
+                    "preparationSeconds": 5,
+                    "agentSeconds": 3200,
+                    "buildWaitSeconds": 3600,
+                    "totalSeconds": 6810,
+                },
+            },
+        }
+        data = {
+            "summary": {
+                "jobRunsObserved": 1,
+                "classifications": {"build-not-queued": 1},
+                "phaseTimings": {
+                    "runsMeasured": 1,
+                    "bootstrapSeconds": 8,
+                    "agentSeconds": 3200,
+                    "buildWaitSeconds": 3600,
+                    "fieldsMeasured": {
+                        "bootstrapSeconds": 1, "agentSeconds": 1, "buildWaitSeconds": 1,
+                    },
+                },
+            },
+            "cases": [],
+            "pipelines": [{"id": "one", "runs": [{"jobs": [job]}]}],
+        }
+
+        report = renderer.render(data)
+
+        self.assertIn("agent process 53m 20s", report)
+        self.assertIn("bootstrap 8s", report)
+        self.assertIn("build wait 60m 00s", report)
+        self.assertIn("runner total 113m 30s", report)
+        self.assertIn("cumulative, not wall clock", report)
+        self.assertIn("not that Claude is making progress", report)
+
     def test_report_renders_safe_regression_finding(self):
         report = renderer.render(
             {"summary": {}, "cases": [], "pipelines": []},

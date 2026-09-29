@@ -51,6 +51,7 @@ import datetime
 import fnmatch
 import hashlib
 import json
+import math
 import os
 import pathlib
 import re
@@ -60,6 +61,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from typing import Optional
 
@@ -77,6 +79,83 @@ class EvalError(RuntimeError):
 
 class _Graded(Exception):
     """Grading finished early; skip the build steps and go straight to teardown."""
+
+
+class NoBuildQueued(EvalError):
+    """The agent finished without queuing a build during the wait window."""
+
+
+class BuildWaitTimeout(EvalError):
+    """An agent-queued build did not finish during the wait window."""
+
+
+PHASE_FIELDS = {
+    "preparation": "preparationSeconds",
+    "agent": "agentSeconds",
+    "observation": "observationSeconds",
+    "buildWait": "buildWaitSeconds",
+    "grading": "gradingSeconds",
+    "cleanup": "cleanupSeconds",
+}
+
+
+class PhaseMonitor:
+    """Report fixed, numeric runner phases without exposing agent activity."""
+
+    def __init__(self, heartbeat_seconds: int = 300, clock=time.monotonic):
+        self.clock = clock
+        self.started = clock()
+        self.heartbeat_seconds = heartbeat_seconds
+        self.current = None
+        self.phase_started = None
+        self.durations = {}
+        self.lock = threading.Lock()
+        self.stop = threading.Event()
+        self.thread = threading.Thread(target=self._heartbeat, daemon=True)
+        self.thread.start()
+
+    def enter(self, phase: str) -> None:
+        if phase not in PHASE_FIELDS:
+            raise ValueError("unknown evaluation phase")
+        now = self.clock()
+        with self.lock:
+            if self.current:
+                elapsed = now - self.phase_started
+                self.durations[PHASE_FIELDS[self.current]] = round(elapsed, 3)
+                print(
+                    f"[eval-timing] {self.current} finished in {elapsed:.0f}s",
+                    file=sys.stderr, flush=True,
+                )
+            self.current = phase
+            self.phase_started = now
+            print(f"[eval-timing] {phase} started", file=sys.stderr, flush=True)
+
+    def _heartbeat(self) -> None:
+        while not self.stop.wait(self.heartbeat_seconds):
+            with self.lock:
+                if self.current:
+                    elapsed = self.clock() - self.phase_started
+                    print(
+                        f"[eval-timing] {self.current} still in progress after {elapsed:.0f}s",
+                        file=sys.stderr, flush=True,
+                    )
+
+    def finish(self) -> dict:
+        now = self.clock()
+        with self.lock:
+            if self.current:
+                elapsed = now - self.phase_started
+                self.durations[PHASE_FIELDS[self.current]] = round(elapsed, 3)
+                print(
+                    f"[eval-timing] {self.current} finished in {elapsed:.0f}s",
+                    file=sys.stderr, flush=True,
+                )
+                self.current = None
+            self.durations["totalSeconds"] = round(now - self.started, 3)
+            snapshot = dict(self.durations)
+        self.stop.set()
+        self.thread.join(timeout=1)
+        return snapshot
 
 
 def resolve_tool_mode(value: str) -> str:
@@ -1469,6 +1548,21 @@ def safe_mcp_runtime(value: object) -> dict:
     return result
 
 
+def safe_phase_timings(value: object) -> dict:
+    """Publish only finite durations under fixed phase names."""
+    if not isinstance(value, dict):
+        return {}
+    fields = ("bootstrapSeconds", *PHASE_FIELDS.values(), "totalSeconds")
+    return {
+        name: round(value[name], 3)
+        for name in fields
+        if isinstance(value.get(name), (int, float))
+        and not isinstance(value.get(name), bool)
+        and math.isfinite(value[name])
+        and value[name] >= 0
+    }
+
+
 def publishable_result(result: dict) -> dict:
     """Return the minimal result safe to publish as a build artifact."""
     fields = (
@@ -1501,6 +1595,9 @@ def publishable_result(result: dict) -> dict:
     runtime = safe_mcp_runtime(result.get("mcpRuntime"))
     if runtime:
         published["mcpRuntime"] = runtime
+    timings = safe_phase_timings(result.get("phaseTimings"))
+    if timings:
+        published["phaseTimings"] = timings
     published["checks"] = {
         name: {"passed": check.get("passed")}
         for name, check in (result.get("checks") or {}).items()
@@ -1521,8 +1618,8 @@ def wait_for_build(tc: TeamCity, project_id: str, timeout: int, poll: int = 15) 
                 return latest
         time.sleep(poll)
     if latest is None:
-        raise EvalError("the agent queued no build in the temporary project")
-    raise EvalError(f"build {latest['id']} did not finish within {timeout}s")
+        raise NoBuildQueued("the agent queued no build in the temporary project")
+    raise BuildWaitTimeout(f"build {latest['id']} did not finish within {timeout}s")
 
 
 def run(
@@ -1611,6 +1708,8 @@ def run(
     trace.parent.mkdir(parents=True, exist_ok=True)
     project_id = None
     target_project = None
+    phases = PhaseMonitor()
+    phases.enter("preparation")
 
     try:
       try:
@@ -1654,12 +1753,14 @@ def run(
                 "Ensure the VCS root monitors that branch before triggering a build."
             )
         if fixture_case:
+            phases.enter("agent")
             agent_run = invoke_agent(
                 prompt, checkout, install_queue_stall_fixture(workspace, env), trace,
                 int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
                 case.get("agentTools"), mcp_config, transport_contract,
                 use_strict_mcp_config, use_local_mcp_probe,
             )
+            phases.enter("observation")
         else:
             try:
                 uses_cli = tool_mode in ("cli-only", "cli+mcp")
@@ -1687,12 +1788,14 @@ def run(
                         bridge.agent_environment(env)
                         if uses_cli else agent_environment_without_cli(env, url)
                     )
+                    phases.enter("agent")
                     agent_run = invoke_agent(
                         prompt, checkout, agent_env, trace,
                         int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
                         case.get("agentTools"), mcp_config, transport_contract,
                         use_strict_mcp_config, use_local_mcp_probe,
                     )
+                    phases.enter("observation")
             except BridgeError as exc:
                 raise EvalError(f"could not provide scoped TeamCity CLI access: {exc}") from exc
         agent_exit = agent_run["exitCode"]
@@ -1720,6 +1823,7 @@ def run(
             allowed.extend([case["requestedConfiguration"]["sourcePath"], ".teamcity/"])
 
         if fixture_case:
+            phases.enter("grading")
             calls = tool_calls(trace)
             observed = {
                 "toolCalls": calls,
@@ -1734,6 +1838,7 @@ def run(
         if case["kind"] == "pipeline-configuration":
             # No build is run: the case asks what the agent configured, which is
             # answerable in minutes and without a build agent.
+            phases.enter("grading")
             observed = {
                 "jobs": tc.jobs(project_id),
                 "mutations": source_mutations(checkout, allowed),
@@ -1754,7 +1859,16 @@ def run(
                 )
             raise _Graded
 
-        build = wait_for_build(tc, project_id, budget)
+        phases.enter("buildWait")
+        try:
+            build = wait_for_build(tc, project_id, budget)
+        except NoBuildQueued:
+            result["errorCategory"] = "build-not-queued"
+            raise
+        except BuildWaitTimeout:
+            result["errorCategory"] = "build-wait-timeout"
+            raise
+        phases.enter("grading")
         # How many builds it took to get green is a quality signal in itself:
         # green on the first attempt and green on the sixth are not the same
         # work, and the graded checks alone cannot tell them apart.
@@ -1796,6 +1910,7 @@ def run(
             result["error"] = str(exc)
 
     finally:
+        phases.enter("cleanup")
         if project_id and not keep:
             # Temporary project deletion is disabled while the target server
             # does not complete the project DELETE request. Keep the project
@@ -1807,6 +1922,10 @@ def run(
             shutil.rmtree(workspace, ignore_errors=True)
         else:
             result["workspace"] = str(workspace)
+        result["phaseTimings"] = phases.finish()
+        bootstrap = env.get("EVAL_WRAPPER_BOOTSTRAP_SECONDS", "")
+        if re.fullmatch(r"[0-9]{1,6}", bootstrap):
+            result["phaseTimings"]["bootstrapSeconds"] = int(bootstrap)
 
     return result
 

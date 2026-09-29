@@ -4,6 +4,7 @@
 
 set -euo pipefail
 
+eval_wrapper_started_epoch=$(date +%s)
 case_path=${1:?case path is required}
 . evals/bootstrap-teamcity-cli.sh
 
@@ -88,6 +89,8 @@ esac
 # checkout-controlled agent process.
 exec 3<<<"$TEAMCITY_TOKEN"
 unset TEAMCITY_TOKEN
+export EVAL_WRAPPER_BOOTSTRAP_SECONDS="$(( $(date +%s) - eval_wrapper_started_epoch ))"
+echo "[eval-timing] bootstrap finished in ${EVAL_WRAPPER_BOOTSTRAP_SECONDS}s" >&2
 "${python_command[@]}" evals/run_case.py \
   --case "$case_path" \
   --result eval-result.json \

@@ -46,8 +46,13 @@ USAGE_FIELDS = (
 TOOL_SUMMARY_FIELDS = (
     "totalCalls", "mcpTeamCityCalls", "mcpProbeCalls", "teamcityCliCalls", "otherCalls",
 )
+TIMING_FIELDS = (
+    "bootstrapSeconds", "preparationSeconds", "agentSeconds", "observationSeconds",
+    "buildWaitSeconds", "gradingSeconds", "cleanupSeconds", "totalSeconds",
+)
 SAFE_ERROR_CATEGORIES = {
     "agent-timeout", "agent-permission-failure",
+    "build-not-queued", "build-wait-timeout",
     "mcp-not-invoked", "mcp-cli-invoked", "mcp-no-configuration",
     "mcp-sideload-flags-disabled", "mcp-enterprise-managed-config",
     "mcp-enterprise-policy-blocked", "mcp-approval-required",
@@ -161,6 +166,20 @@ def safe_agent_tool_summary(value):
         if isinstance(value.get(name), int)
         and not isinstance(value.get(name), bool)
         and value[name] >= 0
+    }
+
+
+def safe_phase_timings(value):
+    """Retain only fixed, finite runner durations from a result artifact."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        name: round(value[name], 3)
+        for name in TIMING_FIELDS
+        if isinstance(value.get(name), (int, float))
+        and not isinstance(value.get(name), bool)
+        and value[name] >= 0
+        and math.isfinite(value[name])
     }
 
 
@@ -395,6 +414,7 @@ def download_result(warnings, server, run_id, known_case_ids=None):
             ),
             "agentUsage": safe_agent_usage(result.get("agentUsage")),
             "agentToolSummary": safe_agent_tool_summary(result.get("agentToolSummary")),
+            "phaseTimings": safe_phase_timings(result.get("phaseTimings")),
             "permissionFailureSurface": (
                 result.get("permissionFailureSurface")
                 if result.get("permissionFailureSurface") in ("mcp", "workspace", "unknown")
@@ -493,6 +513,10 @@ def classify(server, run, result):
             elif grade:
                 detail += f"; recorded checks were {grade}"
             return "agent-timeout", detail
+        if result.get("errorCategory") == "build-not-queued":
+            return "build-not-queued", "no build appeared during the post-agent wait"
+        if result.get("errorCategory") == "build-wait-timeout":
+            return "build-wait-timeout", "an agent-queued build did not finish within the wait budget"
         return "runner-runtime-failure", "runner published an error result"
 
     if status == "success":
@@ -704,6 +728,20 @@ def collect(server, pipelines, limit, excluded_job_names):
         field: sum(field in usage for usage in usage_rows)
         for field in USAGE_FIELDS
     }
+    timing_rows = [
+        safe_phase_timings((job.get("result") or {}).get("phaseTimings"))
+        for job in all_jobs
+    ]
+    timing_rows = [timings for timings in timing_rows if timings]
+    timing_totals = {"runsMeasured": len(timing_rows)}
+    for field in TIMING_FIELDS:
+        values = [timings[field] for timings in timing_rows if field in timings]
+        if values:
+            timing_totals[field] = round(sum(values), 3)
+    timing_totals["fieldsMeasured"] = {
+        field: sum(field in timings for timings in timing_rows)
+        for field in TIMING_FIELDS
+    }
     report["summary"] = {
         "caseContracts": len(report["cases"]),
         "pairedCaseContracts": sum(
@@ -718,6 +756,7 @@ def collect(server, pipelines, limit, excluded_job_names):
         "jobRunsObserved": len(all_jobs),
         "classifications": counts,
         "agentUsage": usage_totals,
+        "phaseTimings": timing_totals,
     }
     report["recommendations"] = [
         "Complete baseline and skill arms in the same tool mode and harness revision; a single skill-arm pass does not measure skill lift.",
