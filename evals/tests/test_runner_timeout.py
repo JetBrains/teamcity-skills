@@ -63,6 +63,23 @@ class AgentTimeoutTest(unittest.TestCase):
         )
         self.assertNotIn("do-not-publish", json.dumps(published))
 
+    def test_harness_revision_is_checked_before_publication(self):
+        revision = "a" * 40
+        with mock.patch.object(
+            run_case.subprocess, "run",
+            return_value=subprocess.CompletedProcess([], 0, stdout=revision + "\n"),
+        ):
+            self.assertEqual(revision, run_case.harness_revision())
+
+        self.assertEqual(
+            revision,
+            run_case.publishable_result({"harnessRevision": revision, "checks": {}})["harnessRevision"],
+        )
+        self.assertNotIn(
+            "harnessRevision",
+            run_case.publishable_result({"harnessRevision": "private-value", "checks": {}}),
+        )
+
     def test_build_wait_distinguishes_no_build_from_unfinished_build(self):
         tc = mock.Mock()
         tc.builds.return_value = []

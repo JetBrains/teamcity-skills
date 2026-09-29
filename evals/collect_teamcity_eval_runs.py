@@ -140,7 +140,11 @@ def duration_seconds(run):
 def vcs_revision(run):
     changes = (run.get("lastChanges") or {}).get("change") or []
     version = changes[0].get("version") if changes else None
-    return version if isinstance(version, str) and SAFE_REVISION.fullmatch(version) else None
+    return safe_revision(version)
+
+
+def safe_revision(value):
+    return value if isinstance(value, str) and SAFE_REVISION.fullmatch(value) else None
 
 
 def safe_agent_usage(value):
@@ -398,6 +402,7 @@ def download_result(warnings, server, run_id, known_case_ids=None):
             "caseId": known_value(result.get("caseId"), known_case_ids),
             "caseStatus": known_value(result.get("caseStatus"), SAFE_CASE_STATUSES),
             "caseVersion": safe_case_version(result.get("caseVersion")),
+            "harnessRevision": safe_revision(result.get("harnessRevision")),
             "status": known_value(result.get("status"), SAFE_RESULT_STATUSES),
             "gradeStatus": known_value(result.get("gradeStatus"), SAFE_GRADE_STATUSES),
             "arm": known_value(result.get("arm"), ARMS),
@@ -530,6 +535,13 @@ def normalize_run(server, warnings, node, known_case_ids=None):
     if (detailed.get("state") or "").lower() == "finished":
         result = download_result(warnings, server, detailed["id"], known_case_ids)
     category, detail = classify(server, detailed, result)
+    teamcity_revision = vcs_revision(detailed)
+    harness_revision = (result or {}).get("harnessRevision")
+    if teamcity_revision and harness_revision and teamcity_revision != harness_revision:
+        warnings.append(f"Run {detailed['id']} has conflicting TeamCity and harness revisions")
+        revision = None
+    else:
+        revision = teamcity_revision or harness_revision
     return {
         "id": detailed["id"],
         "state": known_value(detailed.get("state"), SAFE_BUILD_STATES),
@@ -538,7 +550,7 @@ def normalize_run(server, warnings, node, known_case_ids=None):
         "startedAt": iso_time(detailed.get("startDate")),
         "finishedAt": iso_time(detailed.get("finishDate")),
         "durationSeconds": duration_seconds(detailed),
-        "revision": vcs_revision(detailed),
+        "revision": revision,
         "classification": category,
         "classificationDetail": detail,
         "result": result,

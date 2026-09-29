@@ -68,6 +68,7 @@ from typing import Optional
 EVALS = pathlib.Path(__file__).parent
 PLACEHOLDER = re.compile(r"\{\{teamcity\.(server|targetProject)\}\}")
 SAFE_AGENT_METADATA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+SAFE_REVISION = re.compile(r"^[a-fA-F0-9]{40}$")
 TOOL_MODES = ("cli-only", "mcp-only", "cli+mcp")
 sys.path.insert(0, str(EVALS))
 from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
@@ -1584,6 +1585,9 @@ def publishable_result(result: dict) -> dict:
         "cleanupDeferred",
     )
     published = {name: result[name] for name in fields if name in result}
+    revision = result.get("harnessRevision")
+    if isinstance(revision, str) and SAFE_REVISION.fullmatch(revision):
+        published["harnessRevision"] = revision
     usage = safe_agent_usage(result.get("agentUsage"))
     if usage:
         published["agentUsage"] = usage
@@ -1604,6 +1608,19 @@ def publishable_result(result: dict) -> dict:
         if isinstance(check, dict)
     }
     return published
+
+
+def harness_revision() -> Optional[str]:
+    """Get the exact revision of the checked-out evaluation harness."""
+    completed = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD"],
+        cwd=EVALS.parent,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    revision = completed.stdout.strip() if completed.returncode == 0 else ""
+    return revision if SAFE_REVISION.fullmatch(revision) else None
 
 
 def wait_for_build(tc: TeamCity, project_id: str, timeout: int, poll: int = 15) -> dict:
@@ -1663,6 +1680,9 @@ def run(
         "checks": {},
         "build": None,
     }
+    revision = harness_revision()
+    if revision:
+        result["harnessRevision"] = revision
     agent_config_id = safe_agent_metadata(env.get("EVAL_AGENT_CONFIG_ID"))
     agent_version = safe_agent_metadata(env.get("EVAL_AGENT_VERSION"))
     if agent_config_id:
