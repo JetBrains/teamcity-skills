@@ -91,6 +91,11 @@ Loop workflow for watching a build, fixing failures, and retrying. Equivalent to
    teamcity run watch <run-id>
    ```
 
+   `--watch` prints nothing until the build is terminal. When someone is
+   waiting on the result — babysitting in the background, for instance — poll
+   and report each stage instead: see
+   [Reporting progress while a build runs](run-builds.md#reporting-progress-while-a-build-runs).
+
 2. **If the build succeeds:** done.
 
 3. **If the build fails:** run the [Fixing a Build Failure](#fixing-a-build-failure) workflow above.

@@ -28,6 +28,27 @@ TeamCity server's supported capabilities.
   server exposes them; otherwise use the project's standard command in a script
   step.
 
+## Meaningful Build Status
+
+Every generated pipeline must report a live, meaningful status; a generic
+"Running" in the builds overview is incomplete.
+
+- Give every dedicated runner step an explicit, human-readable `name` —
+  TeamCity shows the running step in the overview.
+- In script steps, `echo` `##teamcity[progressMessage '<stage>']` at the start
+  of each stage; when one stage wraps several commands, use
+  `##teamcity[progressStart '<stage>']` / `progressFinish` with identical text.
+- End the stage carrying the result worth seeing in the builds list with
+  `##teamcity[buildStatus text='{build.status.text}, <summary>']`, keeping
+  `{build.status.text}` so the text is appended, not replaced. One short line,
+  no log excerpts.
+- Service messages are only recognized at the start of a line on stdout, so
+  `echo` them as their own command. Escape with `|`: `|'`, `|n`, `|r`, `||`,
+  `|[`, `|]`.
+
+On Windows use `Write-Host "##teamcity[...]"` (PowerShell) or
+`echo ##teamcity[...]` (cmd).
+
 ## Output
 
 When reporting the final setup, mention why each primary step type was chosen,

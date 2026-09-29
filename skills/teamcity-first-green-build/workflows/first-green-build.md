@@ -27,6 +27,9 @@ queueing a build.
 - Whenever YAML or Kotlin DSL with TeamCity configuration are generated or modified,
   always perform a validation of it (See "Validate Configuration" step),
   before starting a run in TeamCity.
+- Whenever a pipeline, build step, or build script is generated or modified, it
+  must report meaningful live status through TeamCity service messages (See
+  "Report Meaningful Build Status" in step 7).
 - At the start of every run, ask for or confirm the TeamCity server and target
   project before repository inspection, TeamCity discovery, or writes.
 - This confirmation must be obvious in the assistant's first response for the
@@ -290,6 +293,14 @@ Pipeline contents should include:
 
 Prefer the smallest pipeline that can prove the repository. Preserve existing
 multi-job topology when the repository already defines it.
+
+#### Report Meaningful Build Status
+
+Annotate the main stages of whatever pipeline is produced (build, test,
+package, publish, per stack) so the builds overview shows what the build is
+doing rather than a generic running state. This is a requirement, not a
+refinement: a generated config without it is incomplete. See
+`shared/build-step-selection.md` ("Meaningful Build Status") for how.
 
 ### 8. Validate Configuration
 
