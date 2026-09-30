@@ -2,9 +2,9 @@ name: Run configuration eval
 # Runs lightweight configuration and queue-diagnosis evals without compiling a
 # target project. Cheap enough to run per commit and across many repositories,
 # unlike a green-build case.
-# In TeamCity UI, add the JCP Central AI Agent build feature, select Claude
-# Code and a JCP Central connection. The feature provides `claude` and injects
-# short-lived authentication for this build; no agent token belongs in YAML.
+# In TeamCity UI, add the Claude build feature and select a compatible AI
+# provider connection. The feature provides `claude` and injects short-lived
+# authentication for this build; no agent token belongs in YAML.
 #
 # Parameters set at trigger time:
 #   case            path to the case JSON
@@ -54,9 +54,9 @@ jobs:
           "C:\Program Files\Git\bin\bash.exe" evals/run-eval-case.sh "%case%"
           @if errorlevel 1 exit /b 1
           @exit /b 0
-    # Configure the JCP Central AI Agent feature and select this installation's
-    # connection in TeamCity. Connection IDs are server-local and never belong
-    # in this portable definition.
+    # Configure the Claude feature with this installation's compatible AI
+    # provider connection in TeamCity. Its ID is server-local and deliberately
+    # omitted from this portable definition.
   publish_eval_report:
     name: Publish evaluation report
     runs-on: self-hosted

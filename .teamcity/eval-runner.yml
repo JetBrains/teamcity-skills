@@ -18,20 +18,19 @@ name: Run eval case
 #                                creates a bearer-authenticated config from this
 #                                server's URL and secure env.EVAL_MCP_TOKEN
 #
-# In TeamCity UI, add the JCP Central AI Agent build feature, select Claude
-# Code and a JCP Central connection. The feature provides `claude` and injects
-# short-lived authentication for this build; no agent token belongs in YAML.
+# The Claude build feature provides `claude` and injects short-lived
+# authentication for this build. Its connection ID is set in TeamCity as a
+# project parameter, not committed to this repository.
+import-parameters:
+  - eval.claude.connection.id
 parameters:
   case: evals/first-green-build/cases/spring-petclinic-maven-yaml.json
-  env.EVAL_PIPELINES: ""
   env.EVAL_TOOL_MODE: cli-only
   # Standard MCP evals use only the generated per-run config. Set false only
   # for a labelled diagnostic of a managed agent-provided MCP connection.
   env.EVAL_STRICT_MCP_CONFIG: "true"
   env.EVAL_MCP_LOCAL_PROBE: "false"
   env.EVAL_AGENT_CONFIG_ID: claude-default
-  env.EVAL_AGENT_VERSION: ""
-  env.EVAL_MCP_CONFIG: ""
   # Server-side password parameter; its value is never stored in this file.
   env.EVAL_MCP_TOKEN: "%ai.build.analyzer.eval.mcp.auth.token%"
   env.EVAL_REGRESSION_ENFORCEMENT: "false"
@@ -61,9 +60,9 @@ jobs:
           "C:\Program Files\Git\bin\bash.exe" evals/run-eval-case.sh "%case%"
           @if errorlevel 1 exit /b 1
           @exit /b 0
-    # Configure the JCP Central AI Agent feature and select this installation's
-    # connection in TeamCity. Connection IDs are server-local and never belong
-    # in this portable definition.
+    features:
+      - type: claude
+        connection-id: "%eval.claude.connection.id%"
   publish_eval_report:
     name: Publish evaluation report
     runs-on:
