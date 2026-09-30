@@ -23,7 +23,7 @@ if command -v claude >/dev/null 2>&1; then
 elif command -v claude.cmd >/dev/null 2>&1; then
   claude.cmd --version
 else
-  echo "Claude Code was not provided by the JCP Central AI Agent feature." >&2
+  echo "Claude Code was not provided by the Claude build feature." >&2
   exit 1
 fi
 
