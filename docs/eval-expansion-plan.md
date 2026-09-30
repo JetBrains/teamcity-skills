@@ -172,3 +172,60 @@ individual results. The JSON correctly reports three samples per OS arm and
 `insufficient-samples` for the other four case comparisons. No draft case
 was promoted, and no further unchanged evaluations were queued after
 completion of this batch.
+
+## Historical dashboard recovery — 2026-09-30
+
+The later dashboard's empty cells were not evidence that cases had never run.
+The configuration evaluator's pipeline-local `env.EVAL_PIPELINES` named only
+itself, overriding the parent project's two-pipeline list. The collector also
+limited each source to the latest 32 heads. TeamCity retained 155 configuration
+heads and 49 first-green heads at the start of this investigation.
+
+Report build `9020058` preserved the three KMP configuration results; report
+`9505870` preserved five of the six first-green rows requested by the user.
+These are historical verdicts at their original revisions, not new passes or
+regrades against today's contracts.
+
+| Requested case | Historical skill evidence | Historical baseline evidence |
+| --- | --- | --- |
+| `jetcaster-kmp-multi-targets` | `9004209`, passed | `9006940`, failed assertions |
+| `kmm-basic-sample-mobile-targets` | `8994259`, passed | `8994766`, failed assertions |
+| `kotlinconf-app-multi-targets` | `9008326`, passed | `9009420`, failed assertions |
+| `clean-spring-boot-maven` | `9391726`, passed | `9393068`, passed |
+| `kotlinconf-app-compose-multiplatform` | `9009549`, agent timeout | `9011778`, agent timeout |
+| `spring-boot-kotlin-gradle-java25` | `9435245`, runner error | `9435268`, failed assertions |
+| `spring-petclinic-maven-yaml` | `9497653`, build wait timeout | `9470110`, failed assertions |
+| `tdd-spring-maven` | `9505871`, queue stalled, **assisted** | No safe result identified |
+| `spring-boot-demo-gradle-testcontainers` | No historical first-green result identified | No historical first-green result identified |
+
+The TDD result was independently downloaded: agent exit 0, no agent timeout,
+`build-queue-stalled`, no completed grade. Agent-process wall time was
+2750.874 seconds (45:51), including tool activity and waits; it is not measured
+model-thinking time. The harness subsequently waited another 612.875 seconds
+for a build. Measured agent cost was $9.490015. Raw logs and trajectories were
+not inspected, so no finer attribution is asserted. Four manual selector-only
+repairs were previously recorded (main, diagnostic probe, main reversion,
+probe reversion); successful Maven children did not make their failing heads
+green. The report now explicitly labels this run assisted and excludes it from
+skill comparisons.
+
+Fix `9086dcd25f504435cd4cc08d5cab5a26651a583c` restores all retained heads by
+default, prioritizes a canonical parent-scoped `env.EVAL_REPORT_PIPELINES`,
+removes all log/trace fallback inspection, and changes empty cells to
+"no result in collected history". It retains revision/profile separation and
+actual-child-ID deduplication. All **157 unit tests** pass and all **22 cases**
+validate. A new report-only pipeline, `TeamCity_Sandbox_TCEvals_EvaluationHistoryReport`,
+is attached to the existing repository root and has no Claude feature or
+evaluation dependency. Its YAML was server-validated and read back. Report-only
+head/job `9518779`/`9518780` was queued on the fix revision; publication is pending.
+
+Only the genuine first-green Testcontainers gap was queued again: one CLI-only
+pair on the same `9086dcd` revision, with profile
+`claude-default-first-green-1800s`, agent/build-wait budgets of 1800 seconds,
+queue compatibility check at 120 seconds and stall budget of 600 seconds.
+Skill head/eval/report: `9519017`/`9519019`/`9519018`.
+Baseline head/eval/report: `9519020`/`9519022`/`9519021`.
+Both distinct eval children started. These are **pending**, not successes.
+Do not repair their generated targets manually, rerun merely to seek green,
+or confuse their results with the existing configuration-only Testcontainers
+case. Preserve all outcomes and measured costs when the safe artifacts arrive.
