@@ -250,9 +250,27 @@ queued at 20:32:32 and started at 20:32:34 UTC with trigger type
 Keep the canceled attempt in the audit; do not silently merge it with the
 replacement or count it as a scored baseline sample. Verify the replacement's
 case, arm, revision, and profile from its safe result before comparison.
-Skill eval `9519019` and replacement eval `9518861` are still running; both
-report jobs are queued with "Build dependencies have not been built yet".
-The final report-only refresh remains deferred until these dependencies finish.
+At that check, both evals were running and both report jobs were queued with
+"Build dependencies have not been built yet".
+
+At 20:43:21 UTC, skill eval `9519019` finished **FAILURE**. Its downloaded
+safe result identifies `spring-boot-demo-gradle-testcontainers`, arm `skill`,
+`cli-only`, harness `9086dcd25f504435cd4cc08d5cab5a26651a583c`, profile
+`claude-default-first-green-1800s`, case version
+`5ff75acc6baffac4a0b99862745ea9a14272bf6af6825eb260b3e6eb766d4e84`.
+The result is `errored` / `agent-timeout`: agent exit **124**, timeout **true**,
+1800-second budget. The failed grade has **4/6** checks passed:
+`configurationValidated`, `firstBuild`, `artifactsPublished`, and
+`sourceMutations`; `testsExecutedAndReported` and `toolchain` failed.
+This is not a first-green evaluation pass, despite the recorded build and
+artifact checks. No measured usage or cost was published; absence is not zero.
+Phase timings (seconds): bootstrap 9, preparation 3.223, agent 1800.002,
+observation 0.368, build wait 1.053, grading 4.049, cleanup 0.005, runner total
+1808.699. The evaluator job ran 1831 seconds overall. Cleanup is deferred and
+temporary objects remain, as required by the no-deletion boundary.
+Report `9519018` started at 20:43:26 UTC. Replacement eval `9518861` remains
+running and report `9519021` still waits for it. The single final report-only
+refresh remains deferred until these dependencies finish.
 
 ### Additional queue and preflight rows
 
