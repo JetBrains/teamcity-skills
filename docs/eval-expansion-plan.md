@@ -268,9 +268,26 @@ Phase timings (seconds): bootstrap 9, preparation 3.223, agent 1800.002,
 observation 0.368, build wait 1.053, grading 4.049, cleanup 0.005, runner total
 1808.699. The evaluator job ran 1831 seconds overall. Cleanup is deferred and
 temporary objects remain, as required by the no-deletion boundary.
-Report `9519018` started at 20:43:26 UTC. Replacement eval `9518861` remains
-running and report `9519021` still waits for it. The single final report-only
-refresh remains deferred until these dependencies finish.
+Report `9519018` ran from 20:43:26 to 20:53:18 UTC (592 seconds), finishing
+**SUCCESS**; head `9519017` finished **FAILURE** at 20:53:23 UTC. Its three
+published artifacts (`index.html`, `runs.json`, `regressions.json`) were
+downloaded and checked. The snapshot generated at 20:43:30 UTC correctly
+records skill `9519019` as an agent timeout with the two failed checks, keeps
+all ten recovered historical rows and their provenance unchanged, and retains
+the TDD assisted annotation. It has no collection warnings: 206 head/job
+references deduplicate to 202 eval IDs with the same three reused-ID groups.
+The regression check has zero mature failures; this is not an eval pass.
+
+The current-dependency snapshot includes replacement `9518861` but omits
+the canceled original `9519022`, which is no longer referenced by its head.
+That attempt remains explicit evidence in this audit, not a scored sample;
+the report's totals do not represent every interrupted invocation or its
+unknown usage. Do not conceal this limitation in the final handoff.
+This report is on the original evaluator revision, so the final report-only
+refresh must still include the later preflight labels and 50-row ledger.
+At the 20:56 UTC check, replacement eval `9518861` remains running and report
+`9519021` still waits for its dependency. The single final refresh remains
+deferred until the remaining dependencies finish.
 
 ### Additional queue and preflight rows
 
