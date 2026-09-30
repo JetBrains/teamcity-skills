@@ -39,6 +39,10 @@ SAFE_REVISION = re.compile(r"^[a-fA-F0-9]{40}$")
 SAFE_AGENT_METADATA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SAFE_BUILD_STATES = {"queued", "running", "finished"}
 SAFE_BUILD_STATUSES = {"SUCCESS", "FAILURE", "ERROR", "UNKNOWN", "CANCELED"}
+SAFE_QUEUE_WAIT_REASONS = {
+    "no-idle-compatible-agents", "no-compatible-agents",
+    "unresolved-parameters", "other", "unavailable",
+}
 USAGE_FIELDS = (
     "inputTokens", "outputTokens", "cacheReadTokens",
     "cacheWriteTokens", "totalCostUsd",
@@ -52,7 +56,7 @@ TIMING_FIELDS = (
 )
 SAFE_ERROR_CATEGORIES = {
     "agent-timeout", "agent-permission-failure",
-    "build-not-queued", "build-wait-timeout",
+    "build-not-queued", "build-wait-timeout", "build-queue-stalled",
     "mcp-not-invoked", "mcp-cli-invoked", "mcp-no-configuration",
     "mcp-sideload-flags-disabled", "mcp-enterprise-managed-config",
     "mcp-enterprise-policy-blocked", "mcp-approval-required",
@@ -427,6 +431,9 @@ def download_result(warnings, server, run_id, known_case_ids=None):
             ),
             "mcpRuntime": safe_mcp_runtime(result.get("mcpRuntime")),
             "errorCategory": error_category,
+            "queueWaitReason": known_value(
+                result.get("queueWaitReason"), SAFE_QUEUE_WAIT_REASONS
+            ),
             "checks": {
                 name: {
                     "passed": check.get("passed")
@@ -520,6 +527,15 @@ def classify(server, run, result):
             return "agent-timeout", detail
         if result.get("errorCategory") == "build-not-queued":
             return "build-not-queued", "no build appeared during the post-agent wait"
+        if result.get("errorCategory") == "build-queue-stalled":
+            reason = result.get("queueWaitReason")
+            if reason == "no-idle-compatible-agents":
+                return "build-queue-stalled", "build remained queued; TeamCity reported no idle compatible agents"
+            if reason == "no-compatible-agents":
+                return "build-queue-stalled", "build remained queued; TeamCity reported no compatible agents"
+            if reason == "unresolved-parameters":
+                return "build-queue-stalled", "build remained queued with unresolved parameters"
+            return "build-queue-stalled", "an agent-queued build exceeded the queue grace period"
         if result.get("errorCategory") == "build-wait-timeout":
             return "build-wait-timeout", "an agent-queued build did not finish within the wait budget"
         return "runner-runtime-failure", "runner published an error result"

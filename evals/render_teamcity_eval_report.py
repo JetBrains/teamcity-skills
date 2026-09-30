@@ -22,6 +22,7 @@ COLORS = {
     "agent-permission-failure": "#9b3a12",
     "agent-timeout": "#9b3a12",
     "build-not-queued": "#9b3a12",
+    "build-queue-stalled": "#9b3a12",
     "build-wait-timeout": "#9b3a12",
     "external-vcs-failure": "#9b3a12",
     "vcs-auth-failure": "#9b3a12",
