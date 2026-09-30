@@ -332,13 +332,51 @@ the new pair comparison remains `insufficient-samples`.
 The **single authorized final report-only refresh** was dispatched at
 21:15:38 UTC on `5664fc5e0578dd080863fc1655ff30336e99f639` (a descendant
 preserving the 50-row ledger and preflight/unsupported-mode labels).
-Head `9520474` and report child `9520475` are running; their read-back tree
-contains only the report job, no evaluator dependency. The report-only YAML
+At dispatch, head `9520474` and report child `9520475` were running; their
+read-back tree contains only the report job, no evaluator dependency. The report-only YAML
 was revalidated against the server and its stored topology and existing VCS
 root attachment were checked before dispatch. No new Claude evaluation was
 started. This uses the one refresh allowance: do not queue another refresh.
 Wait for these exact jobs, then verify the final safe publication and close
 the monitor only after the final evidence has been assessed and reported.
+
+### Completed restoration and final publication
+
+Final report head `9520474` finished **SUCCESS** at 21:24:30 UTC, and child
+`9520475` finished **SUCCESS** at 21:24:31 UTC; the report job ran for 532
+seconds. The three safe artifacts were downloaded to
+`/tmp/tc-eval-history.SbTScX/final-restoration/publish/` and verified. Snapshot
+time is 21:15:45.928583 UTC; report source is pinned to `5664fc5`, while each
+evaluation retains its own original source revision and case/profile identity.
+
+- All 202 unique evaluator job records equal the preceding verified snapshot.
+  The 19 historical records supporting all ten restored rows preserve their
+  verdicts, revisions, metadata, and assisted labels. Both new terminal results
+  match the independently downloaded safe artifacts, including checks, exit/
+  timeout flags, phase timings, and measured/absent usage.
+- The HTML ledger contains exactly the latest 50 unique evaluator IDs in the
+  existing order and visibly says **Showing 50 of 202 unique evaluator jobs**.
+- Preflight is explicitly **not executable**, with its runner unimplemented;
+  MCP-only queue-fixture cells are explicitly unsupported. Unsupported modes
+  are excluded from the denominator: **116** supported arm slots, not 126.
+- Assisted TDD remains excluded from comparison (`sampleSize: 0`). Both new
+  first-green results remain unsuccessful, with `insufficient-samples` for
+  comparison. The separate regression gate has no mature failures at minimum
+  3 samples, not a claim that the evaluated tasks succeeded.
+- Collection has zero warnings. The 206 head/job references still deduplicate
+  to 202 evaluator IDs with the same three reused-ID groups. Both evaluator
+  chains, both reports, and the final report-only chain are terminal.
+- Report cost is **$257.949359 measured across 82 of 202 evaluator jobs**,
+  not a complete total. Replacement baseline `9518861` contributes $10.738732;
+  skill `9519019` and canceled original `9519022` have unknown usage. The
+  canceled original remains in this audit and is absent from current-head
+  collection; it is neither silently merged nor counted as a scored sample.
+
+Restoration and the authorized first-green pair assessment are complete. No
+further eval or report refresh is authorized; this restoration monitor can be
+closed. No evaluated target or unrelated cleanup file was changed, no project
+was deleted, and the user's earlier PDF was not overwritten. The grading
+improvements described below are separate proposed work awaiting approval.
 
 ### First-green grading caveats discovered during read-only diagnosis
 
