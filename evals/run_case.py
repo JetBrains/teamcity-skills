@@ -22,6 +22,7 @@ Configuration comes from the environment, never from the case:
     EVAL_QUEUE_CHECK_AFTER seconds before checking a queued build (default 120)
     EVAL_QUEUE_STALL_TIMEOUT seconds to allow a queued build (default 600)
     EVAL_AGENT_TIMEOUT     seconds to wait for the agent (default 3600)
+    EVAL_AGENT_MAX_BUDGET_USD optional positive Claude API spending limit
     EVAL_KEEP              set to 1 to leave the temporary project and checkout
                            in place, the same as --keep
     EVAL_TRACE_DIR         protected directory for the agent trace (default:
@@ -60,6 +61,7 @@ import re
 import secrets
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -75,6 +77,10 @@ TOOL_MODES = ("cli-only", "mcp-only", "cli+mcp")
 sys.path.insert(0, str(EVALS))
 from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
 from queue_recovery import QueueRecoveryFixture, forbidden_queue_transport, safe_fixture_diagnostics
+from first_green_evidence import (
+    EvidenceError, chain_nodes, jdk_evidence, jdk_selectors, observe_chain,
+    safe_verification_diagnostics, select_pipeline,
+)
 
 
 class EvalError(RuntimeError):
@@ -398,15 +404,23 @@ class TeamCity:
         )
         return self._records(found, "buildType")
 
-    def builds(self, project_id: str):
+    def builds(self, project_id: str, pipeline_id: str = None):
+        arguments = ["run", "list", "--project", project_id, "--limit", "0", "--json"]
+        if pipeline_id:
+            arguments.extend(["--job", pipeline_id])
         found = self._run(
-            ["run", "list", "--project", project_id, "--limit", "50", "--json"],
+            arguments,
             json_output=True,
         )
         return self._records(found, "build")
 
     def build(self, build_id: int):
         return self._run(["run", "view", str(build_id), "--json"], json_output=True)
+
+    def build_tree(self, build_id: int):
+        return self._run(
+            ["run", "tree", str(build_id), "--depth", "0", "--json"], json_output=True
+        )
 
     def queue_wait_reason(self, build: dict) -> str:
         """Read only this build's queue reason through the first-class CLI."""
@@ -440,7 +454,17 @@ class TeamCity:
         yaml = self._run(["pipeline", "pull", pipeline_id])
         return {"yaml": yaml}
 
-    def jobs(self, project_id: str) -> list:
+    def pipeline_definition(self, pipeline_id: str) -> dict:
+        import yaml
+        try:
+            parsed = yaml.safe_load(self.pipeline(pipeline_id)["yaml"])
+        except yaml.YAMLError:
+            raise EvalError("stored pipeline YAML is invalid") from None
+        if not isinstance(parsed, dict) or not isinstance(parsed.get("jobs"), dict):
+            raise EvalError("stored pipeline has no job definitions")
+        return parsed
+
+    def jobs(self, project_id: str, pipeline_id: str = None) -> list:
         """The jobs the agent defined, read from the pipeline YAML on the server.
 
         A pipeline materialises its jobs as build configurations only once a
@@ -454,11 +478,8 @@ class TeamCity:
             raise EvalError("PyYAML is required to read pipeline definitions") from None
 
         collected = []
-        for pipeline_id in self.pipeline_ids(project_id):
-            pipeline = self.pipeline(pipeline_id)
-            if not pipeline or not pipeline.get("yaml"):
-                continue
-            parsed = yaml.safe_load(pipeline["yaml"]) or {}
+        for pipeline_id in ([pipeline_id] if pipeline_id else self.pipeline_ids(project_id)):
+            parsed = self.pipeline_definition(pipeline_id)
             for job_id, job in (parsed.get("jobs") or {}).items():
                 job = job or {}
                 steps = [
@@ -487,6 +508,12 @@ class TeamCity:
                     "steps": steps,
                     "artifactRules": "\n".join(published),
                     "agentRequirements": [str(runs_on)] if runs_on else [],
+                    "environment": jdk_selectors({
+                        **(parsed.get("environment") or {}), **(job.get("environment") or {}),
+                    }),
+                    "parameters": jdk_selectors({
+                        **(parsed.get("parameters") or {}), **(job.get("parameters") or {}),
+                    }, parameter=True),
                 })
         return collected
 
@@ -548,38 +575,9 @@ def artifact_matches(pattern: str, published: list) -> bool:
 
 
 def toolchain_evidence(properties: dict, jdk: str, jobs: list = None) -> tuple:
-    """Which JDK the build resolved, read from the properties it ran with.
-
-    Returns (matched, evidence). A build that names no JDK anywhere is reported
-    as unmatched with whatever was searched, so a weak probe shows up as a
-    visible failure rather than a silent pass.
-    """
-    version = re.compile(rf"(?<!\d){re.escape(jdk)}(?!\d)")
-    candidates = {
-        name: value for name, value in properties.items()
-        if "java" in name.lower() or "jdk" in name.lower()
-    }
-    # The CLI intentionally does not expose all resulting build properties.
-    # The stored pipeline is the authoritative pre-build declaration, so it is
-    # suitable evidence when the job selects JAVA_HOME/JDK explicitly.
-    for job in jobs or []:
-        for name, value in (job.get("environment") or {}).items():
-            if "java" in name.lower() or "jdk" in name.lower():
-                candidates[f"{job.get('id', 'job')}:{name}"] = str(value)
-    matched = sorted(n for n, v in candidates.items() if version.search(v) or version.search(n))
-    images = sorted({
-        str(step["properties"]["docker-image"])
-        for job in (jobs or [])
-        for step in job["steps"]
-        if "docker-image" in step["properties"]
-    })
-    matched_images = [
-        image for image in images
-        if version.search(image) and re.search(r"(?i)java|jdk|openjdk|temurin", image)
-    ]
-    evidence = matched + [f"docker-image:{image}" for image in matched_images]
-    fallback = sorted(candidates)[:8] + [f"docker-image:{image}" for image in images[:4]]
-    return bool(evidence), evidence or fallback
+    """Check explicit selections, separately from measured runtime versions."""
+    matched, evidence, _ = jdk_evidence(properties, jdk, jobs)
+    return matched, evidence
 
 
 def source_mutations(checkout: pathlib.Path, allowed: list) -> list:
@@ -1330,6 +1328,55 @@ def safe_agent_usage(value) -> dict:
     }
 
 
+def agent_budget(value: Optional[str]) -> Optional[float]:
+    if value is None:
+        return None
+    if not re.fullmatch(r"[0-9]{1,6}(?:\.[0-9]{1,6})?", value) or float(value) <= 0:
+        raise EvalError("EVAL_AGENT_MAX_BUDGET_USD must be a positive decimal")
+    return float(value)
+
+
+def agent_result_category(trace: pathlib.Path) -> Optional[str]:
+    """Inspect only the provider's fixed completion flags, not its prose."""
+    category = None
+    for line in trace_output_lines(trace):
+        try:
+            event = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(event, dict) or event.get("type") != "result":
+            continue
+        if event.get("subtype") == "error_max_budget_usd":
+            category = "agent-budget-exhausted"
+        elif event.get("is_error") is True or str(event.get("subtype", "")).startswith("error_"):
+            category = "agent-result-failed"
+        else:
+            category = None
+    return category
+
+
+def stop_agent_processes(process) -> None:
+    # Killing only shell=True's parent shell can leave the paid agent running.
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+        finally:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    else:
+        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    process.communicate()
+
+
 def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.Path,
                  timeout: int, tools: list = None,
                  mcp_config: Optional[pathlib.Path] = None,
@@ -1339,6 +1386,11 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
     # The runner owns the output format, because grading reads the trace, and the
     # case owns the tool policy, because which tools exist is part of the question.
     command = env.get("EVAL_AGENT_CMD", "claude -p") + " --output-format stream-json --verbose"
+    max_budget = agent_budget(env.get("EVAL_AGENT_MAX_BUDGET_USD"))
+    if max_budget is not None:
+        if "--max-budget-usd" in command:
+            raise EvalError("configure the agent budget only through EVAL_AGENT_MAX_BUDGET_USD")
+        command += f" --max-budget-usd {max_budget:g}"
     allowed_tools = list(tools or [])
     if mcp_config:
         # The MCP server supplies individual tool names after connecting. Its
@@ -1365,20 +1417,23 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
     with trace.open("w") as sink:
         sink.write(f"$ {command}\n--- prompt ---\n{prompt}\n--- output ---\n")
         sink.flush()
+        process = subprocess.Popen(
+            command, shell=True, cwd=checkout, stdin=subprocess.PIPE, text=True,
+            stdout=sink, stderr=subprocess.STDOUT, env=agent_env,
+            start_new_session=(os.name == "posix"),
+        )
         try:
-            process = subprocess.run(
-                command, shell=True, cwd=checkout, input=prompt, text=True,
-                stdout=sink, stderr=subprocess.STDOUT, timeout=timeout, env=agent_env,
-            )
+            process.communicate(input=prompt, timeout=timeout)
         except subprocess.TimeoutExpired:
-            # subprocess.run has already stopped and waited for the command it
-            # launched. Return a normal outcome so the caller can inspect any
-            # TeamCity build the agent managed to queue and, most importantly,
-            # still publish a structured eval-result.json.
+            stop_agent_processes(process)
             sink.write(f"\n--- runner ---\nAgent timed out after {timeout}s.\n")
             sink.flush()
             return {"exitCode": 124, "timedOut": True, "timeoutSeconds": timeout}
-    return {"exitCode": process.returncode, "timedOut": False, "timeoutSeconds": timeout}
+        except BaseException:
+            stop_agent_processes(process)
+            raise
+    return {"exitCode": process.returncode, "timedOut": False, "timeoutSeconds": timeout,
+            "failureCategory": agent_result_category(trace)}
 
 
 def set_graded_status(result: dict, agent_run: dict) -> None:
@@ -1390,6 +1445,10 @@ def set_graded_status(result: dict, agent_run: dict) -> None:
         result["status"] = "errored"
         result["errorCategory"] = "agent-timeout"
         result["error"] = f"agent exceeded the {agent_run['timeoutSeconds']}s timeout"
+    elif agent_run.get("failureCategory"):
+        result["status"] = "errored"
+        result["errorCategory"] = agent_run["failureCategory"]
+        result["error"] = "agent did not complete successfully"
     elif agent_run["exitCode"] != 0:
         result["status"] = "errored"
         result["errorCategory"] = result.get("errorCategory") or "agent-exit-failed"
@@ -1671,6 +1730,12 @@ def publishable_result(result: dict) -> dict:
     fixture_diagnostics = safe_fixture_diagnostics(result.get("queueRecoveryDiagnostics"))
     if fixture_diagnostics:
         published["queueRecoveryDiagnostics"] = fixture_diagnostics
+    verification = safe_verification_diagnostics(result.get("verificationDiagnostics"))
+    if verification:
+        published["verificationDiagnostics"] = verification
+    max_budget = result.get("agentMaxBudgetUsd")
+    if type(max_budget) in (int, float) and math.isfinite(max_budget) and max_budget > 0:
+        published["agentMaxBudgetUsd"] = max_budget
     published["checks"] = {
         name: {"passed": check.get("passed")}
         for name, check in (result.get("checks") or {}).items()
@@ -1695,40 +1760,64 @@ def harness_revision() -> Optional[str]:
 def wait_for_build(
     tc: TeamCity, project_id: str, timeout: int, poll: int = 15,
     queue_check_after: int = 120, queue_stall_timeout: int = 600,
+    case: dict = None, checkout: pathlib.Path = None,
+    no_build_timeout: int = None,
 ) -> dict:
-    """The build the agent produced, once it stops running."""
+    """Freeze one verification head and wait for its entire dependency DAG."""
     deadline = time.time() + timeout
-    latest = None
-    queued_id = None
-    queued_since = None
-    queue_reason = "unavailable"
-    queue_checked = False
+    no_build_deadline = time.time() + (timeout if no_build_timeout is None else no_build_timeout)
+    if timeout <= 0:
+        raise NoBuildQueued("no verification head observed within the wait budget")
+    definitions = {key: tc.pipeline_definition(key) for key in tc.pipeline_ids(project_id)}
+    if not definitions:
+        raise NoBuildQueued("the agent created no pipeline in the temporary project")
+    source = None
+    source_path = (case or {}).get("requestedConfiguration", {}).get("sourcePath")
+    if checkout and source_path:
+        import yaml
+        path = (checkout / source_path).resolve()
+        if checkout.resolve() not in path.parents:
+            raise EvidenceError("verification-pipeline-ambiguous")
+        if path.is_file():
+            try:
+                source = yaml.safe_load(path.read_text())
+            except (OSError, yaml.YAMLError):
+                raise EvidenceError("verification-pipeline-ambiguous") from None
+            if not isinstance(source, dict):
+                raise EvidenceError("verification-pipeline-ambiguous")
+    pipeline_id, selection = select_pipeline(definitions, source)
+    latest, attempts = None, 0
+    queued = {}
     while time.time() < deadline:
-        candidates = tc.builds(project_id)
-        if candidates:
-            latest = tc.build(max(c["id"] for c in candidates))
-            if latest.get("state") == "finished":
-                return latest
-            if latest.get("state") == "queued":
-                now = time.time()
-                if latest["id"] != queued_id:
-                    queued_id = latest["id"]
-                    queued_since = now
-                    queue_reason = "unavailable"
-                    queue_checked = False
-                elapsed = now - queued_since
-                if elapsed >= queue_check_after and not queue_checked:
-                    queue_reason = tc.queue_wait_reason(latest)
-                    queue_checked = True
-                    if queue_reason in ("no-compatible-agents", "unresolved-parameters"):
-                        raise BuildQueueStalled(queue_reason)
+        if latest is None:
+            candidates = [item for item in tc.builds(project_id, pipeline_id)
+                          if item.get("buildTypeId") == pipeline_id]
+            attempts = len(candidates)
+            if candidates:
+                latest = max(candidates, key=lambda item: item["id"])
+            elif time.time() >= no_build_deadline:
+                raise NoBuildQueued("the agent queued no verification head")
+        if latest is not None:
+            nodes = chain_nodes(tc.build_tree(latest["id"]), latest["id"], pipeline_id)
+            if all(node["state"] == "finished" for node in nodes):
+                if len(nodes) < 2:
+                    raise EvidenceError("verification-chain-incomplete")
+                return {**latest, "state": "finished", "nodes": nodes,
+                        "pipelineId": pipeline_id, "selection": selection, "attempts": attempts,
+                        "status": "SUCCESS" if all(node["status"] == "SUCCESS" for node in nodes)
+                        else "FAILURE"}
+            for node in nodes:
+                if node["state"] != "queued":
+                    queued.pop(node["id"], None)
+                    continue
+                state = queued.setdefault(node["id"], {"since": time.time(), "reason": None})
+                elapsed = time.time() - state["since"]
+                if elapsed >= queue_check_after and state["reason"] is None:
+                    state["reason"] = tc.queue_wait_reason(node)
+                    if state["reason"] in ("no-compatible-agents", "unresolved-parameters"):
+                        raise BuildQueueStalled(state["reason"])
                 if elapsed >= queue_stall_timeout:
-                    if not queue_checked:
-                        queue_reason = tc.queue_wait_reason(latest)
-                    raise BuildQueueStalled(queue_reason)
-            else:
-                queued_id = None
-                queued_since = None
+                    raise BuildQueueStalled(state["reason"] or tc.queue_wait_reason(node))
         time.sleep(poll)
     if latest is None:
         raise NoBuildQueued("the agent queued no build in the temporary project")
@@ -1785,6 +1874,9 @@ def run(
         result["agentConfigId"] = agent_config_id
     if agent_version:
         result["agentVersion"] = agent_version
+    max_budget = agent_budget(env.get("EVAL_AGENT_MAX_BUDGET_USD"))
+    if max_budget is not None:
+        result["agentMaxBudgetUsd"] = max_budget
 
     if dry_run:
         prompt = PLACEHOLDER.sub(lambda m: f"<{m.group(1)}>", case["prompt"])
@@ -1932,7 +2024,10 @@ def run(
         usage = agent_usage(trace)
         if usage:
             result["agentUsage"] = usage
-        result["errorCategory"] = trace_error_category(trace)
+        result["errorCategory"] = (
+            "agent-timeout" if agent_run["timedOut"] else
+            agent_run.get("failureCategory") or trace_error_category(trace)
+        )
         permission_surface = permission_failure_surface(trace)
         if permission_surface:
             result["permissionFailureSurface"] = permission_surface
@@ -1940,11 +2035,12 @@ def run(
         if mcp_config:
             result["mcpRuntime"] = mcp_runtime(trace)
 
-        # A dead agent queues nothing, so waiting the full budget for a build
-        # that cannot arrive only delays the report.
+        # Bound discovery after an abnormal exit. A chain already queued still
+        # gets the full (unpaid) build wait rather than an early partial grade.
         budget = int(env.get("EVAL_BUILD_TIMEOUT", "3600"))
-        if agent_exit != 0:
-            budget = min(budget, int(env.get("EVAL_FAILED_AGENT_GRACE", "120")))
+        no_build_budget = budget
+        if agent_exit != 0 or agent_run.get("failureCategory"):
+            no_build_budget = min(budget, int(env.get("EVAL_FAILED_AGENT_GRACE", "120")))
         allowed = [".claude/"]
         if "requestedConfiguration" in case:
             allowed.extend([case["requestedConfiguration"]["sourcePath"], ".teamcity/"])
@@ -2001,38 +2097,34 @@ def run(
                 tc, project_id, budget,
                 queue_check_after=int(env.get("EVAL_QUEUE_CHECK_AFTER", "120")),
                 queue_stall_timeout=int(env.get("EVAL_QUEUE_STALL_TIMEOUT", "600")),
+                case=case, checkout=checkout,
+                no_build_timeout=no_build_budget,
             )
         except NoBuildQueued:
-            result["errorCategory"] = "build-not-queued"
+            result["errorCategory"] = result.get("errorCategory") or "build-not-queued"
             raise
         except BuildQueueStalled as exc:
-            result["errorCategory"] = "build-queue-stalled"
+            result["errorCategory"] = result.get("errorCategory") or "build-queue-stalled"
             result["queueWaitReason"] = exc.reason
             raise
         except BuildWaitTimeout:
-            result["errorCategory"] = "build-wait-timeout"
+            result["errorCategory"] = result.get("errorCategory") or "build-wait-timeout"
             raise
         phases.enter("grading")
         # How many builds it took to get green is a quality signal in itself:
         # green on the first attempt and green on the sixth are not the same
         # work, and the graded checks alone cannot tell them apart.
-        history = sorted(tc.builds(project_id), key=lambda b: b["id"])
+        chain_observed, result["verificationDiagnostics"] = observe_chain(
+            tc, project_id, build, case["expected"]["toolchain"]["jdk"]
+        )
         observed = {
+            **chain_observed,
             "buildTypeCount": len(tc.build_types(project_id)),
             "buildStatus": build.get("status"),
             "statusText": build.get("statusText"),
-            "testCount": tc.test_count(build["id"]),
-            "artifacts": tc.artifacts(build["id"]),
             "mutations": source_mutations(checkout, allowed),
-            "properties": tc.resulting_properties(build["id"]),
-            "jobs": tc.jobs(project_id),
-            "attempts": len(history),
         }
-        result["buildHistory"] = [
-            {"id": b["id"], "status": b.get("status"), "buildTypeId": b.get("buildTypeId")}
-            for b in history
-        ]
-        result["buildAttempts"] = len(history)
+        result["buildAttempts"] = build["attempts"]
         result["build"] = {
             "id": build["id"], "status": build.get("status"),
             "webUrl": build.get("webUrl"), "personal": build.get("personal", False),
@@ -2045,6 +2137,9 @@ def run(
 
       except _Graded:
         pass
+      except EvidenceError as exc:
+        result["errorCategory"] = result.get("errorCategory") or exc.category
+        result["error"] = exc.category
       except EvalError as exc:
         # Report the error alongside everything already observed; a bare error
         # string hides how far the run actually got.

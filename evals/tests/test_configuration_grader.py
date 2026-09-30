@@ -104,7 +104,7 @@ class ConfigurationGraderTest(unittest.TestCase):
         matched, evidence = run_case.toolchain_evidence({}, "25", jobs)
 
         self.assertTrue(matched)
-        self.assertIn("docker-image:eclipse-temurin:25-jdk", evidence)
+        self.assertIn("declared-docker-image", evidence)
 
     def test_toolchain_rejects_wrong_jdk_container_image(self):
         jobs = [

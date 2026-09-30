@@ -40,7 +40,7 @@ class FirstGreenJava25Test(unittest.TestCase):
         self.assertTrue(all(check["passed"] for check in checks.values()))
 
         self.observed["jobs"][0]["steps"][0]["properties"].pop("docker-image")
-        self.observed["properties"] = {"env.JDK_25": "/opt/jdk-25"}
+        self.observed["properties"] = {"java.version": "25.0.1"}
         checks = run_case.grade(self.case, self.observed)
         self.assertTrue(checks["toolchain"]["passed"])
         self.assertFalse(checks["containerImage"]["passed"])
