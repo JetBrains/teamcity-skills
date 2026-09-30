@@ -70,3 +70,8 @@ false negative, not a change to Maven, runtime or outputs. The correction
 ignores step display names for both arms, while retaining strict executable
 properties, job/step topology and publications. Re-run both arms on the new
 revision; do not relabel the historical failures as passing observations.
+
+Before the first unresolved-parameter pilot, unit tests also cover both
+equivalent bounded repairs: implicit `exit /b` and TeamCity percent escaping.
+Neither arm is required to emit one exact spelling; Maven verification and
+publication behavior remain mandatory.

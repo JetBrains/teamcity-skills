@@ -116,16 +116,20 @@ class QueueRecoveryFixture(TeamCityCliBridge):
         return requirements == [{
             "requirement": "equals", "name": requirements[0].get("name", "") if requirements else "",
             "parameter": "container.engine.osType", "value": "linux",
-        }] and "%ERRORLEVEL%" not in json.dumps(job)
+        }] and not re.search(r"(?<!%)%ERRORLEVEL%(?!%)", json.dumps(job))
 
     def preservation_reference(self, config):
         expected = copy.deepcopy(self.initial)
         if self.scenario == "missing-os-family":
             expected["jobs"]["Build"]["runs-on"] = config.get("jobs", {}).get("Build", {}).get("runs-on")
         elif self.scenario == "unresolved-script-parameter":
+            original = self.initial["jobs"]["Build"]["steps"][-1]["script-content"]
+            implicit_exit = original.replace("exit /b %ERRORLEVEL%", "exit /b")
+            escaped_exit = original.replace("%ERRORLEVEL%", "%%ERRORLEVEL%%")
+            steps = config.get("jobs", {}).get("Build", {}).get("steps", [])
+            proposed = steps[-1].get("script-content") if steps and isinstance(steps[-1], dict) else None
             expected["jobs"]["Build"]["steps"][-1]["script-content"] = (
-                self.initial["jobs"]["Build"]["steps"][-1]["script-content"]
-                .replace("exit /b %ERRORLEVEL%", "exit /b")
+                escaped_exit if proposed == escaped_exit else implicit_exit
             )
         return expected
 
