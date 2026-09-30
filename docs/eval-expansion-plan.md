@@ -426,3 +426,61 @@ runner not implemented**, separately from missing history and paired-arm
 results. MCP-only is explicitly unsupported by the CLI queue fixture; these
 cells are marked unsupported and excluded from expected runnable arm slots.
 No contract is promoted and no new preflight runner is claimed.
+
+## Authorized chain/JDK repair and bounded repeat — 2026-10-01
+
+The user subsequently approved the proposed harness repair and necessary
+reruns ("ок, настрой, перезапусти что надо" / "исправь и продолжи"). This is
+new authorization after the completed restoration above, not a revival of
+its deleted monitor or an amendment of historical grades. Scope is one fresh
+comparable first-green Testcontainers skill/baseline pair; no other cases,
+manual target repairs, project deletion, or unbounded retries.
+
+The previous $10.738732 measurement covers replacement baseline `9518861`
+only: 1793.642 agent seconds, 74973 output tokens, 14305724 cache-read tokens,
+and 134 reported tool calls. Skill `9519019` and canceled `9519022` costs are
+unknown. These aggregate counters establish usage, not which individual
+activity caused it. No logs, prompts, or real trajectories were inspected.
+
+Implemented changes:
+
+- Bind verification to the generated source YAML's stored job topology and
+  settings; allow a unique pipeline when no source file exists. Multiple or
+  mismatching candidates fail closed. Do not choose by probe name or highest
+  arbitrary project build ID. Pin the latest head of that selected pipeline.
+- Wait for its full dependency DAG, including queued/running siblings; any
+  non-successful member prevents a green chain. Deduplicate actual build IDs
+  and aggregate tests/artifacts only from that chain. Bind declarations via
+  unique CLI job names, rejecting missing/foreign/ambiguous jobs. Do not parse
+  undocumented virtual-ID suffixes or mix retries/pipelines.
+- Preserve only allowlisted JAVA_HOME/JDK_HOME selectors (including inherited
+  `env.JAVA_HOME` parameters). Require evidence for every evaluated job and
+  distinguish a declaration from a measured runtime version. Merely available
+  JDK parameters do not establish selection. Publish safe IDs/counts/statuses
+  and fixed JDK booleans, never parameter values, scripts, or free-form details.
+- Add validated `EVAL_AGENT_MAX_BUDGET_USD` forwarding to Claude's spending
+  limit and classify structured budget/error completions even with exit 0.
+  Stop the process group on timeout, not just its shell. This closes a possible
+  orphan-process risk; it is **not** attribution for the old unknown charges.
+  After abnormal agent exit, bound discovery of a missing head separately from
+  the full wait for a chain already queued (no additional Claude invocation).
+
+Validation: **176 unit tests passed**, including process-group termination,
+budget exhaustion, delayed failed siblings, reused dependencies, ambiguous
+selection, JDK inheritance, unavailable runtime proof, and sanitization.
+All **22 cases** validate. Existing `.teamcity/eval-runner.yml` was validated
+by the nightly server and its stored jobs/report dependency read back.
+
+A read-only adapter check of old chain `9518864` now sees packaging `9519271`
+SUCCESS (0 tests, 3 artifacts) and test job `9519270` FAILURE (1 imported test,
+1 artifact). Both declare Java 21; runtime verification remains false. This
+tests observation on terminal evidence only: no historical grade was rewritten
+and no assertion is made about when the old test result first appeared.
+
+The authorized repeat profile is `claude-default-chain-v2-1200s-usd3`, CLI-only,
+with the same pinned case/source for both arms. Set a **$3 provider API limit
+per arm**, 1200 seconds for the agent, 1800 seconds for already-queued builds,
+and queue checkpoint/stall budgets of 120/600 seconds. The provider limit is
+not a TeamCity-infrastructure cost cap; report actual measured spend, including
+any final-call overshoot, rather than claiming a prepaid $6 total. No automatic
+repeat is authorized. Dispatch IDs/revision and terminal evidence follow below.

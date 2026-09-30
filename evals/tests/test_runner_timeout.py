@@ -87,8 +87,11 @@ class AgentTimeoutTest(unittest.TestCase):
             run_case.wait_for_build(tc, "project", timeout=0)
 
         tc.builds.return_value = [{"id": 42}]
-        tc.build.return_value = {"id": 42, "state": "running"}
-        with mock.patch.object(run_case.time, "time", side_effect=(0, 0, 2)), \
+        tc.pipeline_ids.return_value = ["pipeline"]
+        tc.pipeline_definition.return_value = {"jobs": {"verify": {}}}
+        tc.builds.return_value = [{"id": 42, "buildTypeId": "pipeline"}]
+        tc.build_tree.return_value = {"id": 42, "buildTypeId": "pipeline", "state": "running", "dependencies": []}
+        with mock.patch.object(run_case.time, "time", side_effect=(0, 0, 0, 2)), \
                 mock.patch.object(run_case.time, "sleep"):
             with self.assertRaises(run_case.BuildWaitTimeout):
                 run_case.wait_for_build(tc, "project", timeout=1)
@@ -115,8 +118,10 @@ class AgentTimeoutTest(unittest.TestCase):
 
     def test_queued_build_stops_after_grace_period_instead_of_full_build_timeout(self):
         tc = mock.Mock()
-        tc.builds.return_value = [{"id": 42}]
-        tc.build.return_value = {"id": 42, "state": "queued", "buildTypeId": "target-job"}
+        tc.pipeline_ids.return_value = ["target-job"]
+        tc.pipeline_definition.return_value = {"jobs": {"verify": {}}}
+        tc.builds.return_value = [{"id": 42, "buildTypeId": "target-job"}]
+        tc.build_tree.return_value = {"id": 42, "state": "queued", "buildTypeId": "target-job", "dependencies": []}
         tc.queue_wait_reason.return_value = "no-idle-compatible-agents"
         clock = [0]
 
@@ -141,8 +146,10 @@ class AgentTimeoutTest(unittest.TestCase):
 
     def test_unresolved_queue_requirement_stops_at_checkpoint(self):
         tc = mock.Mock()
-        tc.builds.return_value = [{"id": 42}]
-        tc.build.return_value = {"id": 42, "state": "queued", "buildTypeId": "target-job"}
+        tc.pipeline_ids.return_value = ["target-job"]
+        tc.pipeline_definition.return_value = {"jobs": {"verify": {}}}
+        tc.builds.return_value = [{"id": 42, "buildTypeId": "target-job"}]
+        tc.build_tree.return_value = {"id": 42, "state": "queued", "buildTypeId": "target-job", "dependencies": []}
         tc.queue_wait_reason.return_value = "unresolved-parameters"
         clock = [0]
 
@@ -205,11 +212,10 @@ class AgentTimeoutTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             trace = root / "trace.log"
-            with mock.patch.object(
-                run_case.subprocess,
-                "run",
-                side_effect=subprocess.TimeoutExpired("claude", 7),
-            ):
+            process = mock.Mock(returncode=0)
+            process.communicate.side_effect = subprocess.TimeoutExpired("claude", 7)
+            with mock.patch.object(run_case.subprocess, "Popen", return_value=process), \
+                    mock.patch.object(run_case, "stop_agent_processes") as stop:
                 outcome = run_case.invoke_agent(
                     "prompt", root, {}, trace, timeout=7, tools=["Read"]
                 )
@@ -218,12 +224,13 @@ class AgentTimeoutTest(unittest.TestCase):
             self.assertTrue(outcome["timedOut"])
             self.assertEqual(7, outcome["timeoutSeconds"])
             self.assertIn("Agent timed out after 7s", trace.read_text())
+            stop.assert_called_once_with(process)
 
     def test_invoke_agent_does_not_pass_lifecycle_token_to_agent(self):
         with tempfile.TemporaryDirectory() as directory:
             trace = pathlib.Path(directory) / "trace.log"
-            completed = subprocess.CompletedProcess([], 0)
-            with mock.patch.object(run_case.subprocess, "run", return_value=completed) as invoked:
+            completed = mock.Mock(returncode=0)
+            with mock.patch.object(run_case.subprocess, "Popen", return_value=completed) as invoked:
                 run_case.invoke_agent(
                     "prompt",
                     pathlib.Path(directory),
@@ -406,8 +413,8 @@ class AgentTimeoutTest(unittest.TestCase):
             trace = root / "trace.log"
             mcp_config = root / "mcp.json"
             mcp_config.write_text("{}")
-            completed = subprocess.CompletedProcess([], 0)
-            with mock.patch.object(run_case.subprocess, "run", return_value=completed) as invoked:
+            completed = mock.Mock(returncode=0)
+            with mock.patch.object(run_case.subprocess, "Popen", return_value=completed) as invoked:
                 run_case.invoke_agent(
                     "prompt", root, {}, trace, timeout=7,
                     tools=["Read"], mcp_config=mcp_config,
@@ -422,8 +429,8 @@ class AgentTimeoutTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             trace = root / "trace.log"
-            completed = subprocess.CompletedProcess([], 0)
-            with mock.patch.object(run_case.subprocess, "run", return_value=completed) as invoked:
+            completed = mock.Mock(returncode=0)
+            with mock.patch.object(run_case.subprocess, "Popen", return_value=completed) as invoked:
                 run_case.invoke_agent(
                     "prompt", root, {}, trace, timeout=7,
                     use_strict_mcp_config=False,
@@ -639,8 +646,8 @@ class AgentTimeoutTest(unittest.TestCase):
     def test_invoke_agent_adds_the_transport_contract_as_a_system_prompt(self):
         with tempfile.TemporaryDirectory() as directory:
             trace = pathlib.Path(directory) / "trace.log"
-            completed = subprocess.CompletedProcess([], 0)
-            with mock.patch.object(run_case.subprocess, "run", return_value=completed) as invoked:
+            completed = mock.Mock(returncode=0)
+            with mock.patch.object(run_case.subprocess, "Popen", return_value=completed) as invoked:
                 run_case.invoke_agent(
                     "case prompt", pathlib.Path(directory), {}, trace, timeout=7,
                     transport_contract="MCP transport contract",
@@ -656,8 +663,8 @@ class AgentTimeoutTest(unittest.TestCase):
             trace = root / "trace.log"
             mcp_config = root / "mcp.json"
             mcp_config.write_text("{}")
-            completed = subprocess.CompletedProcess([], 0)
-            with mock.patch.object(run_case.subprocess, "run", return_value=completed) as invoked:
+            completed = mock.Mock(returncode=0)
+            with mock.patch.object(run_case.subprocess, "Popen", return_value=completed) as invoked:
                 run_case.invoke_agent(
                     "prompt", root, {}, trace, timeout=7, mcp_config=mcp_config,
                     use_local_mcp_probe=True,

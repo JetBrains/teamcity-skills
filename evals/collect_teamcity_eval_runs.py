@@ -29,6 +29,9 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+from first_green_evidence import safe_verification_diagnostics
+
 
 HERE = pathlib.Path(__file__).resolve().parent
 EVAL_JOB_NAMES = {"Run configuration eval", "Run eval case"}
@@ -56,6 +59,8 @@ TIMING_FIELDS = (
 )
 SAFE_ERROR_CATEGORIES = {
     "agent-timeout", "agent-permission-failure", "agent-exit-failed",
+    "agent-budget-exhausted", "agent-result-failed",
+    "verification-pipeline-ambiguous", "verification-chain-incomplete",
     "build-not-queued", "build-wait-timeout", "build-queue-stalled",
     "mcp-not-invoked", "mcp-cli-invoked", "mcp-no-configuration",
     "mcp-sideload-flags-disabled", "mcp-enterprise-managed-config",
@@ -433,6 +438,13 @@ def download_result(warnings, server, run_id, known_case_ids=None):
                 if isinstance(result.get("agentTimedOut"), bool) else None
             ),
             "agentUsage": safe_agent_usage(result.get("agentUsage")),
+            "agentMaxBudgetUsd": (
+                result.get("agentMaxBudgetUsd")
+                if type(result.get("agentMaxBudgetUsd")) in (int, float)
+                and math.isfinite(result["agentMaxBudgetUsd"])
+                and result["agentMaxBudgetUsd"] > 0 else None
+            ),
+            "verificationDiagnostics": safe_verification_diagnostics(result.get("verificationDiagnostics")),
             "agentToolSummary": safe_agent_tool_summary(result.get("agentToolSummary")),
             "phaseTimings": safe_phase_timings(result.get("phaseTimings")),
             "permissionFailureSurface": (
@@ -481,6 +493,12 @@ def classify(server, run, result):
             return "skill-output-failed", detail
         if result.get("errorCategory") == "agent-permission-failure":
             return "agent-permission-failure", "Claude's non-interactive tool policy denied required commands"
+        if result.get("errorCategory") == "agent-budget-exhausted":
+            return "agent-budget-exhausted", "Claude reached the configured API spending limit"
+        if result.get("errorCategory") == "agent-result-failed":
+            return "agent-result-failed", "Claude reported an unsuccessful completion"
+        if result.get("errorCategory") in ("verification-pipeline-ambiguous", "verification-chain-incomplete"):
+            return result["errorCategory"], "verification chain could not be bound unambiguously"
         if (
             result.get("errorCategory") == "agent-timeout"
             or result.get("agentTimedOut") is True
