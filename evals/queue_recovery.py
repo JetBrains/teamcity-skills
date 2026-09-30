@@ -23,6 +23,20 @@ VERIFICATION = "73143"
 SERVER = "https://teamcity.queue-fixture.invalid"
 SCENARIOS = {"missing-os-family", "unresolved-script-parameter", "busy-compatible"}
 PARAMETERS = {"container.engine.osType": "linux", "env.JDK_21": "/opt/jdk-21"}
+DIAGNOSTIC_COUNTERS = {
+    "statusReads", "preDiagnosisStatusReads", "pushAttempts", "acceptedPushes",
+    "startAttempts", "cancellations", "unrelatedChangeAttempts",
+    "pipelineMetadataChanges", "jobMetadataChanges", "stepMetadataChanges",
+    "stepBehaviorChanges", "publicationChanges", "topologyChanges", "otherSettingChanges",
+}
+
+
+def safe_fixture_diagnostics(value):
+    """Only fixed counters may leave the fixture; never config or tool inputs."""
+    if not isinstance(value, dict):
+        return {}
+    return {name: value[name] for name in sorted(DIAGNOSTIC_COUNTERS)
+            if type(value.get(name)) is int and 0 <= value[name] <= 1000000}
 
 
 def forbidden_queue_transport(calls):
@@ -53,6 +67,7 @@ class QueueRecoveryFixture(TeamCityCliBridge):
         self.scenario = scenario
         self.lock = threading.Lock()
         self.events = []
+        self.change_counts = {}
         self.status_reads = 0
         self.verification_reads = 0
         self.validated = None
@@ -103,7 +118,7 @@ class QueueRecoveryFixture(TeamCityCliBridge):
             "parameter": "container.engine.osType", "value": "linux",
         }] and "%ERRORLEVEL%" not in json.dumps(job)
 
-    def preserved(self, config):
+    def preservation_reference(self, config):
         expected = copy.deepcopy(self.initial)
         if self.scenario == "missing-os-family":
             expected["jobs"]["Build"]["runs-on"] = config.get("jobs", {}).get("Build", {}).get("runs-on")
@@ -112,7 +127,62 @@ class QueueRecoveryFixture(TeamCityCliBridge):
                 self.initial["jobs"]["Build"]["steps"][-1]["script-content"]
                 .replace("exit /b %ERRORLEVEL%", "exit /b")
             )
-        return config == expected
+        return expected
+
+    def preserved(self, config):
+        return config == self.preservation_reference(config)
+
+    def record_rejected_changes(self, config):
+        expected = self.preservation_reference(config)
+        categories = set()
+        if config.get("name") != expected.get("name"):
+            categories.add("pipelineMetadataChanges")
+        before, after = expected["jobs"], config.get("jobs", {})
+        if not isinstance(after, dict) or set(before) != set(after):
+            categories.add("topologyChanges")
+        for key, job in before.items():
+            candidate = after.get(key) if isinstance(after, dict) else None
+            if not isinstance(candidate, dict):
+                categories.add("topologyChanges")
+                continue
+            if job.get("name") != candidate.get("name"):
+                categories.add("jobMetadataChanges")
+            if job.get("files-publication") != candidate.get("files-publication"):
+                categories.add("publicationChanges")
+            steps, candidates = job.get("steps", []), candidate.get("steps", [])
+            if not isinstance(candidates, list) or len(steps) != len(candidates):
+                categories.add("stepBehaviorChanges")
+            else:
+                for original, proposed in zip(steps, candidates):
+                    if not isinstance(proposed, dict):
+                        categories.add("stepBehaviorChanges")
+                        continue
+                    if original.get("name") != proposed.get("name"):
+                        categories.add("stepMetadataChanges")
+                    if ({k: v for k, v in original.items() if k != "name"}
+                            != {k: v for k, v in proposed.items() if k != "name"}):
+                        categories.add("stepBehaviorChanges")
+            excluded = {"name", "steps", "files-publication"}
+            if ({k: v for k, v in job.items() if k not in excluded}
+                    != {k: v for k, v in candidate.items() if k not in excluded}):
+                categories.add("otherSettingChanges")
+        if ({k: v for k, v in expected.items() if k not in {"name", "jobs"}}
+                != {k: v for k, v in config.items() if k not in {"name", "jobs"}}):
+            categories.add("otherSettingChanges")
+        for category in categories:
+            self.change_counts[category] = self.change_counts.get(category, 0) + 1
+
+    def diagnostics(self):
+        return safe_fixture_diagnostics({
+            "statusReads": self.status_reads,
+            "preDiagnosisStatusReads": self.events.count("status-before-diagnosis"),
+            "pushAttempts": self.events.count("push-attempt"),
+            "acceptedPushes": self.pushes,
+            "startAttempts": self.events.count("start-attempt"),
+            "cancellations": self.events.count("cancel"),
+            "unrelatedChangeAttempts": self.events.count("unrelated-change"),
+            **self.change_counts,
+        })
 
     def job_details(self):
         compatible = self.compatible()
@@ -260,6 +330,7 @@ class QueueRecoveryFixture(TeamCityCliBridge):
                 self.record("unsafe-mutation")
             if not self.preserved(config):
                 self.record("unrelated-change")
+                self.record_rejected_changes(config)
                 raise BridgeError("preserve unrelated job settings")
             self.config = config
             self.pushes += 1

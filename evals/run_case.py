@@ -74,7 +74,7 @@ SAFE_REVISION = re.compile(r"^[a-fA-F0-9]{40}$")
 TOOL_MODES = ("cli-only", "mcp-only", "cli+mcp")
 sys.path.insert(0, str(EVALS))
 from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
-from queue_recovery import QueueRecoveryFixture, forbidden_queue_transport
+from queue_recovery import QueueRecoveryFixture, forbidden_queue_transport, safe_fixture_diagnostics
 
 
 class EvalError(RuntimeError):
@@ -1668,6 +1668,9 @@ def publishable_result(result: dict) -> dict:
     timings = safe_phase_timings(result.get("phaseTimings"))
     if timings:
         published["phaseTimings"] = timings
+    fixture_diagnostics = safe_fixture_diagnostics(result.get("queueRecoveryDiagnostics"))
+    if fixture_diagnostics:
+        published["queueRecoveryDiagnostics"] = fixture_diagnostics
     published["checks"] = {
         name: {"passed": check.get("passed")}
         for name, check in (result.get("checks") or {}).items()
@@ -1954,6 +1957,7 @@ def run(
                     source_mutations(checkout, allowed), forbidden_queue_transport(calls)
                 )
                 result["evaluationEnvironment"] = "simulated"
+                result["queueRecoveryDiagnostics"] = recovery_fixture.diagnostics()
                 set_graded_status(result, agent_run)
                 raise _Graded
             calls = tool_calls(trace)
