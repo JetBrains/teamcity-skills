@@ -124,6 +124,34 @@ class QueueRecoveryTest(unittest.TestCase):
         self.repair()
         self.assertTrue(all(c["passed"] for c in self.fixture.grade([]).values()))
 
+    def test_escaped_shell_variable_is_an_equivalent_parameter_repair(self):
+        self.fixture = QueueRecoveryFixture("unresolved-script-parameter", self.workspace, self.checkout, {})
+        self.diagnose()
+        config = copy.deepcopy(self.fixture.config)
+        script = config["jobs"]["Build"]["steps"][-1]
+        script["script-content"] = script["script-content"].replace("%ERRORLEVEL%", "%%ERRORLEVEL%%")
+        self.path.write_text(yaml.safe_dump(config))
+        self.call("pipeline", "validate", str(self.path))
+        self.call("pipeline", "push", PIPELINE, "--file", str(self.path))
+        self.call("pipeline", "pull", PIPELINE, "--output", str(self.path))
+        self.call("job", "view", JOB)
+        self.call("run", "cancel", ORIGINAL)
+        self.call("run", "start", JOB, "--settings", "current")
+        self.call("run", "watch", VERIFICATION, "--timeout", "60s")
+        self.assertTrue(all(c["passed"] for c in self.fixture.grade([]).values()))
+
+    def test_escaping_variable_does_not_permit_weakening_verification(self):
+        self.fixture = QueueRecoveryFixture("unresolved-script-parameter", self.workspace, self.checkout, {})
+        self.diagnose()
+        config = copy.deepcopy(self.fixture.config)
+        steps = config["jobs"]["Build"]["steps"]
+        steps[-1]["script-content"] = steps[-1]["script-content"].replace("%ERRORLEVEL%", "%%ERRORLEVEL%%")
+        steps[0]["goals"] = "package -DskipTests"
+        self.path.write_text(yaml.safe_dump(config))
+        self.call("pipeline", "validate", str(self.path))
+        self.call("pipeline", "push", PIPELINE, "--file", str(self.path), succeeds=False)
+        self.assertFalse(self.fixture.grade([])["configurationPreserved"]["passed"])
+
     def test_busy_compatible_agent_completes_without_config_change_or_retry(self):
         self.fixture = QueueRecoveryFixture("busy-compatible", self.workspace, self.checkout, {})
         self.diagnose()
