@@ -93,6 +93,70 @@ class AgentTimeoutTest(unittest.TestCase):
             with self.assertRaises(run_case.BuildWaitTimeout):
                 run_case.wait_for_build(tc, "project", timeout=1)
 
+    def test_queue_reason_is_read_only_for_the_queued_job_and_sanitized(self):
+        tc = run_case.TeamCity("teamcity", "https://teamcity.example", "private", {})
+        with mock.patch.object(tc, "_run", return_value={
+            "build": [
+                {"id": 41, "waitReason": "another build"},
+                {"id": 42, "waitReason": "There are no idle compatible agents which can run this build"},
+            ]
+        }) as command:
+            reason = tc.queue_wait_reason({"id": 42, "buildTypeId": "target-job"})
+
+        self.assertEqual("no-idle-compatible-agents", reason)
+        command.assert_called_once_with(
+            ["queue", "list", "--job", "target-job", "--json=id,waitReason"],
+            json_output=True,
+        )
+        published = run_case.publishable_result({
+            "checks": {}, "queueWaitReason": "private queue details",
+        })
+        self.assertEqual("other", published["queueWaitReason"])
+
+    def test_queued_build_stops_after_grace_period_instead_of_full_build_timeout(self):
+        tc = mock.Mock()
+        tc.builds.return_value = [{"id": 42}]
+        tc.build.return_value = {"id": 42, "state": "queued", "buildTypeId": "target-job"}
+        tc.queue_wait_reason.return_value = "no-idle-compatible-agents"
+        clock = [0]
+
+        with mock.patch.object(run_case.time, "time", side_effect=lambda: clock[0]), \
+                mock.patch.object(run_case.time, "sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+            with self.assertRaises(run_case.BuildQueueStalled) as stalled:
+                run_case.wait_for_build(
+                    tc, "project", timeout=3600, poll=1,
+                    queue_check_after=2, queue_stall_timeout=4,
+                )
+
+        self.assertEqual(4, clock[0])
+        self.assertEqual("no-idle-compatible-agents", stalled.exception.reason)
+        self.assertEqual(1, tc.queue_wait_reason.call_count)
+        self.assertEqual(
+            ("build-queue-stalled", "build remained queued; TeamCity reported no idle compatible agents"),
+            collector.classify(None, {"state": "finished", "status": "FAILURE"}, {
+                "errorCategory": "build-queue-stalled",
+                "queueWaitReason": stalled.exception.reason,
+            }),
+        )
+
+    def test_unresolved_queue_requirement_stops_at_checkpoint(self):
+        tc = mock.Mock()
+        tc.builds.return_value = [{"id": 42}]
+        tc.build.return_value = {"id": 42, "state": "queued", "buildTypeId": "target-job"}
+        tc.queue_wait_reason.return_value = "unresolved-parameters"
+        clock = [0]
+
+        with mock.patch.object(run_case.time, "time", side_effect=lambda: clock[0]), \
+                mock.patch.object(run_case.time, "sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+            with self.assertRaises(run_case.BuildQueueStalled) as stalled:
+                run_case.wait_for_build(
+                    tc, "project", timeout=3600, poll=1,
+                    queue_check_after=2, queue_stall_timeout=600,
+                )
+
+        self.assertEqual(2, clock[0])
+        self.assertEqual("unresolved-parameters", stalled.exception.reason)
+
     def test_first_green_error_publishes_phase_timings_and_fixed_wait_reason(self):
         with tempfile.TemporaryDirectory() as directory:
             case_path = pathlib.Path(directory) / "case.json"

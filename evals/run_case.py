@@ -19,6 +19,8 @@ Configuration comes from the environment, never from the case:
                            stdin and the working directory is the checkout
                            (default "claude -p --output-format stream-json --verbose")
     EVAL_BUILD_TIMEOUT     seconds to wait for the build (default 3600)
+    EVAL_QUEUE_CHECK_AFTER seconds before checking a queued build (default 120)
+    EVAL_QUEUE_STALL_TIMEOUT seconds to allow a queued build (default 600)
     EVAL_AGENT_TIMEOUT     seconds to wait for the agent (default 3600)
     EVAL_KEEP              set to 1 to leave the temporary project and checkout
                            in place, the same as --keep
@@ -88,6 +90,37 @@ class NoBuildQueued(EvalError):
 
 class BuildWaitTimeout(EvalError):
     """An agent-queued build did not finish during the wait window."""
+
+
+class BuildQueueStalled(EvalError):
+    """An agent-queued build did not leave the queue within its grace period."""
+
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__("an agent-queued build remained queued past the queue grace period")
+
+
+SAFE_QUEUE_WAIT_REASONS = {
+    "no-idle-compatible-agents",
+    "no-compatible-agents",
+    "unresolved-parameters",
+    "other",
+    "unavailable",
+}
+
+
+def safe_queue_wait_reason(value: object) -> str:
+    """Keep TeamCity's free-form queue text out of published artifacts."""
+    if not isinstance(value, str):
+        return "unavailable"
+    reason = value.lower()
+    if "unresolved parameter" in reason:
+        return "unresolved-parameters"
+    if "no idle compatible agent" in reason:
+        return "no-idle-compatible-agents"
+    if "no compatible agent" in reason:
+        return "no-compatible-agents"
+    return value if value in SAFE_QUEUE_WAIT_REASONS else "other"
 
 
 PHASE_FIELDS = {
@@ -373,6 +406,23 @@ class TeamCity:
 
     def build(self, build_id: int):
         return self._run(["run", "view", str(build_id), "--json"], json_output=True)
+
+    def queue_wait_reason(self, build: dict) -> str:
+        """Read only this build's queue reason through the first-class CLI."""
+        job_id = build.get("buildTypeId")
+        if not isinstance(job_id, str) or not job_id:
+            return "unavailable"
+        try:
+            queued = self._run(
+                ["queue", "list", "--job", job_id, "--json=id,waitReason"],
+                json_output=True,
+            )
+        except EvalError:
+            return "unavailable"
+        for item in self._records(queued, "build"):
+            if item.get("id") == build.get("id"):
+                return safe_queue_wait_reason(item.get("waitReason"))
+        return "unavailable"
 
     def pipeline_ids(self, project_id: str) -> list:
         found = self._run(
@@ -1581,10 +1631,13 @@ def publishable_result(result: dict) -> dict:
         "agentTimedOut",
         "agentTimeoutSeconds",
         "errorCategory",
+        "queueWaitReason",
         "temporaryObjectsRemoved",
         "cleanupDeferred",
     )
     published = {name: result[name] for name in fields if name in result}
+    if "queueWaitReason" in published:
+        published["queueWaitReason"] = safe_queue_wait_reason(published["queueWaitReason"])
     revision = result.get("harnessRevision")
     if isinstance(revision, str) and SAFE_REVISION.fullmatch(revision):
         published["harnessRevision"] = revision
@@ -1623,16 +1676,43 @@ def harness_revision() -> Optional[str]:
     return revision if SAFE_REVISION.fullmatch(revision) else None
 
 
-def wait_for_build(tc: TeamCity, project_id: str, timeout: int, poll: int = 15) -> dict:
+def wait_for_build(
+    tc: TeamCity, project_id: str, timeout: int, poll: int = 15,
+    queue_check_after: int = 120, queue_stall_timeout: int = 600,
+) -> dict:
     """The build the agent produced, once it stops running."""
     deadline = time.time() + timeout
     latest = None
+    queued_id = None
+    queued_since = None
+    queue_reason = "unavailable"
+    queue_checked = False
     while time.time() < deadline:
         candidates = tc.builds(project_id)
         if candidates:
             latest = tc.build(max(c["id"] for c in candidates))
             if latest.get("state") == "finished":
                 return latest
+            if latest.get("state") == "queued":
+                now = time.time()
+                if latest["id"] != queued_id:
+                    queued_id = latest["id"]
+                    queued_since = now
+                    queue_reason = "unavailable"
+                    queue_checked = False
+                elapsed = now - queued_since
+                if elapsed >= queue_check_after and not queue_checked:
+                    queue_reason = tc.queue_wait_reason(latest)
+                    queue_checked = True
+                    if queue_reason in ("no-compatible-agents", "unresolved-parameters"):
+                        raise BuildQueueStalled(queue_reason)
+                if elapsed >= queue_stall_timeout:
+                    if not queue_checked:
+                        queue_reason = tc.queue_wait_reason(latest)
+                    raise BuildQueueStalled(queue_reason)
+            else:
+                queued_id = None
+                queued_since = None
         time.sleep(poll)
     if latest is None:
         raise NoBuildQueued("the agent queued no build in the temporary project")
@@ -1881,9 +1961,17 @@ def run(
 
         phases.enter("buildWait")
         try:
-            build = wait_for_build(tc, project_id, budget)
+            build = wait_for_build(
+                tc, project_id, budget,
+                queue_check_after=int(env.get("EVAL_QUEUE_CHECK_AFTER", "120")),
+                queue_stall_timeout=int(env.get("EVAL_QUEUE_STALL_TIMEOUT", "600")),
+            )
         except NoBuildQueued:
             result["errorCategory"] = "build-not-queued"
+            raise
+        except BuildQueueStalled as exc:
+            result["errorCategory"] = "build-queue-stalled"
+            result["queueWaitReason"] = exc.reason
             raise
         except BuildWaitTimeout:
             result["errorCategory"] = "build-wait-timeout"

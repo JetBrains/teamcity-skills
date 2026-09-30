@@ -136,6 +136,12 @@ different servers, stop. Do not substitute another server.
   is valid only when the target server accepts it in the actual pipeline
   upload; do not use one transient VM name. Never carry a tier such as
   `Linux-Medium` from another server or case.
+- Do not use `os-family` merely because the YAML schema accepts it: TeamCity
+  maps it to `teamcity.agent.jvm.os.family`, which may be absent on the target
+  agents. Confirm the exact parameter and value on an eligible agent and the
+  job's compatibility before queueing. If that key is absent, changing
+  `Linux` to `linux` or `Unix` cannot help; choose an observed, relevant
+  parameter with a custom `requirement` instead.
 - A green build is valid only when its effective runtime satisfies the version
   declared by the repository. For a required JDK, discover the target server's
   exact agent parameter, managed tool, or image; constrain scheduling to that
@@ -154,8 +160,8 @@ different servers, stop. Do not substitute another server.
   reasons, and unresolved `%name%` substitutions in the server-stored YAML
   before waiting again. If those checks prove that no compatible agent or cloud
   image exists, stop polling and do not start or restart another build. Make at
-  most one evidence-based configuration correction, validate it, and retry only
-  when the compatibility evidence changed.
+  most one evidence-based configuration correction, validate it, read the saved
+  selector back, and retry only when the compatibility evidence changed.
 - If the agent/job compatibility command returns `permission_denied`, record
   compatibility as **unverified**. Do not infer compatibility from a generic
   wait reason or agent inventory alone. Use another permitted machine-readable

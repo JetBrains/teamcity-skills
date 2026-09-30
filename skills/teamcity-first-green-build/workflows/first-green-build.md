@@ -606,13 +606,19 @@ evidence:
 - For a hosted selector, choose a tier offered by that server only when its
   cloud profile or compatibility result supports it.
 - For self-hosted execution, derive a `self-hosted` requirement from properties
-  shared by eligible agents (for example `os-family: Linux`, architecture, CPU,
-  RAM, or a durable custom agent parameter). When those capability properties
-  are absent or inaccurate, `agent list` may instead show a server-managed
-  agent family. A custom `system.agent.name` `starts-with` requirement for its
-  common prefix is acceptable only after confirming it against multiple eligible
-  agents or configured cloud images **and** after the actual pipeline upload
-  accepts it. Never use the full name of one transient VM.
+  actually reported by eligible agents (architecture, CPU, RAM, or a durable
+  custom agent parameter). The `os-family` shorthand is valid only if an
+  eligible agent reports its underlying `teamcity.agent.jvm.os.family` key
+  with the matching value. A missing key is not a capitalization problem:
+  replace the selector with an observed parameter relevant to the job, using
+  the explicit `requirement` / `parameter` / `value` mapping. A container
+  engine's OS parameter proves the container engine's OS, not the host OS.
+  When capability properties are absent or inaccurate, `agent list` may
+  instead show a server-managed agent family. A custom `system.agent.name`
+  `starts-with` requirement for its common prefix is acceptable only after
+  confirming it against multiple eligible agents or configured cloud images
+  **and** after the actual pipeline upload accepts it. Never use the full name
+  of one transient VM.
 
 Validate the resulting YAML against the live server, then use job compatibility
 output to verify it. Schema validation does not prove that every server's
@@ -708,16 +714,21 @@ is still queued, pause all waiting and perform this compatibility checkpoint:
 
 If the wait reason already says **no compatible agents** or **unresolved
 parameters**, perform the checkpoint immediately; do not spend the full minute
-first. If it confirms zero compatible agents or images, stop polling. Do not
-queue a duplicate, restart the same run, change an agent selector speculatively,
-or keep waiting for capacity: capacity cannot make an incompatible job
-compatible. Apply at most one correction that follows directly from the
-diagnostics, validate the updated configuration, and requeue once only after
-the compatibility result changes. If diagnostics do not prove incompatibility
-or unresolved parameters, continue monitoring the accepted build at a maximum
-60-second interval for at least 10 minutes from queueing. Inspect both the job
-queue reason and agent availability, and give the user a short progress update
-at least once a minute.
+first. Treat **no idle compatible agents** as ambiguous until the job's
+incompatible-agent diagnostics distinguish busy capacity from zero compatible
+agents. If the diagnostics show an unmet `os-family
+teamcity.agent.jvm.os.family equals Linux` requirement and the candidate
+agent lacks that parameter, replace the key with an observed parameter; do
+not just change the value's case. If the checkpoint confirms zero compatible
+agents or images, stop polling. Do not queue a duplicate, restart the same run,
+change an agent selector speculatively, or keep waiting for capacity: capacity
+cannot make an incompatible job compatible. Apply at most one correction that
+follows directly from the diagnostics, validate the updated configuration, and
+requeue once only after the compatibility result changes. If diagnostics do
+not prove incompatibility or unresolved parameters, continue monitoring the
+accepted build at a maximum 60-second interval for at least 10 minutes from
+queueing. Inspect both the job queue reason and agent availability, and give
+the user a short progress update at least once a minute.
 
 Stop polling early if:
 
