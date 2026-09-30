@@ -26,6 +26,7 @@
         "first-green-build",
         "pipeline-configuration",
         "queue-stall-diagnosis",
+        "queue-recovery",
         "teamcity-access-preflight"
       ]
     },
@@ -82,9 +83,29 @@
     "resultClassification": {
       "$ref": "#/definitions/resultClassification"
     },
-    "expected": {}
+    "expected": {},
+    "scenario": {
+      "enum": ["missing-os-family", "unresolved-script-parameter", "busy-compatible"]
+    }
   },
   "allOf": [
+    {
+      "title": "Stateful queue recovery",
+      "if": {"properties": {"kind": {"const": "queue-recovery"}}, "required": ["kind"]},
+      "then": {
+        "required": ["teamcity", "scenario"],
+        "properties": {
+          "repository": {"required": ["root"]},
+          "prompt": {"allOf": [
+            {"pattern": "\\{\\{teamcity\\.server\\}\\}"},
+            {"pattern": "\\{\\{teamcity\\.targetProject\\}\\}"}
+          ]},
+          "expected": {"$ref": "#/definitions/queueRecoveryExpected"}
+        },
+        "propertyNames": {"not": {"enum": ["stack", "verification", "observedBaseline", "temporaryObjects", "requiredOperations", "resultClassification"]}}
+      },
+      "else": {"not": {"required": ["scenario"]}}
+    },
     {
       "title": "First Green Build",
       "if": {
@@ -262,6 +283,26 @@
     }
   ],
   "definitions": {
+    "queueRecoveryExpected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["compatibilityCheckpoint", "diagnosticAgentInventory", "diagnosticAgentRuntimeCapabilities", "diagnosticJobIncompatibility", "diagnosticStoredParameters", "configurationPreserved", "noBlindRetry", "boundedRecovery", "configurationValidated", "configurationReadBack", "compatibleAgentConfirmed", "fixtureBuildSucceeded", "sourceMutations"],
+      "properties": {
+        "compatibilityCheckpoint": {"const": true},
+        "diagnosticAgentInventory": {"const": true},
+        "diagnosticAgentRuntimeCapabilities": {"const": true},
+        "diagnosticJobIncompatibility": {"const": true},
+        "diagnosticStoredParameters": {"const": true},
+        "configurationPreserved": {"const": true},
+        "noBlindRetry": {"const": true},
+        "boundedRecovery": {"const": true},
+        "configurationValidated": {"const": true},
+        "configurationReadBack": {"const": true},
+        "compatibleAgentConfirmed": {"const": true},
+        "fixtureBuildSucceeded": {"const": true},
+        "sourceMutations": {"const": "none"}
+      }
+    },
     "repository": {
       "type": "object",
       "additionalProperties": false,

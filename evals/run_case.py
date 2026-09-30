@@ -74,6 +74,7 @@ SAFE_REVISION = re.compile(r"^[a-fA-F0-9]{40}$")
 TOOL_MODES = ("cli-only", "mcp-only", "cli+mcp")
 sys.path.insert(0, str(EVALS))
 from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
+from queue_recovery import QueueRecoveryFixture, forbidden_queue_transport
 
 
 class EvalError(RuntimeError):
@@ -802,8 +803,13 @@ def grade_configuration(case: dict, observed: dict) -> dict:
             matcher = contract["jobMatches"]
             candidates = [
                 (index, job) for index, job in enumerate(jobs)
-                if re.search(matcher, f"{job['id'].rsplit('/', 1)[-1]}\n{job['name']}")
+                if re.search(matcher, job["id"].rsplit("/", 1)[-1])
             ]
+            # Structural job keys take precedence. A description such as
+            # "Package (no tests)" must not become a second test job.
+            if not candidates:
+                candidates = [(index, job) for index, job in enumerate(jobs)
+                              if re.search(matcher, job["name"])]
             if len(candidates) != 1:
                 failures.append(f"{matcher!r} matched {len(candidates)} jobs")
                 continue
@@ -1376,7 +1382,7 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
 
 
 def set_graded_status(result: dict, agent_run: dict) -> None:
-    """Record the checks without letting a timed-out agent become a pass."""
+    """Preserve check outcomes without promoting an abnormal agent exit."""
     result["gradeStatus"] = (
         "passed" if all(check["passed"] for check in result["checks"].values()) else "failed"
     )
@@ -1384,6 +1390,10 @@ def set_graded_status(result: dict, agent_run: dict) -> None:
         result["status"] = "errored"
         result["errorCategory"] = "agent-timeout"
         result["error"] = f"agent exceeded the {agent_run['timeoutSeconds']}s timeout"
+    elif agent_run["exitCode"] != 0:
+        result["status"] = "errored"
+        result["errorCategory"] = result.get("errorCategory") or "agent-exit-failed"
+        result["error"] = "agent exited unsuccessfully"
     else:
         result["status"] = result["gradeStatus"]
 
@@ -1632,12 +1642,15 @@ def publishable_result(result: dict) -> dict:
         "agentTimeoutSeconds",
         "errorCategory",
         "queueWaitReason",
+        "evaluationEnvironment",
         "temporaryObjectsRemoved",
         "cleanupDeferred",
     )
     published = {name: result[name] for name in fields if name in result}
     if "queueWaitReason" in published:
         published["queueWaitReason"] = safe_queue_wait_reason(published["queueWaitReason"])
+    if published.get("evaluationEnvironment") not in ("simulated", "live"):
+        published.pop("evaluationEnvironment", None)
     revision = result.get("harnessRevision")
     if isinstance(revision, str) and SAFE_REVISION.fullmatch(revision):
         published["harnessRevision"] = revision
@@ -1729,7 +1742,7 @@ def run(
 ) -> dict:
     case = json.loads(case_path.read_text())
     if case["kind"] not in (
-        "first-green-build", "pipeline-configuration", "queue-stall-diagnosis"
+        "first-green-build", "pipeline-configuration", "queue-stall-diagnosis", "queue-recovery"
     ):
         raise EvalError(f"kind {case['kind']!r} is not executable by this runner")
 
@@ -1776,7 +1789,9 @@ def run(
         return result
 
 
-    fixture_case = case["kind"] == "queue-stall-diagnosis"
+    fixture_case = case["kind"] in ("queue-stall-diagnosis", "queue-recovery")
+    recovery_case = case["kind"] == "queue-recovery"
+    recovery_fixture = None
     if fixture_case and tool_mode == "mcp-only":
         raise EvalError("queue-stall-diagnosis needs the CLI fixture; mcp-only is unsupported")
     mcp_config = mcp_config_for_mode(env, tool_mode, use_local_mcp_probe)
@@ -1814,8 +1829,8 @@ def run(
     try:
       try:
         if fixture_case:
-            target_project = "QueueCompatibilityFixture"
-            result["fixture"] = "queued-no-compatible-agent"
+            target_project = "QueueRecoveryFixture" if recovery_case else "QueueCompatibilityFixture"
+            result["fixture"] = case.get("scenario", "queued-no-compatible-agent")
         else:
             project_id = tc.create_project(project_name, parent)
             target_project = project_id
@@ -1854,12 +1869,21 @@ def run(
             )
         if fixture_case:
             phases.enter("agent")
-            agent_run = invoke_agent(
-                prompt, checkout, install_queue_stall_fixture(workspace, env), trace,
-                int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
-                case.get("agentTools"), mcp_config, transport_contract,
-                use_strict_mcp_config, use_local_mcp_probe,
-            )
+            if recovery_case:
+                with QueueRecoveryFixture(case["scenario"], workspace, checkout, env) as recovery_fixture:
+                    agent_run = invoke_agent(
+                        prompt, checkout, recovery_fixture.agent_environment(env), trace,
+                        int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
+                        case.get("agentTools"), mcp_config, transport_contract,
+                        use_strict_mcp_config, use_local_mcp_probe,
+                    )
+            else:
+                agent_run = invoke_agent(
+                    prompt, checkout, install_queue_stall_fixture(workspace, env), trace,
+                    int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
+                    case.get("agentTools"), mcp_config, transport_contract,
+                    use_strict_mcp_config, use_local_mcp_probe,
+                )
             phases.enter("observation")
         else:
             try:
@@ -1924,6 +1948,14 @@ def run(
 
         if fixture_case:
             phases.enter("grading")
+            if recovery_case:
+                calls = tool_calls(trace)
+                result["checks"] = recovery_fixture.grade(
+                    source_mutations(checkout, allowed), forbidden_queue_transport(calls)
+                )
+                result["evaluationEnvironment"] = "simulated"
+                set_graded_status(result, agent_run)
+                raise _Graded
             calls = tool_calls(trace)
             observed = {
                 "toolCalls": calls,

@@ -183,8 +183,24 @@ class ConfigurationGraderTest(unittest.TestCase):
         checks = run_case.grade_configuration(case, observed)
         self.assertTrue(checks["requiredJobs"]["passed"])
 
+        observed["jobs"][0]["name"] = "Build and package JAR (generated sources, no tests)"
+        checks = run_case.grade_configuration(case, observed)
+        self.assertTrue(checks["requiredJobs"]["passed"])
+
         observed["jobs"][0]["steps"][0]["properties"]["tasks"] += " test"
         checks = run_case.grade_configuration(case, observed)
+        self.assertFalse(checks["requiredJobs"]["passed"])
+
+    def test_job_description_is_a_fallback_for_generic_keys(self):
+        observed = observed_jobs()
+        observed["jobs"][0]["id"] = "fixture/job1"
+        checks = run_case.grade_configuration(CASE, observed)
+        self.assertTrue(checks["requiredJobs"]["passed"])
+
+    def test_ambiguous_structural_keys_still_fail(self):
+        observed = observed_jobs()
+        observed["jobs"][2]["id"] = "fixture/android-desktop"
+        checks = run_case.grade_configuration(CASE, observed)
         self.assertFalse(checks["requiredJobs"]["passed"])
 
     def test_per_job_contracts_accept_correct_topology(self):
