@@ -360,6 +360,22 @@ class EvalReportTest(unittest.TestCase):
         self.assertIn("same-revision pass rate: 2/3 (67%); measured", report)
         self.assertIn("token/cost telemetry has not been reported", report)
         self.assertEqual(1, report.count("<td>42</td>"))
+        self.assertIn("Showing 1 of 1 unique evaluator jobs", report)
+
+    def test_recent_ledger_shows_fifty_latest_unique_jobs(self):
+        jobs = [{"id": identifier, "classification": "passed"}
+                for identifier in range(10000, 10060)]
+        report = renderer.render({"pipelines": [
+            {"id": "one", "runs": [{"jobs": jobs}]},
+            {"id": "two", "runs": [{"jobs": jobs[-5:]}]},
+        ]})
+        self.assertIn("Showing 50 of 60 unique evaluator jobs, newest first", report)
+        for identifier in range(10010, 10060):
+            self.assertEqual(1, report.count(f"<td>{identifier}</td>"))
+        for identifier in range(10000, 10010):
+            self.assertNotIn(f"<td>{identifier}</td>", report)
+        self.assertLess(report.index("<td>10059</td>"), report.index("<td>10058</td>"))
+        self.assertIn("Showing 0 of 0 unique evaluator jobs", renderer.render({}))
 
     def test_report_shows_run_usage_and_distinguishes_missing_cost(self):
         job = {
