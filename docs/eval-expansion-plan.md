@@ -58,3 +58,15 @@ case changes, requirements removal, source changes, build weakening, missing
 validation/read-back/compatibility, duplicate starts, unbounded watches and
 late diagnosis. A failed or timed-out agent exit must never become a pass,
 even if intermediate checks were green.
+
+## Pilot audit
+
+The first OS-recovery pairs at `b902002` and `c7ef78e` failed 11/13 checks
+for both arms. Both arms diagnosed and repaired the missing key; baseline did
+not wait forever. Baseline omitted stored-configuration read-back before its
+verification. Fixed-category diagnostics on `c7ef78e` proved that the skill
+arm's rejected push changed only a step display name. This was a fixture
+false negative, not a change to Maven, runtime or outputs. The correction
+ignores step display names for both arms, while retaining strict executable
+properties, job/step topology and publications. Re-run both arms on the new
+revision; do not relabel the historical failures as passing observations.
