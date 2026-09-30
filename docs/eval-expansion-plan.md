@@ -225,8 +225,8 @@ cases below) are restored, with their original revisions and the TDD assisted
 annotation. The snapshot contains 155 configuration heads and 51 first-green
 heads, including the two newly running evals, and 202 unique eval jobs. There
 are no collection warnings. A final report-only refresh after the new pair
-finishes must use `cfe92d4` or a later audit-only descendant to also include
-the clearer preflight/unsupported-mode labels.
+finishes must use `2d668a4` or a later descendant preserving both the clearer
+preflight/unsupported-mode labels and the expanded 50-row execution ledger.
 
 Only the genuine first-green Testcontainers gap was queued again: one CLI-only
 pair on the same `9086dcd` revision, with profile
@@ -238,6 +238,21 @@ Both distinct eval children started. These are **pending**, not successes.
 Do not repair their generated targets manually, rerun merely to seek green,
 or confuse their results with the existing configuration-only Testcontainers
 case. Preserve all outcomes and measured costs when the safe artifacts arrive.
+
+At the 20:36 UTC heartbeat, original baseline eval `9519022` was terminal:
+`Canceled (Exit code 143)`, finished at 20:32:32 UTC after starting at
+20:12:51 UTC. Its artifact listing was empty; no safe result, phase breakdown,
+or measured cost was available. The cancellation's cause/actor is not exposed
+in the inspected metadata and is not inferred. The live dependency tree for
+baseline head `9519020` and report `9519021` now points to eval `9518861`,
+queued at 20:32:32 and started at 20:32:34 UTC with trigger type
+`reAddedOnStop`. No replacement or retry was requested by this monitor.
+Keep the canceled attempt in the audit; do not silently merge it with the
+replacement or count it as a scored baseline sample. Verify the replacement's
+case, arm, revision, and profile from its safe result before comparison.
+Skill eval `9519019` and replacement eval `9518861` are still running; both
+report jobs are queued with "Build dependencies have not been built yet".
+The final report-only refresh remains deferred until these dependencies finish.
 
 ### Additional queue and preflight rows
 
