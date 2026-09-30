@@ -484,3 +484,14 @@ and queue checkpoint/stall budgets of 120/600 seconds. The provider limit is
 not a TeamCity-infrastructure cost cap; report actual measured spend, including
 any final-call overshoot, rather than claiming a prepaid $6 total. No automatic
 repeat is authorized. Dispatch IDs/revision and terminal evidence follow below.
+
+Fix **`8543bc8923fb3ad08329ef2d3e3e26e2e05ee49b`** was committed and pushed,
+then exactly one fresh pair was dispatched with dependency rebuilding to avoid
+reusing old eval jobs. On 2026-09-30 at 23:50:51 UTC, skill head `9523474`
+queued; eval `9523476` started at 23:50:52, report `9523475` waits for it.
+Baseline head `9523477` has distinct eval `9523479` and report `9523478`.
+Both evals appear in the exact full-revision-filtered CLI listing for `8543bc8`;
+their heads are running and reports wait on their own evals. Running status is
+not proof of Claude progress or a successful result. Verify safe terminal
+artifacts before any outcome/cost claim. The previous restoration monitor
+remains deleted; the unrelated CLI-eval monitor is untouched.
