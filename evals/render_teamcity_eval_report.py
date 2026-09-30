@@ -38,6 +38,7 @@ TOOL_MODE_LABELS = {
     "mcp-only": "MCP only",
     "cli+mcp": "CLI + MCP",
 }
+RECENT_LEDGER_LIMIT = 50
 
 
 def esc(value):
@@ -245,7 +246,7 @@ def render(data, regressions=None):
         )
 
     rows = []
-    for pipeline, head, job in jobs[:12]:
+    for pipeline, head, job in jobs[:RECENT_LEDGER_LIMIT]:
         category = job["classification"]
         result = job.get("result") or {}
         case = result.get("caseId") or "-"
@@ -316,7 +317,7 @@ body{{margin:0;background:#f6f7f8;color:#1d252c;font:14px/1.45 Inter,system-ui,s
 <section class="section"><div class="metrics"><div><div class="value">{summary.get("caseContracts", 0)}</div><div class="label">case contracts</div></div><div><div class="value">{summary.get("pairedCaseContracts", 0)}</div><div class="label">paired agent cases</div></div><div><div class="value">{summary.get("distinctArmsObserved", 0)}/{summary.get("expectedArmSlots", 0)}</div><div class="label">mode x arm cells observed</div></div><div><div class="value">{counts.get("running", 0) + counts.get("queued", 0)}</div><div class="label">active eval jobs</div></div></div><div class="barline">{bars}</div><div class="legend">{legend}</div><div class="detail">{esc(usage_line)}</div><div class="detail">{esc(timing_line)}</div></section>
 <h2>Case x tool mode x arm matrix</h2><section class="section table-wrap"><table><caption class="visually-hidden">Latest skill and baseline result for every evaluation contract and tool mode</caption><thead><tr><th scope="col" rowspan="2">Case</th><th scope="col" rowspan="2">Contract</th><th scope="col" rowspan="2">What is tested</th><th scope="colgroup" colspan="2">CLI only</th><th scope="colgroup" colspan="2">MCP only</th><th scope="colgroup" colspan="2">CLI + MCP</th></tr><tr><th scope="col">Skill</th><th scope="col">Baseline</th><th scope="col">Skill</th><th scope="col">Baseline</th><th scope="col">Skill</th><th scope="col">Baseline</th></tr></thead><tbody>{"".join(matrix_rows)}</tbody></table></section>
 <h2>Skill-comparison gate</h2>{regression_gate(regressions)}
-<h2>Recent execution ledger</h2><section class="section table-wrap"><div class="detail">Job duration includes bootstrap and job overhead; runner total excludes wrapper bootstrap, and both exclude the separate report job. An agent-process heartbeat means the process has not exited, not that Claude is making progress.</div><table><caption class="visually-hidden">Recent unique evaluator jobs</caption><thead><tr><th scope="col">Job</th><th scope="col">Case</th><th scope="col">Tool mode</th><th scope="col">Arm</th><th scope="col">Verdict</th><th scope="col">Reason</th><th scope="col">Duration</th><th scope="col">Runner phases</th><th scope="col">Agent usage</th></tr></thead><tbody>{"".join(rows)}</tbody></table></section>
+<h2>Recent execution ledger</h2><p class="detail">Showing {len(rows)} of {len(jobs)} unique evaluator jobs, newest first. Full collected history is available in runs.json.</p><section class="section table-wrap"><div class="detail">Job duration includes bootstrap and job overhead; runner total excludes wrapper bootstrap, and both exclude the separate report job. An agent-process heartbeat means the process has not exited, not that Claude is making progress.</div><table><caption class="visually-hidden">Recent unique evaluator jobs</caption><thead><tr><th scope="col">Job</th><th scope="col">Case</th><th scope="col">Tool mode</th><th scope="col">Arm</th><th scope="col">Verdict</th><th scope="col">Reason</th><th scope="col">Duration</th><th scope="col">Runner phases</th><th scope="col">Agent usage</th></tr></thead><tbody>{"".join(rows)}</tbody></table></section>
 <h2>Next useful evaluations</h2><section class="section"><ol>{recommendations}</ol></section>
 </main></body></html>'''
 
