@@ -229,3 +229,27 @@ Both distinct eval children started. These are **pending**, not successes.
 Do not repair their generated targets manually, rerun merely to seek green,
 or confuse their results with the existing configuration-only Testcontainers
 case. Preserve all outcomes and measured costs when the safe artifacts arrive.
+
+### Additional queue and preflight rows
+
+The user's additional two queue rows also had historical safe results, now
+downloaded independently from their evaluator jobs. No paid reruns are needed:
+
+| Case | Skill | Baseline | Original revision |
+| --- | --- | --- | --- |
+| `java25-agent-requirement-blocks-provisioning` | `9399715`: failed, 7/11; $0.7823825 | `9400206`: failed, 4/11; $0.4012035 | `7fdd55bfbe4811ac4661031262b4b254534ffaf1` |
+| `queued-no-compatible-agent` | `9018952`: passed, 10/10; $0.7721540 | `9020059`: failed, 8/10; $0.5244435 | `ec026f507d831b70cf08c285d909c25ef116531f` |
+
+All four agents exited 0 without timeout. These older artifacts have no phase
+timings or embedded harness SHA; revisions above come from the historical
+normalized TeamCity reports (`9505870` and `9020058`), not invented artifact
+fields. The generic queue pair predates the explicit tool-mode result field.
+One pair per case does not establish a stable skill advantage.
+
+`teamcity-mcp-access-permissions` is a catalog contract only: `run_case.py`
+rejects `teamcity-access-preflight` as not executable. Do not dispatch it to
+Claude or count it as a pass. The report now shows **not executable — preflight
+runner not implemented**, separately from missing history and paired-arm
+results. MCP-only is explicitly unsupported by the CLI queue fixture; these
+cells are marked unsupported and excluded from expected runnable arm slots.
+No contract is promoted and no new preflight runner is claimed.

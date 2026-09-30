@@ -262,6 +262,24 @@ class EvalReportTest(unittest.TestCase):
         self.assertTrue(cases)
         self.assertTrue(all("source fidelity" not in case["assertions"] for case in cases))
 
+    def test_inventory_distinguishes_unimplemented_preflight_and_unsupported_fixture_mode(self):
+        cases = {case["id"]: case for case in collector.inventory()}
+        preflight = cases["teamcity-mcp-access-permissions"]
+        self.assertEqual("not-implemented", preflight["runnerSupport"])
+        self.assertEqual([], preflight["supportedToolModes"])
+        queue = cases["queued-no-compatible-agent"]
+        self.assertEqual(["cli-only", "cli+mcp"], queue["supportedToolModes"])
+        with mock.patch.object(collector, "cli_json", return_value={}):
+            data = collector.collect("https://teamcity.example", ["pipeline"], 0, [])
+        by_id = {case["id"]: case for case in data["cases"]}
+        self.assertEqual("unsupported-tool-mode", by_id[queue["id"]]["comparisons"]["mcp-only"]["status"])
+        self.assertEqual(116, data["summary"]["expectedArmSlots"])
+        rendered = renderer.render({"cases": [preflight, queue]})
+        self.assertIn('colspan="6"><span class="status">not executable', rendered)
+        self.assertIn("preflight runner is not implemented", rendered)
+        self.assertIn("unsupported tool mode for this fixture", rendered)
+        self.assertNotIn("not arm-based", rendered)
+
     def test_report_renders_separate_arm_columns_and_unique_jobs(self):
         job = {
             "id": 42,
