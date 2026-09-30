@@ -234,7 +234,7 @@ pair on the same `9086dcd` revision, with profile
 queue compatibility check at 120 seconds and stall budget of 600 seconds.
 Skill head/eval/report: `9519017`/`9519019`/`9519018`.
 Baseline head/eval/report: `9519020`/`9519022`/`9519021`.
-Both distinct eval children started. These are **pending**, not successes.
+Both distinct eval children started; at dispatch these were **pending**, not successes.
 Do not repair their generated targets manually, rerun merely to seek green,
 or confuse their results with the existing configuration-only Testcontainers
 case. Preserve all outcomes and measured costs when the safe artifacts arrive.
@@ -288,6 +288,54 @@ refresh must still include the later preflight labels and 50-row ledger.
 At the 20:56 UTC check, replacement eval `9518861` remains running and report
 `9519021` still waits for its dependency. The single final refresh remains
 deferred until the remaining dependencies finish.
+
+At 21:02:55 UTC, replacement baseline eval `9518861` finished **FAILURE**
+(1821 seconds of evaluator wall time). Its independently downloaded safe
+result confirms arm `baseline`, `cli-only`, the same case ID, case version,
+harness `9086dcd25f504435cd4cc08d5cab5a26651a583c`, and profile
+`claude-default-first-green-1800s` as skill `9519019`. The agent exited **0**
+without timeout under the 1800-second budget; result and grade are **failed**,
+with no fixed error category. Four of six checks passed:
+`configurationValidated`, `firstBuild`, `testsExecutedAndReported`, and
+`sourceMutations`; `artifactsPublished` and `toolchain` failed. Preserve this
+original grade, not a corrected or successful result.
+
+Measured baseline agent usage: 248 input tokens, 74973 output tokens,
+14305724 cache-read tokens, 170221 cache-write tokens, **$10.738732**.
+Phase timings (seconds): bootstrap 5, preparation 3.088, agent 1793.642,
+observation 0.197, build wait 1.150, grading 5.689, cleanup 0.005, runner total
+1803.771. Cleanup remains deferred. This cost covers replacement `9518861`
+only; skill usage and canceled original `9519022` usage remain unknown.
+The safe result is retained at
+`/tmp/tc-eval-history.SbTScX/new-first-green-baseline/publish/eval-result.json`.
+At the 21:04 UTC check, report `9519021` is running (started 21:02:55 UTC) and
+head `9519020` is nonterminal with a failed dependency. No further evaluation
+or final report-only refresh has been queued; await report publication first.
+
+### First-green grading caveats discovered during read-only diagnosis
+
+The user's improvement question prompted inspection of the completed skill
+target, without mutations or reruns. `wait_for_build()` selects the greatest
+build ID in the target project, not a verification pipeline and its complete
+dependency chain. Here that selects packaging child `9519271`, successful at
+20:41:49 UTC. The sibling test job `9519270` finished **FAILURE** at 20:44:33,
+and head `9518864` finished **FAILURE** at 20:44:37, both after the evaluator
+finished grading. A subsequent name/status/duration-only test query showed
+one successful `SpringBootDemoApplicationTests.contextLoads` occurrence in
+the failed test job, versus zero in packaging. It does not establish what was
+already reported at the earlier grading instant or a successful test job.
+The failure cause is not exposed by the inspected first-class CLI metadata;
+the custom "tests passed" status text is not evidence overriding FAILURE.
+
+Both stored skill jobs select `env.JAVA_HOME` through `%env.JDK_21_0%`, but
+the adapter discards job environment and parameter declarations while the JDK
+checker reads only environment/image evidence. Two local, non-mutating
+reproductions confirmed lost environment evidence and ignored JDK parameters.
+This establishes a declaration-evidence gap, not independent runtime JDK proof.
+Proposed chain-aware observation and allowlisted JDK parsing fixes await user
+approval. No implementation or historical regrade has been made; the skill
+timeout and both failed original grades remain unchanged. Comparisons of
+individual checks must disclose these harness limitations.
 
 ### Additional queue and preflight rows
 
