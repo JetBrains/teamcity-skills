@@ -22,6 +22,75 @@ collector = load_module("collect_eval_runs_test", "collect_teamcity_eval_runs.py
 
 
 class EvalReportTest(unittest.TestCase):
+    def test_assisted_result_is_visible_but_excluded_from_comparison(self):
+        result = {
+            "caseId": "tdd-spring-maven", "arm": "skill", "status": "passed",
+            "harnessRevision": "eba480c026f5b662f77f30b94c18f480c5534bf0",
+            "checks": {"firstBuild": {"passed": True}},
+        }
+        with mock.patch.object(collector, "cli_json", return_value={
+            "id": 9505871, "state": "finished", "status": "SUCCESS",
+        }), mock.patch.object(collector, "download_result", return_value=result):
+            job = collector.normalize_run("https://teamcity.example", [], {"id": 9505871})
+        self.assertTrue(job["assisted"])
+        self.assertIn("assisted", job["classificationDetail"])
+        observation = collector.latest_arm_observations([job])[("tdd-spring-maven", "cli-only", "skill")]
+        self.assertEqual(0, observation["history"]["sampleSize"])
+        self.assertEqual("assisted-run-excluded", collector.compare_arms(observation, observation)["status"])
+        checker = load_module("check_assisted_test", "check_regressions.py")
+        self.assertEqual({}, checker.grouped([job], "tdd-spring-maven", "cli-only", "skill"))
+
+    def test_missing_result_never_reads_logs(self):
+        with mock.patch.object(collector, "cli") as cli:
+            category, detail = collector.classify(
+                "https://teamcity.example",
+                {"id": 1, "state": "finished", "status": "FAILURE"}, None,
+            )
+        cli.assert_not_called()
+        self.assertEqual("failed-without-result", category)
+        self.assertIn("cause not inspected", detail)
+
+    def test_full_history_recovers_old_case_and_other_pipeline_without_duplicates(self):
+        def cli_json(_warnings, _server, *args):
+            if args[:2] == ("run", "list"):
+                self.assertEqual("0", args[args.index("--limit") + 1])
+                return {"build": [{"id": i} for i in range(40, 0, -1)]}
+            if args[:2] == ("run", "view"):
+                return {"id": int(args[2]), "state": "finished", "status": "SUCCESS"}
+            if args[:2] == ("run", "tree"):
+                return {"dependencies": [{"id": int(args[2]) + 100, "name": "Run eval case"}]}
+            self.fail(f"unexpected CLI call: {args}")
+
+        def result(_warnings, _server, identifier, _known):
+            return {
+                "caseId": "old-case" if identifier == 101 else "recent-case",
+                "arm": "skill", "status": "passed", "harnessRevision": "a" * 40,
+                "checks": {"firstBuild": {"passed": True}},
+            }
+
+        with mock.patch.object(collector, "cli_json", side_effect=cli_json), \
+                mock.patch.object(collector, "download_result", side_effect=result), \
+                mock.patch.object(collector, "inventory", return_value=[
+                    {"id": "old-case", "executionModel": "paired-arms"},
+                    {"id": "recent-case", "executionModel": "paired-arms"},
+                ]):
+            report = collector.collect("https://teamcity.example", ["config", "green"], 0, [])
+
+        self.assertEqual(40, report["summary"]["jobRunsObserved"])
+        self.assertEqual(2, report["collection"]["pipelineCount"])
+        self.assertEqual("all-retained-heads", report["collection"]["scope"])
+        self.assertEqual(101, report["cases"][0]["toolModes"]["cli-only"]["skill"]["runId"])
+
+    def test_empty_cell_does_not_claim_case_never_ran(self):
+        cell = renderer.arm_cell({"executionModel": "paired-arms"}, "cli-only", "skill")
+        self.assertIn("no result in collected history", cell)
+        self.assertNotIn("not run", cell)
+        rendered = renderer.render({"pipelines": [{"runs": []}, {"runs": []}],
+                                    "collection": {"scope": "all-retained-heads"},
+                                    "warnings": ["safe collection warning"]})
+        self.assertIn("All retained heads from 2", rendered)
+        self.assertIn("Collection is incomplete", rendered)
+
     def test_result_revision_scopes_history_when_teamcity_has_no_changes(self):
         revision = "a" * 40
         result = {

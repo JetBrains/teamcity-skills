@@ -72,6 +72,7 @@ def grouped(jobs, case_id, mode, arm):
     values = [
         job for job in jobs
         if (job.get("result") or {}).get("caseId") == case_id
+        and not job.get("assisted")
         and tool_mode(job.get("result")) == mode
         and (job.get("result") or {}).get("arm") == arm
     ]

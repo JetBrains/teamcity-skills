@@ -65,7 +65,7 @@ def arm_cell(case, tool_mode, arm):
         return '<span class="muted">not arm-based</span>'
     observation = ((case.get("toolModes") or {}).get(tool_mode) or {}).get(arm)
     if not observation:
-        return '<span class="muted">not run</span>'
+        return '<span class="muted">no result in collected history</span>'
     category = observation.get("classification", "unknown")
     color = COLORS.get(category, "#6e6e6e")
     history = observation.get("history") or {}
@@ -85,6 +85,8 @@ def arm_cell(case, tool_mode, arm):
         f'<span class="status" style="color:{color}">{esc(category)}</span><br>'
         f'{esc("run " + str(observation.get("runId")))}'
         f'<div class="detail">{esc(observation.get("detail"))}</div>'
+        f'<div class="detail">Recorded {esc(observation.get("finishedAt"))}; '
+        f'harness {esc((observation.get("revision") or "")[:12])}</div>'
         f'{history_html}'
     )
 
@@ -100,6 +102,7 @@ def comparison_detail(case, tool_mode):
         "insufficient-samples": "comparison needs 3 samples per arm",
         "different-harness-revision": "arms use different harness revisions",
         "missing-arm": "comparison needs both arms",
+        "assisted-run-excluded": "assisted run excluded from skill comparison",
     }
     return f'<div class="detail">{esc(labels.get(status, status))}</div>'
 
@@ -187,6 +190,19 @@ def render(data, regressions=None):
     summary = data.get("summary", {})
     counts = summary.get("classifications", {})
     jobs = all_jobs(data)
+    collection = data.get("collection") or {}
+    scope = (
+        "All retained heads"
+        if collection.get("scope") == "all-retained-heads"
+        else "A limited history window"
+    )
+    coverage_note = (
+        f'{scope} from {len(data.get("pipelines") or [])} configured evaluator pipeline(s). '
+        'Missing cells mean no safe result was collected, not proof that a case never ran. '
+        'Historical results retain their original harness revision; they are not regraded against the current contract.'
+    )
+    if data.get("warnings"):
+        coverage_note += f' Collection is incomplete: {len(data["warnings"])} warning(s); see runs.json.'
     denominator = max(1, summary.get("jobRunsObserved", 0))
     bars = "".join(
         f'<div class="bar" style="width:{count / denominator * 100:.1f}%;background:{COLORS.get(category, "#6e6e6e")}" '
@@ -283,6 +299,7 @@ def render(data, regressions=None):
 body{{margin:0;background:#f6f7f8;color:#1d252c;font:14px/1.45 Inter,system-ui,sans-serif}}main{{max-width:1200px;margin:auto;padding:32px 24px 60px}}h1{{font-size:28px;margin:0}}h2{{font-size:16px;margin:30px 0 12px}}.meta{{color:#64717c;margin:4px 0 22px}}.metrics{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}}.section{{background:#fff;border:1px solid #dce1e5;border-radius:10px;padding:16px}}.value{{font-size:26px;font-weight:700}}.label,.muted,.detail,.gate{{color:#64717c}}.detail{{font-size:11px;margin-top:4px}}.barline{{display:flex;overflow:hidden;height:12px;border-radius:8px;background:#e9ecef;margin-top:16px}}.bar{{min-width:4px}}.legend{{display:flex;gap:14px;flex-wrap:wrap;margin:9px 0;color:#52606c;font-size:12px}}.legend i{{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}}.visually-hidden{{position:absolute;clip-path:inset(50%);overflow:hidden;width:1px;height:1px;white-space:nowrap}}code{{font-size:12px;overflow-wrap:anywhere}}table{{border-collapse:collapse;width:100%;min-width:900px;font-size:12px}}th{{text-align:left;color:#64717c;font-weight:600}}td,th{{padding:9px 8px;border-bottom:1px solid #e5e8eb;vertical-align:top}}a{{color:#2864b0;text-decoration:none}}.status{{font-weight:650}}ol{{margin:0;padding-left:22px}}li+li{{margin-top:8px}}@media(max-width:700px){{main{{padding:20px 14px}}.metrics{{grid-template-columns:1fr 1fr}}.table-wrap{{overflow:auto}}}}@media(max-width:420px){{.metrics{{grid-template-columns:1fr 1fr}}}}
 </style></head><body><main>
 <h1>TeamCity evaluation runs</h1><div class="meta">Collected {esc(data.get("generatedAt"))}</div>
+<p>{esc(coverage_note)}</p>
 <section class="section"><div class="metrics"><div><div class="value">{summary.get("caseContracts", 0)}</div><div class="label">case contracts</div></div><div><div class="value">{summary.get("pairedCaseContracts", 0)}</div><div class="label">paired agent cases</div></div><div><div class="value">{summary.get("distinctArmsObserved", 0)}/{summary.get("expectedArmSlots", 0)}</div><div class="label">mode x arm cells observed</div></div><div><div class="value">{counts.get("running", 0) + counts.get("queued", 0)}</div><div class="label">active eval jobs</div></div></div><div class="barline">{bars}</div><div class="legend">{legend}</div><div class="detail">{esc(usage_line)}</div><div class="detail">{esc(timing_line)}</div></section>
 <h2>Case x tool mode x arm matrix</h2><section class="section table-wrap"><table><caption class="visually-hidden">Latest skill and baseline result for every evaluation contract and tool mode</caption><thead><tr><th scope="col" rowspan="2">Case</th><th scope="col" rowspan="2">Contract</th><th scope="col" rowspan="2">What is tested</th><th scope="colgroup" colspan="2">CLI only</th><th scope="colgroup" colspan="2">MCP only</th><th scope="colgroup" colspan="2">CLI + MCP</th></tr><tr><th scope="col">Skill</th><th scope="col">Baseline</th><th scope="col">Skill</th><th scope="col">Baseline</th><th scope="col">Skill</th><th scope="col">Baseline</th></tr></thead><tbody>{"".join(matrix_rows)}</tbody></table></section>
 <h2>Skill-comparison gate</h2>{regression_gate(regressions)}
