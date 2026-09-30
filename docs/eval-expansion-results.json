@@ -1,0 +1,2035 @@
+{
+  "schemaVersion": 1,
+  "assessedAt": "2026-09-30",
+  "server": "https://teamcity-nightly.labs.intellij.net",
+  "parentProject": "TeamCity_Sandbox_TCEvals",
+  "pipeline": "TeamCity_Sandbox_TCEvals_RunConfigurationEval",
+  "finalReport": {
+    "buildId": 9518089,
+    "url": "https://teamcity-nightly.labs.intellij.net/build/9518089",
+    "generatedAt": "2026-09-30T19:34:29.384909+00:00",
+    "artifacts": [
+      "publish/index.html",
+      "publish/runs.json"
+    ]
+  },
+  "scope": "18 unique eval children dispatched after the approved commit/push; excludes prior runs without measured usage and the earlier Testcontainers pair.",
+  "outcome": {
+    "uniqueEvaluations": 18,
+    "checkedPipelineHeads": 21,
+    "allChainsTerminal": true,
+    "measuredCostUsd": 27.587495,
+    "agentSeconds": 3716.741,
+    "cleanExitsWithoutTimeout": 18,
+    "distinctCasesWithAtLeastOneSkillPass": 4,
+    "caseCount": 5,
+    "correctedCohortCostUsd": 23.979405,
+    "fixtureCalibrationCostUsd": 3.60809,
+    "all18ReportsHaveIndexAndRuns": true,
+    "localUnitTestsPassed": 153,
+    "validatedCaseCount": 22
+  },
+  "caveats": [
+    "Queue fixtures simulate TeamCity and do not establish a live target build.",
+    "Configuration cases grade the requested generated pipeline contract, not actual build/runtime success.",
+    "Three OS samples per arm do not prove stable or universal superiority; other cases have one sample per arm.",
+    "The artifacts do not report an exact agent/model runtime version; equal profile labels do not establish binary identity.",
+    "agentSeconds includes tool activity and waits inside the agent invocation, not only model thinking. It is not elapsed whole-task time.",
+    "Historical failures are preserved, evaluated skill files were unchanged, and no manual target-configuration repair was used to obtain these results.",
+    "The three new fixture contracts remain draft; no automatic promotion."
+  ],
+  "excludedDuplicateHeads": [
+    {
+      "headId": 9518096,
+      "reusedEvalId": 9518095,
+      "reusedReportId": 9518094,
+      "reason": "Reused sample-2 child; not an independent sample"
+    },
+    {
+      "headId": 9518097,
+      "reusedEvalId": 9518093,
+      "reusedReportId": 9518092,
+      "reason": "Reused sample-2 child; not an independent sample"
+    },
+    {
+      "headId": 9518103,
+      "reusedEvalId": 9518095,
+      "reusedReportId": 9518094,
+      "reason": "Still reused sample-2 child despite rebuild-deps; not independent"
+    }
+  ],
+  "earlierMeasuredComparison": {
+    "caseId": "spring-boot-demo-gradle-testcontainers-pipeline",
+    "evalIds": [
+      9516820,
+      9516823
+    ],
+    "harnessRevision": "eba480c026f5b662f77f30b94c18f480c5534bf0",
+    "measuredCostUsd": 10.3684855,
+    "checkCounts": [
+      "8/9",
+      "7/9"
+    ],
+    "includedInCurrentBatchTotals": false,
+    "status": "Historical failures; diagnostic regrade not treated as new scored passes."
+  },
+  "cases": [
+    {
+      "caseId": "spring-boot-demo-gradle-testcontainers-pipeline",
+      "evaluationEnvironment": "live-configuration-only",
+      "harnessRevision": "c7ef78e0617e9ab0128e237f15fb14d956f466c5",
+      "caseVersion": "16327e02435ed737e4f8ecebdae99991c64dff8015a25cb4542bd8e92c12b6f8",
+      "agentConfigId": "claude-default-config-900s",
+      "toolMode": "cli-only",
+      "comparisonScope": "single-pair-pilot",
+      "skill": {
+        "evalIds": [
+          9518061
+        ],
+        "sampleSize": 1,
+        "fullPasses": 1,
+        "checks": [
+          {
+            "evalId": 9518061,
+            "passed": 9,
+            "total": 9
+          }
+        ],
+        "agentSeconds": 474.539,
+        "measuredCostUsd": 3.443268
+      },
+      "baseline": {
+        "evalIds": [
+          9518060
+        ],
+        "sampleSize": 1,
+        "fullPasses": 0,
+        "checks": [
+          {
+            "evalId": 9518060,
+            "passed": 6,
+            "total": 9
+          }
+        ],
+        "agentSeconds": 784.06,
+        "measuredCostUsd": 6.1995905
+      }
+    },
+    {
+      "caseId": "queued-missing-os-family-recovery",
+      "evaluationEnvironment": "simulated",
+      "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+      "caseVersion": "26fbd4e62c6bac03e03f389294f5ba5b70f67707d0e6d4e3a44dfca07d346372",
+      "agentConfigId": "claude-default-fixture-300s",
+      "toolMode": "cli-only",
+      "comparisonScope": "small-three-sample-comparison",
+      "skill": {
+        "evalIds": [
+          9518070,
+          9518095,
+          9518113
+        ],
+        "sampleSize": 3,
+        "fullPasses": 2,
+        "checks": [
+          {
+            "evalId": 9518070,
+            "passed": 13,
+            "total": 13
+          },
+          {
+            "evalId": 9518095,
+            "passed": 10,
+            "total": 13
+          },
+          {
+            "evalId": 9518113,
+            "passed": 13,
+            "total": 13
+          }
+        ],
+        "agentSeconds": 335.43,
+        "measuredCostUsd": 2.894676
+      },
+      "baseline": {
+        "evalIds": [
+          9518069,
+          9518093,
+          9518108
+        ],
+        "sampleSize": 3,
+        "fullPasses": 0,
+        "checks": [
+          {
+            "evalId": 9518069,
+            "passed": 11,
+            "total": 13
+          },
+          {
+            "evalId": 9518093,
+            "passed": 11,
+            "total": 13
+          },
+          {
+            "evalId": 9518108,
+            "passed": 12,
+            "total": 13
+          }
+        ],
+        "agentSeconds": 226.981,
+        "measuredCostUsd": 1.8104275
+      }
+    },
+    {
+      "caseId": "queued-busy-compatible-agent",
+      "evaluationEnvironment": "simulated",
+      "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+      "caseVersion": "dc3e3b13664c26a4b9bd1848f9419853772969c40cd15d6e383912fdb193eca2",
+      "agentConfigId": "claude-default-fixture-300s",
+      "toolMode": "cli-only",
+      "comparisonScope": "single-pair-pilot",
+      "skill": {
+        "evalIds": [
+          9518074
+        ],
+        "sampleSize": 1,
+        "fullPasses": 1,
+        "checks": [
+          {
+            "evalId": 9518074,
+            "passed": 13,
+            "total": 13
+          }
+        ],
+        "agentSeconds": 66.958,
+        "measuredCostUsd": 0.627256
+      },
+      "baseline": {
+        "evalIds": [
+          9518076
+        ],
+        "sampleSize": 1,
+        "fullPasses": 0,
+        "checks": [
+          {
+            "evalId": 9518076,
+            "passed": 12,
+            "total": 13
+          }
+        ],
+        "agentSeconds": 89.931,
+        "measuredCostUsd": 0.69627
+      }
+    },
+    {
+      "caseId": "queued-unresolved-script-parameter-recovery",
+      "evaluationEnvironment": "simulated",
+      "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+      "caseVersion": "cfa65352cb03b4028917578d134afd1c84acec9d10cb0e48de1f20ac547cc51f",
+      "agentConfigId": "claude-default-fixture-300s",
+      "toolMode": "cli-only",
+      "comparisonScope": "single-pair-pilot",
+      "skill": {
+        "evalIds": [
+          9518080
+        ],
+        "sampleSize": 1,
+        "fullPasses": 0,
+        "checks": [
+          {
+            "evalId": 9518080,
+            "passed": 11,
+            "total": 13
+          }
+        ],
+        "agentSeconds": 169.611,
+        "measuredCostUsd": 1.229858
+      },
+      "baseline": {
+        "evalIds": [
+          9518083
+        ],
+        "sampleSize": 1,
+        "fullPasses": 0,
+        "checks": [
+          {
+            "evalId": 9518083,
+            "passed": 11,
+            "total": 13
+          }
+        ],
+        "agentSeconds": 55.76,
+        "measuredCostUsd": 0.4397595
+      }
+    },
+    {
+      "caseId": "spring-boot-kotlin-gradle-java25-pipeline",
+      "evaluationEnvironment": "live-configuration-only",
+      "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+      "caseVersion": "7c0a3e7735c8ea8090b7bf223b09f423ede8c7c89b5c827958ae88e053071618",
+      "agentConfigId": "claude-default-config-900s",
+      "toolMode": "cli-only",
+      "comparisonScope": "single-pair-pilot",
+      "skill": {
+        "evalIds": [
+          9518088
+        ],
+        "sampleSize": 1,
+        "fullPasses": 1,
+        "checks": [
+          {
+            "evalId": 9518088,
+            "passed": 8,
+            "total": 8
+          }
+        ],
+        "agentSeconds": 594.68,
+        "measuredCostUsd": 4.1266135
+      },
+      "baseline": {
+        "evalIds": [
+          9518086
+        ],
+        "sampleSize": 1,
+        "fullPasses": 0,
+        "checks": [
+          {
+            "evalId": 9518086,
+            "passed": 5,
+            "total": 8
+          }
+        ],
+        "agentSeconds": 490.035,
+        "measuredCostUsd": 2.511686
+      }
+    }
+  ],
+  "runs": [
+    {
+      "headId": 9518039,
+      "evalId": 9518041,
+      "reportId": 9518042,
+      "cohort": "fixture-calibration",
+      "evaluationEnvironment": "simulated",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518041",
+      "teamcity": {
+        "state": "finished",
+        "status": "FAILURE",
+        "queuedAt": "2026-09-30T19:09:20+00:00",
+        "startedAt": "2026-09-30T19:09:21+00:00",
+        "finishedAt": "2026-09-30T19:11:54+00:00",
+        "durationSeconds": 153,
+        "queueSeconds": 1
+      },
+      "result": {
+        "caseId": "queued-missing-os-family-recovery",
+        "arm": "skill",
+        "status": "failed",
+        "gradeStatus": "failed",
+        "harnessRevision": "b902002a0cd2c4e61996a45531056d75e2d1d53f",
+        "caseVersion": "26fbd4e62c6bac03e03f389294f5ba5b70f67707d0e6d4e3a44dfca07d346372",
+        "agentConfigId": "claude-default-fixture-300s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": "simulated",
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 300,
+        "checks": {
+          "compatibilityCheckpoint": true,
+          "diagnosticAgentInventory": true,
+          "diagnosticAgentRuntimeCapabilities": true,
+          "diagnosticJobIncompatibility": true,
+          "diagnosticStoredParameters": true,
+          "configurationPreserved": false,
+          "noBlindRetry": true,
+          "boundedRecovery": false,
+          "configurationValidated": true,
+          "configurationReadBack": true,
+          "compatibleAgentConfirmed": true,
+          "fixtureBuildSucceeded": true,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 11,
+          "preparationSeconds": 1.138,
+          "agentSeconds": 118.174,
+          "observationSeconds": 0.01,
+          "gradingSeconds": 0.027,
+          "cleanupSeconds": 0.021,
+          "totalSeconds": 119.371
+        },
+        "agentUsage": {
+          "inputTokens": 46,
+          "outputTokens": 8071,
+          "cacheReadTokens": 943635,
+          "cacheWriteTokens": 50161,
+          "totalCostUsd": 1.1827074999999998
+        },
+        "queueRecoveryDiagnostics": null
+      }
+    },
+    {
+      "headId": 9518040,
+      "evalId": 9518044,
+      "reportId": 9518043,
+      "cohort": "fixture-calibration",
+      "evaluationEnvironment": "simulated",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518044",
+      "teamcity": {
+        "state": "finished",
+        "status": "FAILURE",
+        "queuedAt": "2026-09-30T19:09:20+00:00",
+        "startedAt": "2026-09-30T19:11:59+00:00",
+        "finishedAt": "2026-09-30T19:14:11+00:00",
+        "durationSeconds": 132,
+        "queueSeconds": 159
+      },
+      "result": {
+        "caseId": "queued-missing-os-family-recovery",
+        "arm": "baseline",
+        "status": "failed",
+        "gradeStatus": "failed",
+        "harnessRevision": "b902002a0cd2c4e61996a45531056d75e2d1d53f",
+        "caseVersion": "26fbd4e62c6bac03e03f389294f5ba5b70f67707d0e6d4e3a44dfca07d346372",
+        "agentConfigId": "claude-default-fixture-300s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": "simulated",
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 300,
+        "checks": {
+          "compatibilityCheckpoint": true,
+          "diagnosticAgentInventory": true,
+          "diagnosticAgentRuntimeCapabilities": true,
+          "diagnosticJobIncompatibility": true,
+          "diagnosticStoredParameters": true,
+          "configurationPreserved": true,
+          "noBlindRetry": false,
+          "boundedRecovery": true,
+          "configurationValidated": true,
+          "configurationReadBack": false,
+          "compatibleAgentConfirmed": true,
+          "fixtureBuildSucceeded": true,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 9,
+          "preparationSeconds": 0.977,
+          "agentSeconds": 94.507,
+          "observationSeconds": 0.006,
+          "gradingSeconds": 0.019,
+          "cleanupSeconds": 0.013,
+          "totalSeconds": 95.522
+        },
+        "agentUsage": {
+          "inputTokens": 40,
+          "outputTokens": 6188,
+          "cacheReadTokens": 621564,
+          "cacheWriteTokens": 26604,
+          "totalCostUsd": 0.7389970000000001
+        },
+        "queueRecoveryDiagnostics": null
+      }
+    },
+    {
+      "headId": 9518048,
+      "evalId": 9518052,
+      "reportId": 9518053,
+      "cohort": "fixture-calibration",
+      "evaluationEnvironment": "simulated",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518052",
+      "teamcity": {
+        "state": "finished",
+        "status": "FAILURE",
+        "queuedAt": "2026-09-30T19:15:06+00:00",
+        "startedAt": "2026-09-30T19:15:06+00:00",
+        "finishedAt": "2026-09-30T19:17:39+00:00",
+        "durationSeconds": 153,
+        "queueSeconds": 0
+      },
+      "result": {
+        "caseId": "queued-missing-os-family-recovery",
+        "arm": "skill",
+        "status": "failed",
+        "gradeStatus": "failed",
+        "harnessRevision": "c7ef78e0617e9ab0128e237f15fb14d956f466c5",
+        "caseVersion": "26fbd4e62c6bac03e03f389294f5ba5b70f67707d0e6d4e3a44dfca07d346372",
+        "agentConfigId": "claude-default-fixture-300s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": "simulated",
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 300,
+        "checks": {
+          "compatibilityCheckpoint": true,
+          "diagnosticAgentInventory": true,
+          "diagnosticAgentRuntimeCapabilities": true,
+          "diagnosticJobIncompatibility": true,
+          "diagnosticStoredParameters": true,
+          "configurationPreserved": false,
+          "noBlindRetry": true,
+          "boundedRecovery": false,
+          "configurationValidated": true,
+          "configurationReadBack": true,
+          "compatibleAgentConfirmed": true,
+          "fixtureBuildSucceeded": true,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 4,
+          "preparationSeconds": 1.098,
+          "agentSeconds": 135.666,
+          "observationSeconds": 0.009,
+          "gradingSeconds": 0.024,
+          "cleanupSeconds": 0.014,
+          "totalSeconds": 136.81
+        },
+        "agentUsage": {
+          "inputTokens": 44,
+          "outputTokens": 8428,
+          "cacheReadTokens": 898403,
+          "cacheWriteTokens": 38371,
+          "totalCostUsd": 1.0511065000000002
+        },
+        "queueRecoveryDiagnostics": {
+          "acceptedPushes": 1,
+          "cancellations": 1,
+          "preDiagnosisStatusReads": 1,
+          "pushAttempts": 2,
+          "startAttempts": 1,
+          "statusReads": 4,
+          "stepMetadataChanges": 1,
+          "unrelatedChangeAttempts": 1
+        }
+      }
+    },
+    {
+      "headId": 9518054,
+      "evalId": 9518055,
+      "reportId": 9518056,
+      "cohort": "fixture-calibration",
+      "evaluationEnvironment": "simulated",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518055",
+      "teamcity": {
+        "state": "finished",
+        "status": "FAILURE",
+        "queuedAt": "2026-09-30T19:15:07+00:00",
+        "startedAt": "2026-09-30T19:15:49+00:00",
+        "finishedAt": "2026-09-30T19:17:31+00:00",
+        "durationSeconds": 102,
+        "queueSeconds": 42
+      },
+      "result": {
+        "caseId": "queued-missing-os-family-recovery",
+        "arm": "baseline",
+        "status": "failed",
+        "gradeStatus": "failed",
+        "harnessRevision": "c7ef78e0617e9ab0128e237f15fb14d956f466c5",
+        "caseVersion": "26fbd4e62c6bac03e03f389294f5ba5b70f67707d0e6d4e3a44dfca07d346372",
+        "agentConfigId": "claude-default-fixture-300s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": "simulated",
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 300,
+        "checks": {
+          "compatibilityCheckpoint": true,
+          "diagnosticAgentInventory": true,
+          "diagnosticAgentRuntimeCapabilities": true,
+          "diagnosticJobIncompatibility": true,
+          "diagnosticStoredParameters": true,
+          "configurationPreserved": true,
+          "noBlindRetry": false,
+          "boundedRecovery": true,
+          "configurationValidated": true,
+          "configurationReadBack": false,
+          "compatibleAgentConfirmed": true,
+          "fixtureBuildSucceeded": true,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 6,
+          "preparationSeconds": 0.894,
+          "agentSeconds": 80.409,
+          "observationSeconds": 0.012,
+          "gradingSeconds": 0.031,
+          "cleanupSeconds": 0.022,
+          "totalSeconds": 81.368
+        },
+        "agentUsage": {
+          "inputTokens": 40,
+          "outputTokens": 5981,
+          "cacheReadTokens": 536038,
+          "cacheWriteTokens": 21026,
+          "totalCostUsd": 0.6352790000000001
+        },
+        "queueRecoveryDiagnostics": {
+          "acceptedPushes": 1,
+          "cancellations": 1,
+          "preDiagnosisStatusReads": 1,
+          "pushAttempts": 1,
+          "startAttempts": 1,
+          "statusReads": 5,
+          "unrelatedChangeAttempts": 0
+        }
+      }
+    },
+    {
+      "headId": 9518057,
+      "evalId": 9518060,
+      "reportId": 9518059,
+      "cohort": "evaluated-cases",
+      "evaluationEnvironment": "live-configuration-only",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518060",
+      "teamcity": {
+        "state": "finished",
+        "status": "FAILURE",
+        "queuedAt": "2026-09-30T19:15:23+00:00",
+        "startedAt": "2026-09-30T19:18:45+00:00",
+        "finishedAt": "2026-09-30T19:32:19+00:00",
+        "durationSeconds": 814,
+        "queueSeconds": 202
+      },
+      "result": {
+        "caseId": "spring-boot-demo-gradle-testcontainers-pipeline",
+        "arm": "baseline",
+        "status": "failed",
+        "gradeStatus": "failed",
+        "harnessRevision": "c7ef78e0617e9ab0128e237f15fb14d956f466c5",
+        "caseVersion": "16327e02435ed737e4f8ecebdae99991c64dff8015a25cb4542bd8e92c12b6f8",
+        "agentConfigId": "claude-default-config-900s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": null,
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 900,
+        "checks": {
+          "configurationValidated": true,
+          "minimumJobs": true,
+          "jobCount": false,
+          "requiredStepTypes": true,
+          "requiredStepProperties": true,
+          "requiredArtifactRules": false,
+          "requiredAgentRequirements": true,
+          "requiredJobs": false,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 4,
+          "preparationSeconds": 2.545,
+          "agentSeconds": 784.06,
+          "observationSeconds": 0.521,
+          "gradingSeconds": 1.105,
+          "cleanupSeconds": 0.011,
+          "totalSeconds": 788.242
+        },
+        "agentUsage": {
+          "inputTokens": 184,
+          "outputTokens": 46498,
+          "cacheReadTokens": 7567871,
+          "cacheWriteTokens": 124378,
+          "totalCostUsd": 6.199590499999998
+        },
+        "queueRecoveryDiagnostics": null
+      }
+    },
+    {
+      "headId": 9518058,
+      "evalId": 9518061,
+      "reportId": 9518062,
+      "cohort": "evaluated-cases",
+      "evaluationEnvironment": "live-configuration-only",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518061",
+      "teamcity": {
+        "state": "finished",
+        "status": "SUCCESS",
+        "queuedAt": "2026-09-30T19:15:23+00:00",
+        "startedAt": "2026-09-30T19:18:53+00:00",
+        "finishedAt": "2026-09-30T19:27:05+00:00",
+        "durationSeconds": 492,
+        "queueSeconds": 210
+      },
+      "result": {
+        "caseId": "spring-boot-demo-gradle-testcontainers-pipeline",
+        "arm": "skill",
+        "status": "passed",
+        "gradeStatus": "passed",
+        "harnessRevision": "c7ef78e0617e9ab0128e237f15fb14d956f466c5",
+        "caseVersion": "16327e02435ed737e4f8ecebdae99991c64dff8015a25cb4542bd8e92c12b6f8",
+        "agentConfigId": "claude-default-config-900s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": null,
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 900,
+        "checks": {
+          "configurationValidated": true,
+          "minimumJobs": true,
+          "jobCount": true,
+          "requiredStepTypes": true,
+          "requiredStepProperties": true,
+          "requiredArtifactRules": true,
+          "requiredAgentRequirements": true,
+          "requiredJobs": true,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 3,
+          "preparationSeconds": 2.344,
+          "agentSeconds": 474.539,
+          "observationSeconds": 0.323,
+          "gradingSeconds": 0.736,
+          "cleanupSeconds": 0.009,
+          "totalSeconds": 477.951
+        },
+        "agentUsage": {
+          "inputTokens": 92,
+          "outputTokens": 33703,
+          "cacheReadTokens": 3295406,
+          "cacheWriteTokens": 94408,
+          "totalCostUsd": 3.4432680000000007
+        },
+        "queueRecoveryDiagnostics": null
+      }
+    },
+    {
+      "headId": 9518066,
+      "evalId": 9518069,
+      "reportId": 9518068,
+      "cohort": "evaluated-cases",
+      "evaluationEnvironment": "simulated",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518069",
+      "teamcity": {
+        "state": "finished",
+        "status": "FAILURE",
+        "queuedAt": "2026-09-30T19:21:10+00:00",
+        "startedAt": "2026-09-30T19:21:11+00:00",
+        "finishedAt": "2026-09-30T19:23:14+00:00",
+        "durationSeconds": 123,
+        "queueSeconds": 1
+      },
+      "result": {
+        "caseId": "queued-missing-os-family-recovery",
+        "arm": "baseline",
+        "status": "failed",
+        "gradeStatus": "failed",
+        "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+        "caseVersion": "26fbd4e62c6bac03e03f389294f5ba5b70f67707d0e6d4e3a44dfca07d346372",
+        "agentConfigId": "claude-default-fixture-300s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": "simulated",
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 300,
+        "checks": {
+          "compatibilityCheckpoint": true,
+          "diagnosticAgentInventory": true,
+          "diagnosticAgentRuntimeCapabilities": true,
+          "diagnosticJobIncompatibility": true,
+          "diagnosticStoredParameters": true,
+          "configurationPreserved": true,
+          "noBlindRetry": false,
+          "boundedRecovery": true,
+          "configurationValidated": true,
+          "configurationReadBack": false,
+          "compatibleAgentConfirmed": true,
+          "fixtureBuildSucceeded": true,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 6,
+          "preparationSeconds": 0.828,
+          "agentSeconds": 93.681,
+          "observationSeconds": 0.009,
+          "gradingSeconds": 0.029,
+          "cleanupSeconds": 0.021,
+          "totalSeconds": 94.568
+        },
+        "agentUsage": {
+          "inputTokens": 46,
+          "outputTokens": 6881,
+          "cacheReadTokens": 648774,
+          "cacheWriteTokens": 22733,
+          "totalCostUsd": 0.7312469999999999
+        },
+        "queueRecoveryDiagnostics": {
+          "acceptedPushes": 1,
+          "cancellations": 1,
+          "preDiagnosisStatusReads": 1,
+          "pushAttempts": 1,
+          "startAttempts": 1,
+          "statusReads": 4,
+          "unrelatedChangeAttempts": 0
+        }
+      }
+    },
+    {
+      "headId": 9518067,
+      "evalId": 9518070,
+      "reportId": 9518071,
+      "cohort": "evaluated-cases",
+      "evaluationEnvironment": "simulated",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518070",
+      "teamcity": {
+        "state": "finished",
+        "status": "SUCCESS",
+        "queuedAt": "2026-09-30T19:21:10+00:00",
+        "startedAt": "2026-09-30T19:21:11+00:00",
+        "finishedAt": "2026-09-30T19:23:04+00:00",
+        "durationSeconds": 113,
+        "queueSeconds": 1
+      },
+      "result": {
+        "caseId": "queued-missing-os-family-recovery",
+        "arm": "skill",
+        "status": "passed",
+        "gradeStatus": "passed",
+        "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+        "caseVersion": "26fbd4e62c6bac03e03f389294f5ba5b70f67707d0e6d4e3a44dfca07d346372",
+        "agentConfigId": "claude-default-fixture-300s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": "simulated",
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 300,
+        "checks": {
+          "compatibilityCheckpoint": true,
+          "diagnosticAgentInventory": true,
+          "diagnosticAgentRuntimeCapabilities": true,
+          "diagnosticJobIncompatibility": true,
+          "diagnosticStoredParameters": true,
+          "configurationPreserved": true,
+          "noBlindRetry": true,
+          "boundedRecovery": true,
+          "configurationValidated": true,
+          "configurationReadBack": true,
+          "compatibleAgentConfirmed": true,
+          "fixtureBuildSucceeded": true,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 6,
+          "preparationSeconds": 1.183,
+          "agentSeconds": 85.956,
+          "observationSeconds": 0.01,
+          "gradingSeconds": 0.022,
+          "cleanupSeconds": 0.018,
+          "totalSeconds": 87.189
+        },
+        "agentUsage": {
+          "inputTokens": 30,
+          "outputTokens": 6605,
+          "cacheReadTokens": 566892,
+          "cacheWriteTokens": 35800,
+          "totalCostUsd": 0.8139959999999998
+        },
+        "queueRecoveryDiagnostics": {
+          "acceptedPushes": 1,
+          "cancellations": 1,
+          "preDiagnosisStatusReads": 1,
+          "pushAttempts": 1,
+          "startAttempts": 1,
+          "statusReads": 4,
+          "unrelatedChangeAttempts": 0
+        }
+      }
+    },
+    {
+      "headId": 9518072,
+      "evalId": 9518074,
+      "reportId": 9518075,
+      "cohort": "evaluated-cases",
+      "evaluationEnvironment": "simulated",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518074",
+      "teamcity": {
+        "state": "finished",
+        "status": "SUCCESS",
+        "queuedAt": "2026-09-30T19:21:11+00:00",
+        "startedAt": "2026-09-30T19:21:12+00:00",
+        "finishedAt": "2026-09-30T19:22:45+00:00",
+        "durationSeconds": 93,
+        "queueSeconds": 1
+      },
+      "result": {
+        "caseId": "queued-busy-compatible-agent",
+        "arm": "skill",
+        "status": "passed",
+        "gradeStatus": "passed",
+        "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+        "caseVersion": "dc3e3b13664c26a4b9bd1848f9419853772969c40cd15d6e383912fdb193eca2",
+        "agentConfigId": "claude-default-fixture-300s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": "simulated",
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 300,
+        "checks": {
+          "compatibilityCheckpoint": true,
+          "diagnosticAgentInventory": true,
+          "diagnosticAgentRuntimeCapabilities": true,
+          "diagnosticJobIncompatibility": true,
+          "diagnosticStoredParameters": true,
+          "configurationPreserved": true,
+          "noBlindRetry": true,
+          "boundedRecovery": true,
+          "configurationValidated": true,
+          "configurationReadBack": true,
+          "compatibleAgentConfirmed": true,
+          "fixtureBuildSucceeded": true,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 6,
+          "preparationSeconds": 1.015,
+          "agentSeconds": 66.958,
+          "observationSeconds": 0.012,
+          "gradingSeconds": 0.031,
+          "cleanupSeconds": 0.022,
+          "totalSeconds": 68.039
+        },
+        "agentUsage": {
+          "inputTokens": 20,
+          "outputTokens": 5276,
+          "cacheReadTokens": 327002,
+          "cacheWriteTokens": 32448,
+          "totalCostUsd": 0.627256
+        },
+        "queueRecoveryDiagnostics": {
+          "acceptedPushes": 0,
+          "cancellations": 0,
+          "preDiagnosisStatusReads": 1,
+          "pushAttempts": 0,
+          "startAttempts": 0,
+          "statusReads": 3,
+          "unrelatedChangeAttempts": 0
+        }
+      }
+    },
+    {
+      "headId": 9518073,
+      "evalId": 9518076,
+      "reportId": 9518077,
+      "cohort": "evaluated-cases",
+      "evaluationEnvironment": "simulated",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518076",
+      "teamcity": {
+        "state": "finished",
+        "status": "FAILURE",
+        "queuedAt": "2026-09-30T19:21:11+00:00",
+        "startedAt": "2026-09-30T19:23:00+00:00",
+        "finishedAt": "2026-09-30T19:25:01+00:00",
+        "durationSeconds": 121,
+        "queueSeconds": 109
+      },
+      "result": {
+        "caseId": "queued-busy-compatible-agent",
+        "arm": "baseline",
+        "status": "failed",
+        "gradeStatus": "failed",
+        "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+        "caseVersion": "dc3e3b13664c26a4b9bd1848f9419853772969c40cd15d6e383912fdb193eca2",
+        "agentConfigId": "claude-default-fixture-300s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": "simulated",
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 300,
+        "checks": {
+          "compatibilityCheckpoint": true,
+          "diagnosticAgentInventory": true,
+          "diagnosticAgentRuntimeCapabilities": true,
+          "diagnosticJobIncompatibility": true,
+          "diagnosticStoredParameters": true,
+          "configurationPreserved": true,
+          "noBlindRetry": false,
+          "boundedRecovery": true,
+          "configurationValidated": true,
+          "configurationReadBack": true,
+          "compatibleAgentConfirmed": true,
+          "fixtureBuildSucceeded": true,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 11,
+          "preparationSeconds": 0.543,
+          "agentSeconds": 89.931,
+          "observationSeconds": 0.004,
+          "gradingSeconds": 0.006,
+          "cleanupSeconds": 0.005,
+          "totalSeconds": 90.49
+        },
+        "agentUsage": {
+          "inputTokens": 28,
+          "outputTokens": 6089,
+          "cacheReadTokens": 469180,
+          "cacheWriteTokens": 30204,
+          "totalCostUsd": 0.6962700000000001
+        },
+        "queueRecoveryDiagnostics": {
+          "acceptedPushes": 0,
+          "cancellations": 0,
+          "preDiagnosisStatusReads": 1,
+          "pushAttempts": 0,
+          "startAttempts": 0,
+          "statusReads": 4,
+          "unrelatedChangeAttempts": 0
+        }
+      }
+    },
+    {
+      "headId": 9518078,
+      "evalId": 9518080,
+      "reportId": 9518081,
+      "cohort": "evaluated-cases",
+      "evaluationEnvironment": "simulated",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518080",
+      "teamcity": {
+        "state": "finished",
+        "status": "FAILURE",
+        "queuedAt": "2026-09-30T19:22:09+00:00",
+        "startedAt": "2026-09-30T19:23:33+00:00",
+        "finishedAt": "2026-09-30T19:26:55+00:00",
+        "durationSeconds": 202,
+        "queueSeconds": 84
+      },
+      "result": {
+        "caseId": "queued-unresolved-script-parameter-recovery",
+        "arm": "skill",
+        "status": "failed",
+        "gradeStatus": "failed",
+        "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+        "caseVersion": "cfa65352cb03b4028917578d134afd1c84acec9d10cb0e48de1f20ac547cc51f",
+        "agentConfigId": "claude-default-fixture-300s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": "simulated",
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 300,
+        "checks": {
+          "compatibilityCheckpoint": true,
+          "diagnosticAgentInventory": true,
+          "diagnosticAgentRuntimeCapabilities": true,
+          "diagnosticJobIncompatibility": true,
+          "diagnosticStoredParameters": true,
+          "configurationPreserved": false,
+          "noBlindRetry": true,
+          "boundedRecovery": false,
+          "configurationValidated": true,
+          "configurationReadBack": true,
+          "compatibleAgentConfirmed": true,
+          "fixtureBuildSucceeded": true,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 10,
+          "preparationSeconds": 0.674,
+          "agentSeconds": 169.611,
+          "observationSeconds": 0.009,
+          "gradingSeconds": 0.009,
+          "cleanupSeconds": 0.006,
+          "totalSeconds": 170.309
+        },
+        "agentUsage": {
+          "inputTokens": 46,
+          "outputTokens": 11504,
+          "cacheReadTokens": 1008826,
+          "cacheWriteTokens": 43034,
+          "totalCostUsd": 1.2298580000000001
+        },
+        "queueRecoveryDiagnostics": {
+          "acceptedPushes": 1,
+          "cancellations": 1,
+          "preDiagnosisStatusReads": 1,
+          "pushAttempts": 2,
+          "startAttempts": 1,
+          "statusReads": 4,
+          "stepBehaviorChanges": 1,
+          "stepMetadataChanges": 1,
+          "unrelatedChangeAttempts": 1
+        }
+      }
+    },
+    {
+      "headId": 9518079,
+      "evalId": 9518083,
+      "reportId": 9518082,
+      "cohort": "evaluated-cases",
+      "evaluationEnvironment": "simulated",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518083",
+      "teamcity": {
+        "state": "finished",
+        "status": "FAILURE",
+        "queuedAt": "2026-09-30T19:22:09+00:00",
+        "startedAt": "2026-09-30T19:23:42+00:00",
+        "finishedAt": "2026-09-30T19:25:04+00:00",
+        "durationSeconds": 82,
+        "queueSeconds": 93
+      },
+      "result": {
+        "caseId": "queued-unresolved-script-parameter-recovery",
+        "arm": "baseline",
+        "status": "failed",
+        "gradeStatus": "failed",
+        "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+        "caseVersion": "cfa65352cb03b4028917578d134afd1c84acec9d10cb0e48de1f20ac547cc51f",
+        "agentConfigId": "claude-default-fixture-300s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": "simulated",
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 300,
+        "checks": {
+          "compatibilityCheckpoint": true,
+          "diagnosticAgentInventory": true,
+          "diagnosticAgentRuntimeCapabilities": true,
+          "diagnosticJobIncompatibility": true,
+          "diagnosticStoredParameters": true,
+          "configurationPreserved": true,
+          "noBlindRetry": false,
+          "boundedRecovery": true,
+          "configurationValidated": true,
+          "configurationReadBack": false,
+          "compatibleAgentConfirmed": true,
+          "fixtureBuildSucceeded": true,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 9,
+          "preparationSeconds": 0.657,
+          "agentSeconds": 55.76,
+          "observationSeconds": 0.004,
+          "gradingSeconds": 0.006,
+          "cleanupSeconds": 0.006,
+          "totalSeconds": 56.433
+        },
+        "agentUsage": {
+          "inputTokens": 30,
+          "outputTokens": 3797,
+          "cacheReadTokens": 352199,
+          "cacheWriteTokens": 16131,
+          "totalCostUsd": 0.4397595
+        },
+        "queueRecoveryDiagnostics": {
+          "acceptedPushes": 1,
+          "cancellations": 1,
+          "preDiagnosisStatusReads": 1,
+          "pushAttempts": 1,
+          "startAttempts": 1,
+          "statusReads": 4,
+          "unrelatedChangeAttempts": 0
+        }
+      }
+    },
+    {
+      "headId": 9518084,
+      "evalId": 9518086,
+      "reportId": 9518087,
+      "cohort": "evaluated-cases",
+      "evaluationEnvironment": "live-configuration-only",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518086",
+      "teamcity": {
+        "state": "finished",
+        "status": "FAILURE",
+        "queuedAt": "2026-09-30T19:22:10+00:00",
+        "startedAt": "2026-09-30T19:23:46+00:00",
+        "finishedAt": "2026-09-30T19:32:28+00:00",
+        "durationSeconds": 522,
+        "queueSeconds": 96
+      },
+      "result": {
+        "caseId": "spring-boot-kotlin-gradle-java25-pipeline",
+        "arm": "baseline",
+        "status": "failed",
+        "gradeStatus": "failed",
+        "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+        "caseVersion": "7c0a3e7735c8ea8090b7bf223b09f423ede8c7c89b5c827958ae88e053071618",
+        "agentConfigId": "claude-default-config-900s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": null,
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 900,
+        "checks": {
+          "configurationValidated": true,
+          "minimumJobs": true,
+          "jobCount": true,
+          "requiredStepTypes": false,
+          "requiredStepProperties": false,
+          "requiredArtifactRules": true,
+          "requiredJobs": false,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 8,
+          "preparationSeconds": 3.249,
+          "agentSeconds": 490.035,
+          "observationSeconds": 0.471,
+          "gradingSeconds": 1.063,
+          "cleanupSeconds": 0.004,
+          "totalSeconds": 494.822
+        },
+        "agentUsage": {
+          "inputTokens": 88,
+          "outputTokens": 23755,
+          "cacheReadTokens": 2358142,
+          "cacheWriteTokens": 73048,
+          "totalCostUsd": 2.5116859999999996
+        },
+        "queueRecoveryDiagnostics": null
+      }
+    },
+    {
+      "headId": 9518085,
+      "evalId": 9518088,
+      "reportId": 9518089,
+      "cohort": "evaluated-cases",
+      "evaluationEnvironment": "live-configuration-only",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518088",
+      "teamcity": {
+        "state": "finished",
+        "status": "SUCCESS",
+        "queuedAt": "2026-09-30T19:22:10+00:00",
+        "startedAt": "2026-09-30T19:23:49+00:00",
+        "finishedAt": "2026-09-30T19:34:22+00:00",
+        "durationSeconds": 633,
+        "queueSeconds": 99
+      },
+      "result": {
+        "caseId": "spring-boot-kotlin-gradle-java25-pipeline",
+        "arm": "skill",
+        "status": "passed",
+        "gradeStatus": "passed",
+        "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+        "caseVersion": "7c0a3e7735c8ea8090b7bf223b09f423ede8c7c89b5c827958ae88e053071618",
+        "agentConfigId": "claude-default-config-900s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": null,
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 900,
+        "checks": {
+          "configurationValidated": true,
+          "minimumJobs": true,
+          "jobCount": true,
+          "requiredStepTypes": true,
+          "requiredStepProperties": true,
+          "requiredArtifactRules": true,
+          "requiredJobs": true,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 9,
+          "preparationSeconds": 3.149,
+          "agentSeconds": 594.68,
+          "observationSeconds": 0.372,
+          "gradingSeconds": 1.396,
+          "cleanupSeconds": 0.004,
+          "totalSeconds": 599.6
+        },
+        "agentUsage": {
+          "inputTokens": 108,
+          "outputTokens": 41365,
+          "cacheReadTokens": 4158877,
+          "cacheWriteTokens": 100470,
+          "totalCostUsd": 4.126613500000001
+        },
+        "queueRecoveryDiagnostics": null
+      }
+    },
+    {
+      "headId": 9518090,
+      "evalId": 9518093,
+      "reportId": 9518092,
+      "cohort": "evaluated-cases",
+      "evaluationEnvironment": "simulated",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518093",
+      "teamcity": {
+        "state": "finished",
+        "status": "FAILURE",
+        "queuedAt": "2026-09-30T19:24:20+00:00",
+        "startedAt": "2026-09-30T19:24:21+00:00",
+        "finishedAt": "2026-09-30T19:25:33+00:00",
+        "durationSeconds": 72,
+        "queueSeconds": 1
+      },
+      "result": {
+        "caseId": "queued-missing-os-family-recovery",
+        "arm": "baseline",
+        "status": "failed",
+        "gradeStatus": "failed",
+        "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+        "caseVersion": "26fbd4e62c6bac03e03f389294f5ba5b70f67707d0e6d4e3a44dfca07d346372",
+        "agentConfigId": "claude-default-fixture-300s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": "simulated",
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 300,
+        "checks": {
+          "compatibilityCheckpoint": true,
+          "diagnosticAgentInventory": true,
+          "diagnosticAgentRuntimeCapabilities": true,
+          "diagnosticJobIncompatibility": true,
+          "diagnosticStoredParameters": true,
+          "configurationPreserved": true,
+          "noBlindRetry": false,
+          "boundedRecovery": true,
+          "configurationValidated": true,
+          "configurationReadBack": false,
+          "compatibleAgentConfirmed": true,
+          "fixtureBuildSucceeded": true,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 4,
+          "preparationSeconds": 1.162,
+          "agentSeconds": 56.624,
+          "observationSeconds": 0.005,
+          "gradingSeconds": 0.021,
+          "cleanupSeconds": 0.018,
+          "totalSeconds": 57.831
+        },
+        "agentUsage": {
+          "inputTokens": 28,
+          "outputTokens": 4074,
+          "cacheReadTokens": 323143,
+          "cacheWriteTokens": 15916,
+          "totalCostUsd": 0.4299965
+        },
+        "queueRecoveryDiagnostics": {
+          "acceptedPushes": 1,
+          "cancellations": 1,
+          "preDiagnosisStatusReads": 1,
+          "pushAttempts": 1,
+          "startAttempts": 1,
+          "statusReads": 5,
+          "unrelatedChangeAttempts": 0
+        }
+      }
+    },
+    {
+      "headId": 9518091,
+      "evalId": 9518095,
+      "reportId": 9518094,
+      "cohort": "evaluated-cases",
+      "evaluationEnvironment": "simulated",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518095",
+      "teamcity": {
+        "state": "finished",
+        "status": "FAILURE",
+        "queuedAt": "2026-09-30T19:24:20+00:00",
+        "startedAt": "2026-09-30T19:24:21+00:00",
+        "finishedAt": "2026-09-30T19:27:03+00:00",
+        "durationSeconds": 162,
+        "queueSeconds": 1
+      },
+      "result": {
+        "caseId": "queued-missing-os-family-recovery",
+        "arm": "skill",
+        "status": "failed",
+        "gradeStatus": "failed",
+        "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+        "caseVersion": "26fbd4e62c6bac03e03f389294f5ba5b70f67707d0e6d4e3a44dfca07d346372",
+        "agentConfigId": "claude-default-fixture-300s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": "simulated",
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 300,
+        "checks": {
+          "compatibilityCheckpoint": true,
+          "diagnosticAgentInventory": true,
+          "diagnosticAgentRuntimeCapabilities": true,
+          "diagnosticJobIncompatibility": true,
+          "diagnosticStoredParameters": true,
+          "configurationPreserved": true,
+          "noBlindRetry": false,
+          "boundedRecovery": true,
+          "configurationValidated": true,
+          "configurationReadBack": true,
+          "compatibleAgentConfirmed": false,
+          "fixtureBuildSucceeded": false,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 4,
+          "preparationSeconds": 0.8,
+          "agentSeconds": 139.269,
+          "observationSeconds": 0.008,
+          "gradingSeconds": 0.018,
+          "cleanupSeconds": 0.016,
+          "totalSeconds": 140.111
+        },
+        "agentUsage": {
+          "inputTokens": 42,
+          "outputTokens": 10866,
+          "cacheReadTokens": 873012,
+          "cacheWriteTokens": 42316,
+          "totalCostUsd": 1.138801
+        },
+        "queueRecoveryDiagnostics": {
+          "acceptedPushes": 1,
+          "cancellations": 1,
+          "preDiagnosisStatusReads": 1,
+          "pushAttempts": 1,
+          "startAttempts": 1,
+          "statusReads": 5,
+          "unrelatedChangeAttempts": 0
+        }
+      }
+    },
+    {
+      "headId": 9518102,
+      "evalId": 9518108,
+      "reportId": 9518110,
+      "cohort": "evaluated-cases",
+      "evaluationEnvironment": "simulated",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518108",
+      "teamcity": {
+        "state": "finished",
+        "status": "FAILURE",
+        "queuedAt": "2026-09-30T19:25:40+00:00",
+        "startedAt": "2026-09-30T19:25:40+00:00",
+        "finishedAt": "2026-09-30T19:27:11+00:00",
+        "durationSeconds": 91,
+        "queueSeconds": 0
+      },
+      "result": {
+        "caseId": "queued-missing-os-family-recovery",
+        "arm": "baseline",
+        "status": "failed",
+        "gradeStatus": "failed",
+        "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+        "caseVersion": "26fbd4e62c6bac03e03f389294f5ba5b70f67707d0e6d4e3a44dfca07d346372",
+        "agentConfigId": "claude-default-fixture-300s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": "simulated",
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 300,
+        "checks": {
+          "compatibilityCheckpoint": true,
+          "diagnosticAgentInventory": true,
+          "diagnosticAgentRuntimeCapabilities": true,
+          "diagnosticJobIncompatibility": true,
+          "diagnosticStoredParameters": true,
+          "configurationPreserved": true,
+          "noBlindRetry": false,
+          "boundedRecovery": true,
+          "configurationValidated": true,
+          "configurationReadBack": true,
+          "compatibleAgentConfirmed": true,
+          "fixtureBuildSucceeded": true,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 3,
+          "preparationSeconds": 0.555,
+          "agentSeconds": 76.676,
+          "observationSeconds": 0.004,
+          "gradingSeconds": 0.006,
+          "cleanupSeconds": 0.006,
+          "totalSeconds": 77.247
+        },
+        "agentUsage": {
+          "inputTokens": 38,
+          "outputTokens": 4869,
+          "cacheReadTokens": 561668,
+          "cacheWriteTokens": 23916,
+          "totalCostUsd": 0.649184
+        },
+        "queueRecoveryDiagnostics": {
+          "acceptedPushes": 1,
+          "cancellations": 1,
+          "preDiagnosisStatusReads": 1,
+          "pushAttempts": 1,
+          "startAttempts": 1,
+          "statusReads": 4,
+          "unrelatedChangeAttempts": 0
+        }
+      }
+    },
+    {
+      "headId": 9518111,
+      "evalId": 9518113,
+      "reportId": 9518112,
+      "cohort": "evaluated-cases",
+      "evaluationEnvironment": "simulated",
+      "evalUrl": "https://teamcity-nightly.labs.intellij.net/build/9518113",
+      "teamcity": {
+        "state": "finished",
+        "status": "SUCCESS",
+        "queuedAt": "2026-09-30T19:27:07+00:00",
+        "startedAt": "2026-09-30T19:27:08+00:00",
+        "finishedAt": "2026-09-30T19:29:20+00:00",
+        "durationSeconds": 132,
+        "queueSeconds": 1
+      },
+      "result": {
+        "caseId": "queued-missing-os-family-recovery",
+        "arm": "skill",
+        "status": "passed",
+        "gradeStatus": "passed",
+        "harnessRevision": "01acda451b7c9b21a10a9e2d6d17074931948155",
+        "caseVersion": "26fbd4e62c6bac03e03f389294f5ba5b70f67707d0e6d4e3a44dfca07d346372",
+        "agentConfigId": "claude-default-fixture-300s",
+        "agentVersion": null,
+        "toolMode": "cli-only",
+        "evaluationEnvironment": "simulated",
+        "agentExitCode": 0,
+        "agentTimedOut": false,
+        "agentTimeoutSeconds": 300,
+        "checks": {
+          "compatibilityCheckpoint": true,
+          "diagnosticAgentInventory": true,
+          "diagnosticAgentRuntimeCapabilities": true,
+          "diagnosticJobIncompatibility": true,
+          "diagnosticStoredParameters": true,
+          "configurationPreserved": true,
+          "noBlindRetry": true,
+          "boundedRecovery": true,
+          "configurationValidated": true,
+          "configurationReadBack": true,
+          "compatibleAgentConfirmed": true,
+          "fixtureBuildSucceeded": true,
+          "sourceMutations": true
+        },
+        "phaseTimings": {
+          "bootstrapSeconds": 4,
+          "preparationSeconds": 1.171,
+          "agentSeconds": 110.205,
+          "observationSeconds": 0.012,
+          "gradingSeconds": 0.026,
+          "cleanupSeconds": 0.015,
+          "totalSeconds": 111.429
+        },
+        "agentUsage": {
+          "inputTokens": 34,
+          "outputTokens": 8911,
+          "cacheReadTokens": 660498,
+          "cacheWriteTokens": 38141,
+          "totalCostUsd": 0.9418789999999998
+        },
+        "queueRecoveryDiagnostics": {
+          "acceptedPushes": 1,
+          "cancellations": 1,
+          "preDiagnosisStatusReads": 1,
+          "pushAttempts": 1,
+          "startAttempts": 1,
+          "statusReads": 4,
+          "unrelatedChangeAttempts": 0
+        }
+      }
+    }
+  ],
+  "verifiedChains": [
+    {
+      "headId": 9518039,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518042,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518041,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518040,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518043,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518044,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518048,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518053,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518052,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518054,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518056,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518055,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518057,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518059,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518060,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518058,
+      "state": "finished",
+      "status": "SUCCESS",
+      "children": [
+        {
+          "id": 9518062,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518061,
+          "kind": "eval",
+          "state": "finished",
+          "status": "SUCCESS"
+        }
+      ]
+    },
+    {
+      "headId": 9518067,
+      "state": "finished",
+      "status": "SUCCESS",
+      "children": [
+        {
+          "id": 9518071,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518070,
+          "kind": "eval",
+          "state": "finished",
+          "status": "SUCCESS"
+        }
+      ]
+    },
+    {
+      "headId": 9518066,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518068,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518069,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518072,
+      "state": "finished",
+      "status": "SUCCESS",
+      "children": [
+        {
+          "id": 9518075,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518074,
+          "kind": "eval",
+          "state": "finished",
+          "status": "SUCCESS"
+        }
+      ]
+    },
+    {
+      "headId": 9518073,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518077,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518076,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518078,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518081,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518080,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518079,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518082,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518083,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518085,
+      "state": "finished",
+      "status": "SUCCESS",
+      "children": [
+        {
+          "id": 9518089,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518088,
+          "kind": "eval",
+          "state": "finished",
+          "status": "SUCCESS"
+        }
+      ]
+    },
+    {
+      "headId": 9518084,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518087,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518086,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518091,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518094,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518095,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518090,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518092,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518093,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518096,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518094,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518095,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518097,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518092,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518093,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518102,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518110,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518108,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518103,
+      "state": "finished",
+      "status": "FAILURE",
+      "children": [
+        {
+          "id": 9518094,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518095,
+          "kind": "eval",
+          "state": "finished",
+          "status": "FAILURE"
+        }
+      ]
+    },
+    {
+      "headId": 9518111,
+      "state": "finished",
+      "status": "SUCCESS",
+      "children": [
+        {
+          "id": 9518112,
+          "kind": "report",
+          "state": "finished",
+          "status": "SUCCESS"
+        },
+        {
+          "id": 9518113,
+          "kind": "eval",
+          "state": "finished",
+          "status": "SUCCESS"
+        }
+      ]
+    }
+  ],
+  "verifiedReports": [
+    {
+      "id": 9518042,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518043,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518053,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518056,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518059,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518062,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518071,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518068,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518075,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518077,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518081,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518082,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518089,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518087,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518094,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518092,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518110,
+      "indexHtml": true,
+      "runsJson": true
+    },
+    {
+      "id": 9518112,
+      "indexHtml": true,
+      "runsJson": true
+    }
+  ]
+}
