@@ -103,6 +103,7 @@ def comparison_detail(case, tool_mode):
         "different-harness-revision": "arms use different harness revisions",
         "missing-arm": "comparison needs both arms",
         "assisted-run-excluded": "assisted run excluded from skill comparison",
+        "unsupported-tool-mode": "unsupported tool mode for this fixture",
     }
     return f'<div class="detail">{esc(labels.get(status, status))}</div>'
 
@@ -217,10 +218,22 @@ def render(data, regressions=None):
             coverage += (" / " if coverage else "") + "targets: " + " / ".join(case["targets"])
         mode_cells = ""
         for tool_mode in TOOL_MODE_LABELS:
+            if (
+                tool_mode not in case.get("supportedToolModes", TOOL_MODE_LABELS)
+                and not any(((case.get("toolModes") or {}).get(tool_mode) or {}).values())
+            ):
+                mode_cells += '<td colspan="2"><span class="muted">unsupported tool mode for this fixture</span></td>'
+                continue
             mode_cells += (
                 f'<td>{arm_cell(case, tool_mode, "skill")}'
                 f'{comparison_detail(case, tool_mode)}</td>'
                 f'<td>{arm_cell(case, tool_mode, "baseline")}</td>'
+            )
+        if case.get("runnerSupport") == "not-implemented":
+            mode_cells = (
+                '<td colspan="6"><span class="status">not executable</span>'
+                '<div class="detail">Contract only: the preflight runner is not implemented. '
+                'No run or pass is claimed; skill/baseline comparison does not apply.</div></td>'
             )
         matrix_rows.append(
             '<tr>'

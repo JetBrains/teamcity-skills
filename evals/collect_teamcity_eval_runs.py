@@ -348,6 +348,15 @@ def inventory():
                     )
                     else "preflight"
                 ),
+                "runnerSupport": (
+                    "not-implemented" if kind == "teamcity-access-preflight" else "executable"
+                ),
+                "supportedToolModes": (
+                    [] if kind == "teamcity-access-preflight"
+                    else ["cli-only", "cli+mcp"]
+                    if kind in ("queue-stall-diagnosis", "queue-recovery")
+                    else list(TOOL_MODES)
+                ),
                 "scope": scope,
                 "assertions": assertions,
                 "targets": [target.get("name", target["id"]) for target in expected.get("targets", [])],
@@ -712,7 +721,10 @@ def collect(server, pipelines, limit, excluded_job_names):
                 for mode in TOOL_MODES
             }
             case["comparisons"] = {
-                mode: compare_arms(
+                mode: {"status": "unsupported-tool-mode"}
+                if mode not in case.get("supportedToolModes", TOOL_MODES)
+                and not any(case["toolModes"][mode].values())
+                else compare_arms(
                     case["toolModes"][mode]["skill"],
                     case["toolModes"][mode]["baseline"],
                 )
@@ -759,7 +771,7 @@ def collect(server, pipelines, limit, excluded_job_names):
             case["executionModel"] == "paired-arms" for case in report["cases"]
         ),
         "expectedArmSlots": sum(
-            len(ARMS) * len(TOOL_MODES)
+            len(ARMS) * len(case.get("supportedToolModes", TOOL_MODES))
             for case in report["cases"] if case["executionModel"] == "paired-arms"
         ),
         "distinctCasesObserved": len({case_id for case_id, _mode, _arm in observed}),
