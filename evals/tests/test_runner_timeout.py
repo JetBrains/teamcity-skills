@@ -678,6 +678,13 @@ class AgentTimeoutTest(unittest.TestCase):
         self.assertEqual("errored", result["status"])
         self.assertEqual("agent-timeout", result["errorCategory"])
 
+    def test_nonzero_exit_cannot_pass_even_when_checks_are_green(self):
+        result = {"checks": {"build": {"passed": True}}}
+        run_case.set_graded_status(result, {"exitCode": 1, "timedOut": False, "timeoutSeconds": 300})
+        self.assertEqual("passed", result["gradeStatus"])
+        self.assertEqual("errored", result["status"])
+        self.assertEqual("agent-exit-failed", result["errorCategory"])
+
     def test_collector_classifies_published_timeout(self):
         category, detail = collector.classify(
             "https://teamcity.example",

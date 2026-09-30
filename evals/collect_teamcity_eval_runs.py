@@ -55,7 +55,7 @@ TIMING_FIELDS = (
     "buildWaitSeconds", "gradingSeconds", "cleanupSeconds", "totalSeconds",
 )
 SAFE_ERROR_CATEGORIES = {
-    "agent-timeout", "agent-permission-failure",
+    "agent-timeout", "agent-permission-failure", "agent-exit-failed",
     "build-not-queued", "build-wait-timeout", "build-queue-stalled",
     "mcp-not-invoked", "mcp-cli-invoked", "mcp-no-configuration",
     "mcp-sideload-flags-disabled", "mcp-enterprise-managed-config",
@@ -82,6 +82,8 @@ SAFE_CHECK_NAMES = {
     "diagnosticJobIncompatibility",
     "diagnosticStoredParameters", "requiredDiagnostics", "waitLimit",
     "noBlindRetry", "diagnosisReported", "containerImage", "build",
+    "configurationPreserved", "boundedRecovery", "configurationReadBack",
+    "compatibleAgentConfirmed", "fixtureBuildSucceeded",
 }
 
 
@@ -290,6 +292,8 @@ def inventory():
             scope = "Grades the generated pipeline only; no project build is queued."
         elif kind == "queue-stall-diagnosis":
             scope = "Simulates a run queued for over two minutes and grades compatibility diagnosis without consuming a build agent."
+        elif kind == "queue-recovery":
+            scope = "Stateful CLI simulation: diagnose queue state, preserve configuration, and verify recovery or unchanged capacity waiting. No real target build is run."
         else:
             scope = "Checks TeamCity authentication, authorization, and required operations."
 
@@ -320,6 +324,11 @@ def inventory():
             "temporaryObjectsRemoved": "temporary-object lifecycle",
             "toolchain": "toolchain",
             "firstBuild": "first build",
+            "configurationPreserved": "preserve unrelated configuration",
+            "boundedRecovery": "bounded intervention",
+            "configurationReadBack": "saved configuration read back",
+            "compatibleAgentConfirmed": "confirmed compatible agent",
+            "fixtureBuildSucceeded": "simulated verification success",
             "targets": "target coverage",
         }
         for key in expected:
@@ -335,7 +344,7 @@ def inventory():
                 "executionModel": (
                     "paired-arms"
                     if kind in (
-                        "first-green-build", "pipeline-configuration", "queue-stall-diagnosis"
+                        "first-green-build", "pipeline-configuration", "queue-stall-diagnosis", "queue-recovery"
                     )
                     else "preflight"
                 ),
@@ -434,6 +443,7 @@ def download_result(warnings, server, run_id, known_case_ids=None):
             "queueWaitReason": known_value(
                 result.get("queueWaitReason"), SAFE_QUEUE_WAIT_REASONS
             ),
+            "evaluationEnvironment": known_value(result.get("evaluationEnvironment"), {"simulated", "live"}),
             "checks": {
                 name: {
                     "passed": check.get("passed")
