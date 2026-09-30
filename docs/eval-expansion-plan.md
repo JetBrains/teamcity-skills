@@ -312,6 +312,34 @@ At the 21:04 UTC check, report `9519021` is running (started 21:02:55 UTC) and
 head `9519020` is nonterminal with a failed dependency. No further evaluation
 or final report-only refresh has been queued; await report publication first.
 
+At 21:12:17 UTC, baseline report `9519021` finished **SUCCESS** after 562
+seconds, and baseline head `9519020` finished **FAILURE**. Both evaluator
+chains are now terminal; the original canceled baseline attempt remains
+separate. All three safe report artifacts were downloaded to
+`/tmp/tc-eval-history.SbTScX/new-first-green-baseline-report/publish/`.
+The snapshot generated at 21:03:01 UTC contains both terminal eval outcomes,
+their matching original revision/case/profile, the measured baseline cost,
+and absent skill usage. All 19 historical eval records underlying the ten
+restored rows match the earlier verified restoration snapshot exactly,
+including grades, revisions, result metadata, and assisted TDD evidence.
+All ten rows and both new outcomes are present in HTML. There are no warnings;
+206 head/job references still deduplicate to 202 eval IDs, with duplicates
+`8798307` (2), `9518093` (2), and `9518095` (3). The canceled `9519022` is
+still absent from this current-dependency report, not from the audit. The
+regression checker reports no mature failures at minimum 3 samples, while
+the new pair comparison remains `insufficient-samples`.
+
+The **single authorized final report-only refresh** was dispatched at
+21:15:38 UTC on `5664fc5e0578dd080863fc1655ff30336e99f639` (a descendant
+preserving the 50-row ledger and preflight/unsupported-mode labels).
+Head `9520474` and report child `9520475` are running; their read-back tree
+contains only the report job, no evaluator dependency. The report-only YAML
+was revalidated against the server and its stored topology and existing VCS
+root attachment were checked before dispatch. No new Claude evaluation was
+started. This uses the one refresh allowance: do not queue another refresh.
+Wait for these exact jobs, then verify the final safe publication and close
+the monitor only after the final evidence has been assessed and reported.
+
 ### First-green grading caveats discovered during read-only diagnosis
 
 The user's improvement question prompted inspection of the completed skill
