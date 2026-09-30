@@ -20,9 +20,12 @@ else
 fi
 
 : "${TEAMCITY_URL:?TEAMCITY_URL is required}"
+# A parent-scoped report source list takes precedence over legacy pipeline-local
+# EVAL_PIPELINES overrides, which used to hide the other evaluation suite.
+EVAL_PIPELINES="${EVAL_REPORT_PIPELINES:-${EVAL_PIPELINES:-}}"
 : "${EVAL_PIPELINES:?EVAL_PIPELINES is required (comma-separated pipeline head IDs)}"
 report_dir="${EVAL_REPORT_DIR:-.teamcity/evaluation-report}"
-report_limit="${EVAL_REPORT_LIMIT:-32}"
+report_limit="${EVAL_REPORT_LIMIT:-0}"
 mkdir -p "$report_dir"
 
 IFS=',' read -r -a pipeline_ids <<< "$EVAL_PIPELINES"

@@ -1,0 +1,22 @@
+name: Evaluation history report
+# Report-only entry point: does not invoke an evaluated agent or a target build.
+# Set env.EVAL_REPORT_PIPELINES on the parent project to both evaluator heads.
+parameters:
+  env.EVAL_REPORT_LIMIT: "0"
+jobs:
+  publish_eval_report:
+    name: Publish evaluation report
+    runs-on:
+      self-hosted:
+        - requirement: equals
+          name: Linux container engine
+          parameter: container.engine.osType
+          value: linux
+    files-publication:
+      - path: .teamcity/evaluation-report/**
+        publish-artifact: true
+        share-with-jobs: false
+    steps:
+      - type: script
+        name: Collect retained evaluation history
+        script-content: bash evals/run-eval-report.sh

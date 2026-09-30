@@ -401,16 +401,9 @@ def download_result(warnings, server, run_id, known_case_ids=None):
         checks = result.get("checks") if isinstance(result.get("checks"), dict) else {}
         if known_case_ids is None:
             known_case_ids = {case["id"] for case in inventory()}
-        trace_tail = "\n".join(
-            line for line in result.get("agentTraceTail") or [] if isinstance(line, str)
-        ).lower()
         error_category = safe_error_category(result.get("errorCategory"))
         if result.get("agentTimedOut") is True:
             error_category = "agent-timeout"
-        elif error_category is None and (
-            "requires approval" in trace_tail or "permission_denied" in trace_tail
-        ):
-            error_category = "agent-permission-failure"
         return {
             "caseId": known_value(result.get("caseId"), known_case_ids),
             "caseStatus": known_value(result.get("caseStatus"), SAFE_CASE_STATUSES),
@@ -453,47 +446,6 @@ def download_result(warnings, server, run_id, known_case_ids=None):
                 if name in SAFE_CHECK_NAMES and isinstance(check, dict)
             },
         }
-
-
-def log_category(server, run_id):
-    """Classify known infrastructure errors without persisting raw logs."""
-    completed = cli(server, "run", "log", str(run_id), "--tail", "100", "--raw")
-    text = (completed.stdout + "\n" + completed.stderr).lower()
-    patterns = (
-        (
-            ("no matching manifest for windows", "docker: no matching manifest"),
-            ("runner-runtime-failure", "Linux container image was scheduled on a Windows container host"),
-        ),
-        (
-            ("claude code was not provided by the jcp central ai agent feature",),
-            ("agent-runtime-failure", "JCP Central did not inject Claude Code into this job"),
-        ),
-        (
-            ("authentication failed", "invalid credentials", "write access to repository not granted"),
-            ("vcs-auth-failure", "TeamCity could not authenticate to the VCS repository"),
-        ),
-        (
-            ("could not obtain token", "http 401", "http 403"),
-            ("teamcity-auth-failure", "the runner could not obtain TeamCity access"),
-        ),
-        (
-            (
-                "could not fetch",
-                "failed to fetch",
-                "remote: internal server error",
-                "command '('git', 'fetch'",
-            ),
-            ("external-vcs-failure", "external repository checkout failed before the agent ran"),
-        ),
-        (
-            ("python 3 is required", "python3: command not found"),
-            ("runner-runtime-failure", "the evaluation runner could not start Python"),
-        ),
-    )
-    for needles, verdict in patterns:
-        if any(needle in text for needle in needles):
-            return verdict
-    return ("failed-without-result", "job failed before it published an evaluation result")
 
 
 def classify(server, run, result):
@@ -552,7 +504,8 @@ def classify(server, run, result):
 
     if status == "success":
         return "false-green/no-result", "job succeeded but did not publish eval-result.json"
-    return log_category(server, run["id"])
+    # Missing safe evidence is not permission to inspect raw logs or traces.
+    return "failed-without-result", "no safe evaluation result is available; cause not inspected"
 
 
 def normalize_run(server, warnings, node, known_case_ids=None):
@@ -568,6 +521,15 @@ def normalize_run(server, warnings, node, known_case_ids=None):
         revision = None
     else:
         revision = teamcity_revision or harness_revision
+    notes = json.loads((HERE / "reviewed-run-notes.json").read_text())
+    assisted = any(
+        note.get("runId") == detailed["id"]
+        and note.get("caseId") == (result or {}).get("caseId")
+        and note.get("harnessRevision") == harness_revision
+        for note in notes.get("assistedRuns", [])
+    )
+    if assisted:
+        detail += "; assisted: manual agent-selector repairs; excluded from skill comparison"
     return {
         "id": detailed["id"],
         "state": known_value(detailed.get("state"), SAFE_BUILD_STATES),
@@ -580,6 +542,7 @@ def normalize_run(server, warnings, node, known_case_ids=None):
         "classification": category,
         "classificationDetail": detail,
         "result": result,
+        "assisted": assisted,
     }
 
 
@@ -604,6 +567,8 @@ def latest_arm_observations(all_jobs, window_size=5, target_min_samples=3):
                 "arm": arm,
                 "toolMode": tool_mode,
                 "revision": job.get("revision"),
+                "finishedAt": job.get("finishedAt"),
+                "assisted": job.get("assisted", False),
                 "caseVersion": evaluation_profile(result)[0],
                 "agentConfigId": evaluation_profile(result)[1],
                 "agentVersion": evaluation_profile(result)[2],
@@ -619,6 +584,7 @@ def latest_arm_observations(all_jobs, window_size=5, target_min_samples=3):
             job for job in history[key]
             if job.get("revision") == latest_revision
             and evaluation_profile(job.get("result") or {}) == latest_profile
+            and not job.get("assisted")
         ][:window_size]
         passed = sum(job["classification"] == "passed" for job in samples)
         scores = [metric_score(job.get("result") or {}) for job in samples]
@@ -638,6 +604,8 @@ def compare_arms(skill, baseline, target_min_samples=3):
     """State when a paired comparison is meaningful, never inventing a lift."""
     if not skill or not baseline:
         return {"status": "missing-arm"}
+    if skill.get("assisted") or baseline.get("assisted"):
+        return {"status": "assisted-run-excluded"}
     if skill.get("revision") != baseline.get("revision"):
         return {"status": "different-harness-revision"}
     if (
@@ -672,6 +640,11 @@ def collect(server, pipelines, limit, excluded_job_names):
         "cases": inventory(),
         "pipelines": [],
         "warnings": warnings,
+        "collection": {
+            "pipelineCount": len(pipelines),
+            "headLimitPerPipeline": limit,
+            "scope": "all-retained-heads" if limit == 0 else "recent-heads",
+        },
     }
     all_jobs_by_id = {}
     normalized_by_id = {}
@@ -814,15 +787,15 @@ def main():
         "--pipeline", action="append", dest="pipelines", required=True,
         help="Pipeline head build type ID (repeatable)"
     )
-    parser.add_argument("--limit", type=int, default=32, help="Recent pipeline heads per pipeline")
+    parser.add_argument("--limit", type=int, default=0, help="Recent heads per pipeline (0: all retained)")
     parser.add_argument(
         "--exclude-job-name", action="append", default=[],
         help="Job display name to omit from the report (repeatable)",
     )
     parser.add_argument("--output", required=True, type=pathlib.Path, help="Normalized report JSON")
     args = parser.parse_args()
-    if args.limit < 1:
-        parser.error("--limit must be positive")
+    if args.limit < 0:
+        parser.error("--limit must be nonnegative")
     report = collect(args.server, args.pipelines, args.limit, set(args.exclude_job_name))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
