@@ -130,7 +130,17 @@ class QueueRecoveryFixture(TeamCityCliBridge):
         return expected
 
     def preserved(self, config):
-        return config == self.preservation_reference(config)
+        expected = self.preservation_reference(config)
+        candidate = copy.deepcopy(config)
+        # A step's display name is not build/test/artifact behavior. Keep all
+        # executable properties and topology strict in both evaluated arms.
+        for pipeline in (expected, candidate):
+            for job in pipeline.get("jobs", {}).values():
+                if isinstance(job, dict) and isinstance(job.get("steps"), list):
+                    for step in job["steps"]:
+                        if isinstance(step, dict):
+                            step.pop("name", None)
+        return candidate == expected
 
     def record_rejected_changes(self, config):
         expected = self.preservation_reference(config)

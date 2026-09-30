@@ -83,6 +83,35 @@ class QueueRecoveryTest(unittest.TestCase):
         self.assertNotIn("private", json.dumps(diagnostics))
         self.assertNotIn("package", json.dumps(diagnostics))
 
+    def test_step_display_name_does_not_change_build_behavior(self):
+        self.diagnose()
+        config = self.correction()
+        config["jobs"]["Build"]["steps"][0]["name"] = "Verify and package"
+        self.path.write_text(yaml.safe_dump(config))
+        self.call("pipeline", "validate", str(self.path))
+        self.call("pipeline", "push", PIPELINE, "--file", str(self.path))
+        self.call("pipeline", "pull", PIPELINE, "--output", str(self.path))
+        self.call("job", "view", JOB)
+        self.call("run", "cancel", ORIGINAL)
+        self.call("run", "start", JOB, "--settings", "current")
+        self.call("run", "watch", VERIFICATION, "--timeout", "60s")
+        self.assertTrue(all(c["passed"] for c in self.fixture.grade([]).values()))
+        self.assertEqual(1, self.fixture.diagnostics()["pushAttempts"])
+
+    def test_runtime_and_publication_changes_are_still_rejected(self):
+        self.diagnose()
+        for field in ("runtime", "publication"):
+            with self.subTest(field=field):
+                config = self.correction()
+                if field == "runtime":
+                    config["jobs"]["Build"]["steps"][0]["docker-image"] = "maven:wrong-jdk"
+                else:
+                    config["jobs"]["Build"]["files-publication"] = []
+                self.path.write_text(yaml.safe_dump(config))
+                self.call("pipeline", "validate", str(self.path))
+                self.call("pipeline", "push", PIPELINE, "--file", str(self.path), succeeds=False)
+                self.assertFalse(self.fixture.grade([])["configurationPreserved"]["passed"])
+
     def test_diagnostics_allowlist_drops_raw_data_and_invalid_counters(self):
         self.assertEqual({"acceptedPushes": 1}, safe_fixture_diagnostics({
             "acceptedPushes": 1, "pushAttempts": True, "statusReads": -1,
