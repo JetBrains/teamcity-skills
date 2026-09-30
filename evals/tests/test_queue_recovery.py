@@ -13,7 +13,7 @@ import yaml
 
 EVALS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(EVALS))
-from queue_recovery import JOB, ORIGINAL, PIPELINE, VERIFICATION, QueueRecoveryFixture, forbidden_queue_transport
+from queue_recovery import JOB, ORIGINAL, PIPELINE, VERIFICATION, QueueRecoveryFixture, forbidden_queue_transport, safe_fixture_diagnostics
 
 
 class QueueRecoveryTest(unittest.TestCase):
@@ -65,6 +65,30 @@ class QueueRecoveryTest(unittest.TestCase):
     def test_os_repair_is_successful_only_after_actual_state_transitions(self):
         self.repair()
         self.assertTrue(all(c["passed"] for c in self.fixture.grade([]).values()))
+        self.assertEqual(1, self.fixture.diagnostics()["pushAttempts"])
+        self.assertEqual(0, self.fixture.diagnostics()["unrelatedChangeAttempts"])
+
+    def test_rejected_changes_publish_categories_not_configuration(self):
+        self.diagnose()
+        config = self.correction()
+        config["jobs"]["Build"]["steps"][0]["name"] = "private name"
+        config["jobs"]["Build"]["steps"][0]["goals"] = "package"
+        self.path.write_text(yaml.safe_dump(config))
+        self.call("pipeline", "validate", str(self.path))
+        self.call("pipeline", "push", PIPELINE, "--file", str(self.path), succeeds=False)
+        diagnostics = self.fixture.diagnostics()
+        self.assertEqual(1, diagnostics["stepMetadataChanges"])
+        self.assertEqual(1, diagnostics["stepBehaviorChanges"])
+        self.assertEqual(0, diagnostics["acceptedPushes"])
+        self.assertNotIn("private", json.dumps(diagnostics))
+        self.assertNotIn("package", json.dumps(diagnostics))
+
+    def test_diagnostics_allowlist_drops_raw_data_and_invalid_counters(self):
+        self.assertEqual({"acceptedPushes": 1}, safe_fixture_diagnostics({
+            "acceptedPushes": 1, "pushAttempts": True, "statusReads": -1,
+            "startAttempts": "secret", "cancellations": 1000001,
+            "private configuration": 3,
+        }))
 
     def test_unresolved_script_parameter_repair_preserves_verification(self):
         self.fixture = QueueRecoveryFixture("unresolved-script-parameter", self.workspace, self.checkout, {})
@@ -185,9 +209,11 @@ class QueueRecoveryTest(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("run_case_recovery_test", EVALS / "run_case.py")
         runner = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(runner)
-        result = runner.publishable_result({"evaluationEnvironment": "simulated", "checks": {}, "events": ["private"]})
+        result = runner.publishable_result({"evaluationEnvironment": "simulated", "checks": {}, "events": ["private"],
+                                           "queueRecoveryDiagnostics": {"pushAttempts": 1, "private": "secret"}})
         self.assertEqual("simulated", result["evaluationEnvironment"])
         self.assertNotIn("events", result)
+        self.assertEqual({"pushAttempts": 1}, result["queueRecoveryDiagnostics"])
         self.assertNotIn("evaluationEnvironment", runner.publishable_result({"evaluationEnvironment": "private text"}))
 
     def test_runner_uses_stateful_broker_and_does_not_create_live_project(self):
