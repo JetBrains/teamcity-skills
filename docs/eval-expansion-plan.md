@@ -217,7 +217,16 @@ actual-child-ID deduplication. All **157 unit tests** pass and all **22 cases**
 validate. A new report-only pipeline, `TeamCity_Sandbox_TCEvals_EvaluationHistoryReport`,
 is attached to the existing repository root and has no Claude feature or
 evaluation dependency. Its YAML was server-validated and read back. Report-only
-head/job `9518779`/`9518780` was queued on the fix revision; publication is pending.
+head/job `9518779`/`9518780` completed successfully at 20:19:39/20:19:37 UTC.
+The report job ran for 562 seconds; collection began at 20:10:37 UTC. Its
+`publish/index.html`, `publish/runs.json` and `publish/regressions.json` were
+downloaded and verified. All ten historical rows (including the two queue
+cases below) are restored, with their original revisions and the TDD assisted
+annotation. The snapshot contains 155 configuration heads and 51 first-green
+heads, including the two newly running evals, and 202 unique eval jobs. There
+are no collection warnings. A final report-only refresh after the new pair
+finishes must use `cfe92d4` or a later audit-only descendant to also include
+the clearer preflight/unsupported-mode labels.
 
 Only the genuine first-green Testcontainers gap was queued again: one CLI-only
 pair on the same `9086dcd` revision, with profile
