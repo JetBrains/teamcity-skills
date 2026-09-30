@@ -40,9 +40,13 @@ jobs:
     name: Run eval case
     # This job orchestrates the evaluation only. KMP target jobs created by
     # Claude must declare their own Linux/macOS agent requirements.
+    # Match the JVM OS name: os-family=Linux excludes the available Linux agents.
     runs-on:
       self-hosted:
-        - os-family: Linux
+        - name: Linux agent
+          requirement: equals
+          parameter: teamcity.agent.jvm.os.name
+          value: Linux
     files-publication:
       - path: eval-result.json
         publish-artifact: true
@@ -65,7 +69,10 @@ jobs:
     name: Publish evaluation report
     runs-on:
       self-hosted:
-        - os-family: Linux
+        - name: Linux agent
+          requirement: equals
+          parameter: teamcity.agent.jvm.os.name
+          value: Linux
     dependencies:
       - run_case:
           run-job-if-upstream-fails: true
