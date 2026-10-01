@@ -4,7 +4,7 @@
   "kind": "pipeline-configuration",
   "status": "active",
   "skill": "teamcity-first-green-build",
-  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository and stop after server validation; do not queue a build. The repository is Kotlin/Gradle on Java 21. Keep its generated-source build work separate from its Testcontainers test work: create exactly one build/package job and one test job. Both jobs need a Java 21 image and a Docker-capable self-hosted agent selected through a concrete TeamCity runs-on requirement discovered from agent capabilities. The build/package job must run generateJooq and openApiGenerate before packaging the JAR, but must not run Gradle test. The test job must check Docker availability, prepare the generated sources, run Gradle test, and publish JUnit XML. Do not modify repository sources.",
+  "prompt": "Create and server-validate the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this Kotlin/Gradle Java 21 repository, without queueing a build. Inspect its generated-source and integration-test requirements. Keep build/package work and Testcontainers tests in two separate jobs; the package job must not execute tests. Configure generation prerequisites, verify Docker availability wherever the repository needs it, publish the application JAR from packaging and JUnit XML from tests. Select Java 21 on the agent or through a suitable build container. Do not modify repository sources.",
   "teamcity": {
     "server": "runner-configured",
     "targetProject": "runner-configured"
@@ -27,13 +27,23 @@
     "format": "yaml",
     "sourcePath": ".teamcity.yml"
   },
-  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "agentTools": [
+    "Bash",
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep"
+  ],
   "expected": {
     "configurationValidated": true,
     "sourceMutations": "none",
     "minimumJobs": 2,
     "expectedJobCount": 2,
-    "requiredStepTypes": ["gradle", "script"],
+    "requiredStepTypes": [
+      "gradle",
+      "script"
+    ],
     "requiredStepProperties": [
       {
         "stepType": "gradle",
@@ -56,11 +66,6 @@
         "matches": "(?i)(^|\\s)test(\\s|$)"
       },
       {
-        "stepType": "gradle",
-        "property": "docker-image",
-        "matches": "(?i)(?:temurin|openjdk|jdk)[^\\n]*21|21[^\\n]*(?:jdk|java)"
-      },
-      {
         "stepType": "script",
         "property": "script-content",
         "matches": "(?i)docker\\s+info"
@@ -70,11 +75,16 @@
       "(?i)\\.jar",
       "(?i)(?:test-results|TEST-).*\\.xml"
     ],
-    "requiredAgentRequirements": ["(?i)docker"],
+    "requiredAgentRequirements": [
+      "(?i)docker|container\\.engine"
+    ],
     "requiredJobs": [
       {
         "jobMatches": "(?i)(?:build|package)",
-        "requiredStepTypes": ["gradle"],
+        "requiredStepTypes": [
+          "gradle",
+          "script"
+        ],
         "requiredStepProperties": [
           {
             "stepType": "gradle",
@@ -89,27 +99,34 @@
           {
             "stepType": "gradle",
             "property": "tasks",
-            "matches": "(?i)(?:bootJar|assemble|build)"
+            "matches": "(?i)(^|\\s)(bootJar|assemble)(\\s|$)"
           },
           {
-            "stepType": "gradle",
-            "property": "docker-image",
-            "matches": "(?i)(?:temurin|openjdk|jdk)[^\\n]*21|21[^\\n]*(?:jdk|java)"
+            "stepType": "script",
+            "property": "script-content",
+            "matches": "(?m)^\\s*docker\\s+info(?:\\s|$)"
           }
         ],
         "forbiddenStepProperties": [
           {
             "stepType": "gradle",
             "property": "tasks",
-            "matches": "(?i)(^|\\s)test(\\s|$)"
+            "matches": "(?i)(^|\\s)(test|check|build)(\\s|$)"
           }
         ],
-        "requiredArtifactRules": ["(?i)\\.jar"],
-        "requiredAgentRequirements": ["(?i)docker"]
+        "requiredArtifactRules": [
+          "(?i)\\.jar"
+        ],
+        "requiredAgentRequirements": [
+          "(?i)docker|container\\.engine"
+        ]
       },
       {
         "jobMatches": "(?i)(?:test|integration)",
-        "requiredStepTypes": ["gradle", "script"],
+        "requiredStepTypes": [
+          "gradle",
+          "script"
+        ],
         "requiredStepProperties": [
           {
             "stepType": "gradle",
@@ -127,19 +144,28 @@
             "matches": "(?i)(^|\\s)test(\\s|$)"
           },
           {
-            "stepType": "gradle",
-            "property": "docker-image",
-            "matches": "(?i)(?:temurin|openjdk|jdk)[^\\n]*21|21[^\\n]*(?:jdk|java)"
-          },
-          {
             "stepType": "script",
             "property": "script-content",
-            "matches": "(?i)docker\\s+info"
+            "matches": "(?m)^\\s*docker\\s+info(?:\\s|$)"
           }
         ],
-        "requiredArtifactRules": ["(?i)(?:test-results|TEST-).*\\.xml"],
-        "requiredAgentRequirements": ["(?i)docker"]
+        "requiredArtifactRules": [
+          "(?i)(?:test-results|TEST-).*\\.xml"
+        ],
+        "requiredAgentRequirements": [
+          "(?i)docker|container\\.engine"
+        ],
+        "forbiddenStepProperties": [
+          {
+            "stepType": "gradle",
+            "property": "tasks",
+            "matches": "(?i)(?:-x\\s+|--exclude-task(?:=|\\s+))(?::)?test(?=\\s|$)"
+          }
+        ]
       }
-    ]
+    ],
+    "toolchain": {
+      "jdk": "21"
+    }
   }
 }

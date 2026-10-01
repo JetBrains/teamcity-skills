@@ -4,7 +4,7 @@
   "kind": "pipeline-configuration",
   "status": "draft",
   "skill": "teamcity-first-green-build",
-  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository: inspect the repository, create the VCS root and the smallest useful pipeline, use an explicit Java 21 container image for its Maven verification step, publish the application JAR, validate the configuration against the server, and stop there. Do not queue any build.",
+  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository. Inspect its build and test setup, configure Maven verification on Java 21, publish JUnit XML and the application JAR, validate the configuration against the server, and stop there. Do not queue a build or modify repository sources. Java 21 may be selected on the agent or through a suitable build container.",
   "teamcity": {
     "server": "runner-configured",
     "targetProject": "runner-configured"
@@ -26,44 +26,41 @@
     "format": "yaml",
     "sourcePath": ".teamcity.yml"
   },
-  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "agentTools": [
+    "Bash",
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep"
+  ],
   "expected": {
     "configurationValidated": true,
     "sourceMutations": "none",
     "minimumJobs": 1,
-    "expectedJobCount": 1,
-    "requiredStepTypes": ["maven"],
+    "toolchain": {
+      "jdk": "21"
+    },
+    "requiredStepTypes": [
+      "maven"
+    ],
     "requiredStepProperties": [
       {
         "stepType": "maven",
         "property": "goals",
-        "matches": "(?i)(^|\\s)(verify|package)(\\s|$)"
-      },
-      {
-        "stepType": "maven",
-        "property": "docker-image",
-        "matches": "(?i)(?:temurin|openjdk|jdk)[^\\n]*21|21[^\\n]*(?:jdk|java)"
+        "matches": "(?i)(^|\\s)verify(\\s|$)"
       }
     ],
-    "requiredArtifactRules": ["(?i)\\.jar"],
-    "requiredJobs": [
+    "forbiddenStepProperties": [
       {
-        "jobMatches": ".*",
-        "requiredStepTypes": ["maven"],
-        "requiredStepProperties": [
-          {
-            "stepType": "maven",
-            "property": "goals",
-            "matches": "(?i)(^|\\s)(verify|package)(\\s|$)"
-          },
-          {
-            "stepType": "maven",
-            "property": "docker-image",
-            "matches": "(?i)(?:temurin|openjdk|jdk)[^\\n]*21|21[^\\n]*(?:jdk|java)"
-          }
-        ],
-        "requiredArtifactRules": ["(?i)\\.jar"]
+        "stepType": "maven",
+        "property": "goals",
+        "matches": "(?i)-D(?:skipTests|maven\\.test\\.skip)(?:=true)?(?=\\s|$)"
       }
+    ],
+    "requiredArtifactRules": [
+      "(?i)\\.jar",
+      "(?i)(surefire-reports|TEST-).*\\.xml"
     ]
   }
 }
