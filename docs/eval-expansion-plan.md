@@ -581,3 +581,78 @@ report `9523475` remains running; baseline report `9523478` started at
 00:25:39 UTC and is running. Both eval outcomes are now terminal and
 unsuccessful. Await their safe report publications; no report-only refresh or
 additional evaluation has been dispatched.
+
+Skill report **`9523475` finished SUCCESS at 00:26:59 UTC** (481 seconds),
+and evaluator head `9523474` finished FAILURE. Report SUCCESS means that
+publication completed, **not** that the evaluation passed. Its safe snapshot
+was collected at 00:19:04 UTC, before the baseline finished: it includes
+skill `9523530` as `agent-budget-exhausted` and baseline `9523528` as running.
+The matrix therefore still shows old baseline `9518861` and explicitly marks
+the arms as different harness revisions. Do not compare that stale matrix
+pair. Safe report artifacts are in
+`/tmp/tc-eval-chain.bAnthA/skill-report/publish/`.
+
+This snapshot contains 208 dependency references / **204 unique evaluator
+IDs**, with only the previously documented reused dependencies duplicated.
+All 202 earlier evaluator records retain their identities, revisions,
+classifications, checks, usage, and timings; all ten restored historical
+matrix rows are unchanged. Skill identity, checks, chain/JDK diagnostics,
+budget, usage, and timings match its safe result. The two canceled originals
+`9523476`/`9523479` are absent, so their unknown costs remain covered by the
+explicit interruption audit above, not by this report's totals.
+
+The rendered ledger is **50 of 204** unique jobs. Assisted TDD `9505871`
+remains labeled and excluded (zero comparison samples); access preflight is
+explicitly not implemented and claims no execution; five unsupported MCP-only
+queue modes remain excluded. Measured cost is $260.960606 across 83 of 204
+jobs, an incomplete historical total including the skill replacement only.
+The regression check says `passed` with no mature failures, but all 66
+findings are insufficient samples/history; it is not an eval pass or evidence
+of skill lift. Await the baseline report; no refresh was requested.
+
+Baseline report **`9523478` finished SUCCESS at 00:34:00 UTC** (501 seconds),
+and evaluator head `9523477` finished FAILURE at the same time. Skill head
+`9523474` had finished FAILURE at 00:27:00. Thus both evaluator chains and
+their reports are terminal. The baseline report's snapshot, collected at
+00:25:44 UTC, contains **both completed replacements**. Its canonical safe
+artifacts are in `/tmp/tc-eval-chain.bAnthA/baseline-report/publish/`; no
+report-only refresh or further Claude invocation was necessary or requested.
+
+Both published result identities, statuses, exit/timeout, checks, budget,
+usage, and phase timings match their safe evaluator artifacts. The opaque
+profile fingerprint matches `claude-default-chain-v2-1200s-usd3` in both arms.
+Skill retains failed 3/6 checks and the full chain/JDK diagnostics. Baseline
+retains empty checks, null gradeStatus, and empty sanitized diagnostics, not
+a fabricated 0/6 grade. The matrix selects `9523530` and `9523528` on the same
+case version, harness revision, and profile; both are budget-exhausted, with
+one unsuccessful sample per arm and `insufficient-samples`, not proven lift.
+
+Final publication independently preserves all **202 historical evaluator
+records and ten restored matrix rows**, including their original grades and
+revisions. It has 208 dependency references / 204 unique evaluator IDs;
+duplicate references are only `8798307` x2, `9518093` x2, and `9518095` x3.
+The 50-row ledger, assisted TDD exclusion, non-executable preflight, five
+unsupported MCP-only queue modes, and 116 supported-arm-slot denominator
+remain intact. All 66 regression findings remain insufficient samples/history.
+The report's rounded measured total is $263.993406 across 84 of 204 jobs
+(summing the published individual measurements gives $263.9934065). This is
+incomplete historical coverage, not the experiment bill. The completed new
+replacements contribute exactly the measured **$6.0440475** stated above;
+the absent canceled originals still have **unknown cost**.
+
+At the final observation, baseline target head `9523533` and children
+`9523602`/`9523603` remain queued. They were not canceled or altered; a later
+execution must not retroactively regrade this failed evaluation. No model
+process is being continued by this monitor. Green was not obtained within
+the authorized pair: skill hit a Gradle code-generation failure and the API
+budget, while baseline hit the API budget and its post-agent queue-stall
+window without a completed grade. The narrower underlying Gradle cause and
+queue capacity require separate evidence/authorization, not another paid
+retry merely to obtain green. Close only this bounded-pair monitor after
+pushing this audit and reporting the result.
+
+Final evidence links:
+
+- [Skill evaluator chain 9523474](https://teamcity-nightly.labs.intellij.net/buildConfiguration/TeamCity_Sandbox_TCEvals_RunEvalCase/9523474)
+- [Baseline evaluator chain 9523477](https://teamcity-nightly.labs.intellij.net/buildConfiguration/TeamCity_Sandbox_TCEvals_RunEvalCase/9523477)
+- [Final report 9523478](https://teamcity-nightly.labs.intellij.net/buildConfiguration/TeamCity_Sandbox_TCEvals_RunEvalCase_virtual_publish_eval_report_V__1/9523478)
