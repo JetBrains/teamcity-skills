@@ -497,6 +497,9 @@
             "allowed"
           ]
         },
+        "toolchain": {
+          "$ref": "#/definitions/firstGreenBuildExpected/properties/toolchain"
+        },
         "minimumJobs": {
           "description": "Fewest build configurations that carry at least one build step. Composite pipeline heads do not count. A repository with independent targets is expected to get a job per target rather than one job that builds everything.",
           "type": "integer",
@@ -798,6 +801,62 @@
           "properties": {
             "jdk": {
               "type": "string"
+            }
+          }
+        },
+        "configuration": {
+          "$ref": "#/definitions/pipelineConfigurationExpected"
+        },
+        "minimumTestCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "requiredTestNames": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "jobResults": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "jobMatches"
+            ],
+            "properties": {
+              "jobMatches": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minimumTestCount": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "requiredTestNames": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "maximumTestCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "artifactPaths": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
             }
           }
         },

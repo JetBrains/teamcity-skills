@@ -1,0 +1,64 @@
+# Reference executability check only. Never collect this as an agent eval.
+# Queue with --branch main --revision 940cdb0b4d15c178ca1624095e24b69914b2c9cd.
+# A revision alone leaves an unspecified checkout ref in this CLI/server pair.
+name: Spring demo reference - not an eval
+parameters:
+  env.DEMO_ENV: local
+  env.JAVA_HOME: "%env.JDK_21_0%"
+jobs:
+  package:
+    name: Reference package
+    runs-on:
+      self-hosted:
+        - requirement: equals
+          name: Linux container engine
+          parameter: container.engine.osType
+          value: linux
+        - requirement: exists
+          name: JDK 21 available
+          parameter: env.JDK_21_0
+    execution-timeout-minutes: 30
+    allow-reuse: false
+    steps:
+      - type: script
+        name: Check Docker and selected Java
+        script-content: |-
+          set -eu
+          docker info >/dev/null
+          "$JAVA_HOME/bin/java" -version
+      - type: gradle
+        name: Generate sources and package without tests
+        tasks: generateJooq openApiGenerate bootJar
+        use-gradle-wrapper: true
+    files-publication:
+      - path: build/libs/*.jar
+        publish-artifact: true
+        share-with-jobs: false
+  test:
+    name: Reference Testcontainers tests
+    runs-on:
+      self-hosted:
+        - requirement: equals
+          name: Linux container engine
+          parameter: container.engine.osType
+          value: linux
+        - requirement: exists
+          name: JDK 21 available
+          parameter: env.JDK_21_0
+    execution-timeout-minutes: 30
+    allow-reuse: false
+    steps:
+      - type: script
+        name: Check Docker and selected Java
+        script-content: |-
+          set -eu
+          docker info >/dev/null
+          "$JAVA_HOME/bin/java" -version
+      - type: gradle
+        name: Generate sources and run Testcontainers tests
+        tasks: generateJooq openApiGenerate test
+        use-gradle-wrapper: true
+    files-publication:
+      - path: build/test-results/test/*.xml
+        publish-artifact: true
+        share-with-jobs: false

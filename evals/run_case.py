@@ -525,12 +525,22 @@ class TeamCity:
         return {}
 
     def test_count(self, build_id: int) -> int:
+        return len(self.test_results(build_id))
+
+    def test_results(self, build_id: int) -> list:
+        """Retain only test identity/status, never failure text or stack traces."""
         found = self._run(
             ["run", "tests", str(build_id), "--limit", "0", "--json"], json_output=True
         )
-        if isinstance(found, dict) and isinstance(found.get("count"), int):
-            return found["count"]
-        return len(self._records(found, "testOccurrence"))
+        records = self._records(found, "testOccurrence")
+        if (not isinstance(found, dict) or type(found.get("count")) is not int
+                or found["count"] != len(records)):
+            raise EvidenceError("verification-chain-incomplete")
+        if any(not isinstance(test, dict) or not isinstance(test.get("name"), str)
+               for test in records):
+            raise EvidenceError("verification-chain-incomplete")
+        return [{"name": test["name"], "status": test.get("status"),
+                 "ignored": test.get("ignored", False) is not False} for test in records]
 
     def artifacts(self, build_id: int, path: str = "") -> list:
         """Every artifact returned by the first-class CLI, walked recursively."""
@@ -658,9 +668,55 @@ def grade(case: dict, observed: dict) -> dict:
         "detail": f"changed: {observed['mutations']}" if observed["mutations"] else "clean checkout",
     }
 
+    if "configuration" in expected:
+        configuration_observed = {**observed, "toolCalls": []}
+        configuration_checks = grade_configuration(
+            {"expected": expected["configuration"]}, configuration_observed)
+        checks.update({name: check for name, check in configuration_checks.items()
+                       if name not in checks})
+    if "requiredTestNames" in expected or "minimumTestCount" in expected:
+        checks["requiredTests"] = {
+            "expected": True,
+            "observed": required_tests_pass(expected, observed.get("tests", [])),
+        }
+    if "jobResults" in expected:
+        results = observed.get("jobResults", [])
+        used, satisfied = set(), True
+        for contract in expected["jobResults"]:
+            candidates = matching_job_indices([item["job"] for item in results],
+                                               contract["jobMatches"])
+            if len(candidates) != 1 or candidates[0] in used:
+                satisfied = False
+                continue
+            index = candidates[0]
+            used.add(index)
+            actual = results[index]
+            satisfied &= (actual["status"] == "SUCCESS"
+                          and required_tests_pass(contract, actual["tests"])
+                          and all(artifact_matches(path, actual["artifacts"])
+                                  for path in contract.get("artifactPaths", [])))
+            if "maximumTestCount" in contract:
+                satisfied &= len(actual["tests"]) <= contract["maximumTestCount"]
+        checks["jobResults"] = {"expected": True, "observed": bool(satisfied)}
+
     for check in checks.values():
         check["passed"] = check["expected"] == check["observed"] or check["expected"] is check["observed"]
     return checks
+
+
+def required_tests_pass(contract, tests):
+    successful = [test["name"] for test in tests
+                  if test.get("status") == "SUCCESS" and not test.get("ignored", False)]
+    return (len(successful) >= contract.get("minimumTestCount", 0)
+            and all(any(re.search(pattern, name) for name in successful)
+                    for pattern in contract.get("requiredTestNames", [])))
+
+
+def matching_job_indices(jobs, matcher):
+    """Prefer structural keys; descriptions may mention another job's purpose."""
+    candidates = [i for i, job in enumerate(jobs)
+                  if re.search(matcher, job["id"].rsplit("/", 1)[-1])]
+    return candidates or [i for i, job in enumerate(jobs) if re.search(matcher, job["name"])]
 
 
 def add_transport_checks(
@@ -717,6 +773,11 @@ def grade_configuration(case: dict, observed: dict) -> dict:
     }
     checks["minimumJobs"]["observed"] = len(jobs) >= expected["minimumJobs"]
     checks["minimumJobs"]["expected"] = True
+
+    if "toolchain" in expected:
+        jdk = expected["toolchain"]["jdk"]
+        matched, _ = toolchain_evidence({}, jdk, jobs)
+        checks["toolchain"] = {"expected": True, "observed": matched}
 
     if "expectedJobCount" in expected:
         checks["jobCount"] = {
@@ -799,15 +860,7 @@ def grade_configuration(case: dict, observed: dict) -> dict:
         selected = set()
         for contract in expected["requiredJobs"]:
             matcher = contract["jobMatches"]
-            candidates = [
-                (index, job) for index, job in enumerate(jobs)
-                if re.search(matcher, job["id"].rsplit("/", 1)[-1])
-            ]
-            # Structural job keys take precedence. A description such as
-            # "Package (no tests)" must not become a second test job.
-            if not candidates:
-                candidates = [(index, job) for index, job in enumerate(jobs)
-                              if re.search(matcher, job["name"])]
+            candidates = [(index, jobs[index]) for index in matching_job_indices(jobs, matcher)]
             if len(candidates) != 1:
                 failures.append(f"{matcher!r} matched {len(candidates)} jobs")
                 continue

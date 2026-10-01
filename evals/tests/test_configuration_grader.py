@@ -120,7 +120,7 @@ class ConfigurationGraderTest(unittest.TestCase):
 
         self.assertFalse(matched)
 
-    def test_clean_spring_requires_a_java_21_maven_image(self):
+    def test_clean_spring_requires_java_21_not_a_particular_selection_method(self):
         case = json.loads(CLEAN_SPRING_CASE.read_text())
         observed = {
             "jobs": [
@@ -137,11 +137,15 @@ class ConfigurationGraderTest(unittest.TestCase):
         }
 
         checks = run_case.grade_configuration(case, observed)
-        self.assertFalse(checks["requiredStepProperties"]["passed"])
+        self.assertFalse(checks["toolchain"]["passed"])
 
         observed["jobs"][0]["steps"][0]["properties"]["docker-image"] = "eclipse-temurin:21-jdk"
         checks = run_case.grade_configuration(case, observed)
-        self.assertTrue(checks["requiredStepProperties"]["passed"])
+        self.assertTrue(checks["toolchain"]["passed"])
+
+        del observed["jobs"][0]["steps"][0]["properties"]["docker-image"]
+        observed["jobs"][0]["parameters"] = {"env.JAVA_HOME": "%env.JDK_21_0%"}
+        self.assertTrue(run_case.grade_configuration(case, observed)["toolchain"]["passed"])
 
     def test_spring_demo_keeps_docker_backed_tests_out_of_package_job(self):
         case = json.loads(SPRING_DEMO_CASE.read_text())
@@ -153,6 +157,7 @@ class ConfigurationGraderTest(unittest.TestCase):
                     "Build package",
                     "self-hosted Docker available",
                     [
+                        step("script", **{"script-content": "docker info"}),
                         step(
                             "gradle",
                             tasks="generateJooq openApiGenerate bootJar",
@@ -187,7 +192,7 @@ class ConfigurationGraderTest(unittest.TestCase):
         checks = run_case.grade_configuration(case, observed)
         self.assertTrue(checks["requiredJobs"]["passed"])
 
-        observed["jobs"][0]["steps"][0]["properties"]["tasks"] += " test"
+        observed["jobs"][0]["steps"][1]["properties"]["tasks"] += " test"
         checks = run_case.grade_configuration(case, observed)
         self.assertFalse(checks["requiredJobs"]["passed"])
 

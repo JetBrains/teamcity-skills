@@ -256,6 +256,41 @@ class EvalReportTest(unittest.TestCase):
         self.assertNotIn('<th scope="col">Agent</th>', html)
         self.assertNotIn("<a href=", html)
 
+    def test_per_job_coverage_survives_collection_without_private_evidence(self):
+        private = "private-test-name-canary"
+        artifact = {
+            "caseId": "example", "arm": "skill", "status": "failed",
+            "checks": {
+                "requiredTests": {"passed": True, "detail": private},
+                "jobResults": {"passed": False, "observed": private},
+            },
+            "verificationDiagnostics": {
+                "headId": 100,
+                "builds": [{"id": 101, "state": "finished", "status": "SUCCESS",
+                            "testCount": 39, "successfulTestCount": 39,
+                            "artifactCount": 1, "tests": [{"name": private}]}],
+            },
+            "jobResults": [{"name": private}], "tests": [{"name": private}],
+        }
+
+        def cli(_server, *arguments):
+            if arguments[1] == "artifacts":
+                return subprocess.CompletedProcess(
+                    [], 0, stdout=json.dumps({"file": [{"name": "eval-result.json"}]}), stderr=""
+                )
+            if arguments[1] == "download":
+                destination = pathlib.Path(arguments[arguments.index("--output") + 1])
+                (destination / "eval-result.json").write_text(json.dumps(artifact))
+                return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+            self.fail(f"unexpected CLI call: {arguments}")
+
+        with mock.patch.object(collector, "cli", side_effect=cli):
+            result = collector.download_result([], "https://teamcity.example", 42, {"example"})
+        self.assertEqual({"requiredTests": {"passed": True}, "jobResults": {"passed": False}},
+                         result["checks"])
+        self.assertEqual(39, result["verificationDiagnostics"]["builds"][0]["successfulTestCount"])
+        self.assertNotIn(private, json.dumps(result))
+
     def test_inventory_hides_internal_source_mutation_guard(self):
         cases = collector.inventory()
 

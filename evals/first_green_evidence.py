@@ -110,22 +110,27 @@ def observe_chain(tc, project_id, build, required_jdk):
             raise EvidenceError("verification-chain-incomplete")
         members.append(member)
     jobs = bind_jobs(tc.jobs(project_id, build["pipelineId"]), members)
-    artifacts, test_count, diagnostics = [], 0, []
-    for member in members:
-        tests = tc.test_count(member["id"])
+    artifacts, all_tests, diagnostics, job_results = [], [], [], []
+    for member, job in zip(members, jobs):
+        tests = tc.test_results(member["id"])
         published_artifacts = tc.artifacts(member["id"])
-        test_count += tests
+        all_tests.extend(tests)
         artifacts.extend(published_artifacts)
+        job_results.append({"job": job, "status": member.get("status"),
+                            "tests": tests, "artifacts": published_artifacts})
         diagnostics.append({"id": member["id"], "state": member.get("state"),
-                            "status": member.get("status"), "testCount": tests,
+                            "status": member.get("status"), "testCount": len(tests),
+                            "successfulTestCount": sum(test["status"] == "SUCCESS"
+                                                       and not test["ignored"] for test in tests),
                             "artifactCount": len(published_artifacts)})
     _, _, jdk = jdk_evidence({}, required_jdk, jobs)
     return {
-        "testCount": test_count, "artifacts": artifacts, "properties": {},
+        "testCount": len(all_tests), "tests": all_tests, "jobResults": job_results,
+        "artifacts": artifacts, "properties": {},
         "jobs": jobs, "attempts": build["attempts"], "buildStatus": build["status"],
     }, {
         "headId": build["id"], "selection": build["selection"], "builds": diagnostics,
-        "testCount": test_count, "artifactCount": len(artifacts),
+        "testCount": len(all_tests), "artifactCount": len(artifacts),
         "attempts": build["attempts"], "jdk": jdk,
     }
 
@@ -145,7 +150,7 @@ def safe_verification_diagnostics(value):
         if not isinstance(item, dict) or type(item.get("id")) is not int:
             continue
         record = {"id": item["id"]}
-        for key in ("testCount", "artifactCount"):
+        for key in ("testCount", "successfulTestCount", "artifactCount"):
             if type(item.get(key)) is int and item[key] >= 0:
                 record[key] = item[key]
         if item.get("state") in ("queued", "running", "finished"):

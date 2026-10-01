@@ -656,3 +656,125 @@ Final evidence links:
 - [Skill evaluator chain 9523474](https://teamcity-nightly.labs.intellij.net/buildConfiguration/TeamCity_Sandbox_TCEvals_RunEvalCase/9523474)
 - [Baseline evaluator chain 9523477](https://teamcity-nightly.labs.intellij.net/buildConfiguration/TeamCity_Sandbox_TCEvals_RunEvalCase/9523477)
 - [Final report 9523478](https://teamcity-nightly.labs.intellij.net/buildConfiguration/TeamCity_Sandbox_TCEvals_RunEvalCase_virtual_publish_eval_report_V__1/9523478)
+
+## Two-project coverage correction — 2026-10-01
+
+The user clarified that "почем так дорого?" was a question about expense,
+**not an instruction to impose a $3 limit**. That limit was our interpretation,
+not a user requirement; the previous section records what actually ran, not
+continuing authorization for that cap. Keep those historical results unchanged.
+The bounded-pair monitor has been deleted. The unrelated CLI-eval monitor is
+untouched.
+
+The user approved ("ок") completing coverage for
+`kawser2133/clean-spring-boot-project` and
+`usmanzaheer1995/spring-boot-demo`: refine the existing configuration and
+first-green contracts, independently check pinned-source executability without
+an LLM, add negative grader tests, then obtain comparable skill/baseline results
+on the changed contracts **without the unsolicited USD cap**. This is not an
+open-ended green-at-any-cost loop or permission for automatic statistical
+repeats. At this checkpoint, **no new Claude evaluations have been launched**.
+The evaluator's persistent `env.EVAL_AGENT_MAX_BUDGET_USD` parameter was checked
+through its exact first-class CLI lookup and is absent; the previous $3 value
+was supplied per run. The optional explicit-budget feature remains available.
+
+### Independent source checks (not eval samples)
+
+Fresh detached clones under `/tmp/tc-two-project-coverage.jHLkSk` retain the
+case source revisions: Maven `315ca51dcb0ec25f2cce8f99fa239ec23717f3f6`,
+Gradle `940cdb0b4d15c178ca1624095e24b69914b2c9cd`. No repository source code
+was manually repaired. Neither controls nor synthetic unit tests count as
+agent evaluation passes.
+
+Maven was verified locally with Java **21.0.10**, Maven **3.9.12**, and
+`mvn -B -ntp clean verify`: exit 0, **39 tests in six suites**, zero failures,
+errors, or skips, and `target/clean-spring-boot-project-0.0.1-SNAPSHOT.jar`.
+Suite counts: UserRepositoryTest 8, AuthenticationServiceTest 8,
+AuthenticationControllerTest 4, ProductControllerTest 12,
+CleanSpringBootProjectApplicationTests 1, ProductServiceTest 6. Docker was not
+running; these tests use H2 and do not require it. The pinned repository has
+wrapper launchers but no tracked `.mvn/wrapper` files, so the case's reference
+command now uses installed Maven. The build itself changed tracked
+`logs/application.log` in the disposable control clone, not evaluated sources.
+
+Gradle source inspection establishes an important distinction: requesting
+`generateJooq` starts a PostgreSQL Testcontainer during build configuration.
+Consequently **packaging also needs Docker for code generation**, although
+the packaging job must not execute integration tests. `openApiGenerate`
+provides additional required sources; the separate test job must actually
+run `SpringBootDemoApplicationTests.contextLoads`. Java 21, Gradle 8.5, and
+Kotlin 1.9.21 remain pinned by the case/repository.
+
+A separate control project was created only after checking for an existing
+one: `TeamCity_Sandbox_TCEvals_CoverageControls20261001`, under sandbox
+`TeamCity_Sandbox_TCEvals` on `https://teamcity-nightly.labs.intellij.net`.
+Its public anonymous VCS root
+`TeamCity_Sandbox_TCEvals_CoverageControls20261001_SpringBootDemoPinnedControl`
+was connection-tested and attached to control pipeline
+`TeamCity_Sandbox_TCEvals_CoverageControls20261001_SpringDemoReferenceNotEval`.
+The checked-in reference YAML is
+`.teamcity/diagnostics/spring-demo-control.yml`: two isolated native-JDK21,
+Docker-capable jobs, dedicated Gradle runners, Docker preflight, separate JAR
+and JUnit XML publication, no LLM. Nightly server validation and exact stored
+jobs/parameters readback passed; head VCS attachment was verified.
+
+Controls `9531386` (personal; children `9531387`/`9531388`) and `9531399`
+(ordinary; children `9531501`/`9531400`) both failed before commands with
+`Error while applying patch`. Personal mode was initially suspected but the
+ordinary repeat disproved that attribution. The user specifically authorized
+only filtered checkout errors for `9531387` and `9531501`. The CLI failure
+summary exposed `UPDATE_SOURCES` / `Missing VCS reference`: checkout tried to
+fetch literal `<unspecified>` (exit 128). The control dispatch had supplied
+`--revision` without `--branch`. No eval logs, prompts, or trajectories were
+read, and no evaluated target was altered.
+
+After the concrete dispatch fix (`--branch main` plus the exact pinned SHA,
+with rebuilt dependencies), control head **`9531520`** reached the Gradle
+steps. Both children started at **10:39:20 UTC**. Package **`9531521`** failed
+at **10:41:21 UTC** and test **`9531522`** at **10:41:11 UTC**: Gradle exception
+/ exit 1, zero imported tests, zero artifacts. All three IDs are present in
+the CLI listing filtered by the exact source revision; the branch is `main`.
+This establishes that the checkout problem was fixed, **not that Gradle is
+executable yet**. Available metadata does not identify the Gradle exception.
+Permission for a narrow error view of these two new control builds has been
+requested separately; permission for the old checkout errors is not extended
+to them. Paid eval dispatch is held pending this diagnostic.
+
+### Contract and observation changes
+
+- Reuse all four existing cases; no duplicate inventory rows. Configuration
+  and runtime cases share the same structural contract per repository.
+- Accept explicit native or container Java 21 selection. Declaration remains
+  distinct from measured runtime proof; contradictory runtime evidence wins.
+- Maven requires verification without test skipping, XML/JAR publication, and
+  runtime evidence of at least 39 successful tests across all six known suites.
+- Gradle requires separate package/test jobs, generated-source prerequisites
+  and Docker preflight in both, and no implicit test-running lifecycle task in
+  packaging. A declared `test` task with `-x test` is rejected.
+- Observe tests/artifacts on each uniquely bound member of the frozen chain.
+  Packaging must succeed with zero tests and its own JAR; the test job must
+  succeed with the named integration test and its own XML. Another job's
+  output, ignored/failed tests, ambiguous jobs, or partial CLI test results
+  cannot satisfy those assertions.
+- Keep test names/job definitions private to grading. Published diagnostics
+  add only successful-test counts; the collector explicitly retains the new
+  safe `requiredTests` and `jobResults` booleans. Historical grades/revisions,
+  restored rows, assisted exclusions, ledger size, and unsupported modes are
+  unchanged. Case-version changes must prevent comparisons with old contracts.
+
+These are structural declarations plus observed outputs, not a general shell
+semantics checker or proof of arbitrary command ordering. A green control and
+fresh paired evaluations are still required before claiming completed live
+coverage of the changed Gradle runtime case.
+
+Validation at this checkpoint: **194 unit tests passed**, including 17 new
+two-project contract/negative tests and the collector privacy regression;
+**22 cases / zero validation errors**; `git diff --check` passed. These counts
+include the existing workspace test suite; unrelated cleanup/proposal changes
+and the user's output/PDF are not part of this commit.
+
+Control evidence:
+
+- [Gradle control head 9531520](https://teamcity-nightly.labs.intellij.net/buildConfiguration/TeamCity_Sandbox_TCEvals_CoverageControls20261001_SpringDemoReferenceNotEval/9531520)
+- [Package control 9531521](https://teamcity-nightly.labs.intellij.net/buildConfiguration/TeamCity_Sandbox_TCEvals_CoverageControls20261001_SpringDemoReferenceNotEval_virtual_package_V__1/9531521)
+- [Test control 9531522](https://teamcity-nightly.labs.intellij.net/buildConfiguration/TeamCity_Sandbox_TCEvals_CoverageControls20261001_SpringDemoReferenceNotEval_virtual_test_V__1/9531522)

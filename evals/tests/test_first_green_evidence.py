@@ -42,7 +42,9 @@ class FirstGreenEvidenceTest(unittest.TestCase):
         }
         tc.jobs.return_value = [{"name": name, "parameters": {"env.JAVA_HOME": "%env.JDK_21_0%"}}
                                 for name in ("Tests", "Package")]
-        tc.test_count.side_effect = lambda build_id: 1 if build_id == 101 else 0
+        tc.test_results.side_effect = lambda build_id: [
+            {"name": "Example.contextLoads", "status": "SUCCESS", "ignored": False}
+        ] if build_id == 101 else []
         tc.artifacts.side_effect = lambda build_id: ["app.jar"] if build_id == 102 else []
         return tc, tree
 
@@ -104,7 +106,7 @@ class FirstGreenEvidenceTest(unittest.TestCase):
         observed, diagnostics = evidence.observe_chain(tc, "project", build, "21")
         self.assertEqual(1, observed["testCount"])
         self.assertEqual(["app.jar"], observed["artifacts"])
-        self.assertEqual(2, tc.test_count.call_count)
+        self.assertEqual(2, tc.test_results.call_count)
         self.assertEqual([101, 102], [item["id"] for item in diagnostics["builds"]])
         self.assertTrue(diagnostics["jdk"]["declaredMatch"])
         self.assertFalse(diagnostics["jdk"]["runtimeVerified"])
@@ -124,7 +126,7 @@ class FirstGreenEvidenceTest(unittest.TestCase):
         build = runner.wait_for_build(tc, "project", 10)
         with self.assertRaises(evidence.EvidenceError):
             evidence.observe_chain(tc, "project", build, "21")
-        tc.test_count.assert_not_called()
+        tc.test_results.assert_not_called()
 
     def test_queued_dependency_checks_compatibility_not_just_head(self):
         tc, tree = self.fixture()
