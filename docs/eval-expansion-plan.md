@@ -519,3 +519,32 @@ invocations**. Do not claim this pair's total is bounded by $6. Current-head
 report collection may omit those now-unreferenced originals, so retain this
 explicit audit even if the final dashboard does not include them. No further
 evaluation, retry, or target mutation was performed.
+
+Replacement skill eval **`9523530` finished FAILURE at 00:18:58 UTC**
+(911 seconds of evaluator wall time). Its safe result was downloaded to
+`/tmp/tc-eval-chain.bAnthA/skill/publish/eval-result.json`. Identity matches the
+authorized case/version, skill arm, CLI-only mode, harness `8543bc8`, and
+profile `claude-default-chain-v2-1200s-usd3`. It records a $3 API limit,
+exit **1**, no timeout, and **`errored` / `agent-budget-exhausted`**. Actual
+measured cost is **$3.0112465**, an observed $0.0112465 overshoot, not exactly
+$3 and not the total cost of canceled plus replacement invocations.
+
+The grade failed **3/6** checks: configuration validation, toolchain, and
+unchanged sources passed; first green build, imported tests, and artifacts
+failed. Chain `9523534` was selected via `unique-pipeline` (two observed heads).
+Both members `9523604` and `9523605` finished FAILURE, with zero tests and zero
+artifacts. Read-only CLI metadata places both failures in **Generate JOOQ and
+OpenAPI sources (Gradle)**, exit 1 / Gradle exception; they finished at 00:12:08
+UTC and the head at 00:12:12. The underlying exception cause is not exposed in
+the inspected metadata; no raw logs or trajectories were read. This is not a
+green build or a successful skill evaluation. Both jobs declare JDK 21, now
+recognized by the adapter; `runtimeVerified` remains false.
+
+Measured usage for this replacement only: 82 input tokens, 26304 output,
+2834222 cache-read, 86963 cache-write. Phase seconds: bootstrap 4, preparation
+3.031, agent 888.231, observation 0.266, build wait 1.864, grading 3.627,
+cleanup 0.005, runner total 897.024. Cleanup is deferred; nothing was deleted.
+At the 00:19 UTC check, skill report `9523475` is running (started 00:18:58)
+and baseline replacement `9523528` remains running. No further eval or report
+refresh was dispatched. Await the baseline and both publications before
+closing the monitor; retain both canceled originals and their unknown costs.
