@@ -1014,3 +1014,53 @@ All four configuration reports are running; the four first-green reports
 wait for their unfinished eval dependencies, not a proven compatibility
 blocker. No terminal report publication is available to assess yet. No new
 eval, retry, report refresh, control, or evaluated-target repair was requested.
+
+#### First three terminal reports assessed — 16:20 UTC
+
+The following heads and reports are now terminal. Report SUCCESS describes
+publication, not a successful evaluation; the failed Gradle grade is retained.
+
+| Case / arm | Head / terminal UTC / status | Report / UTC start–finish / wall |
+| --- | --- | --- |
+| Maven configuration / skill | [9567195](https://teamcity-nightly.labs.intellij.net/build/9567195), 16:18:20, SUCCESS | [9567213](https://teamcity-nightly.labs.intellij.net/build/9567213), 16:09:43–16:18:15, 512 s, SUCCESS |
+| Maven configuration / baseline | [9567197](https://teamcity-nightly.labs.intellij.net/build/9567197), 16:19:10, SUCCESS | [9567201](https://teamcity-nightly.labs.intellij.net/build/9567201), 16:10:03–16:19:05, 542 s, SUCCESS |
+| Gradle configuration / skill | [9567196](https://teamcity-nightly.labs.intellij.net/build/9567196), 16:17:54, FAILURE | [9567204](https://teamcity-nightly.labs.intellij.net/build/9567204), 16:09:19–16:17:51, 512 s, SUCCESS |
+
+Only `publish/index.html`, `publish/runs.json`, and
+`publish/regressions.json` were downloaded, under
+`/tmp/tc-two-project-results.55tDhX/report-<report-id>/publish/`.
+Their `generatedAt` markers are respectively 16:09:49.344119,
+16:10:07.263310, and 16:09:25.890355 UTC. Collection is not an atomic snapshot:
+all three nevertheless contain all four completed configuration results,
+including baseline `9567207` finished at 16:15:09. The four first-green eval
+records remain RUNNING without results in these publications; older completed
+matrix cells are not evidence about the new runtime cohort.
+
+Every fresh configuration result's identity, status/grade, checks, exit/timeout,
+error category, usage, numeric tool summary, and phase timings match its
+independently downloaded safe artifact. The report hashes the profile label;
+`e0be5a54c29b9f056e75e0abf6ab76be6bbda272af5282398ca1c35d85d638ec`
+is the verified SHA-256 of `claude-default-two-project-3600s-v1`. Report
+`agentMaxBudgetUsd: null` corresponds to the absent raw-artifact cap, not $0.
+All eight cohort eval IDs occur once in each report, with their own revisions.
+
+Each report contains 216 dependency references / **212 unique evaluator IDs**,
+two source pipelines, all retained heads, and zero collection warnings. The
+202 historical evaluator records from the final restoration preserve their
+classification, revision, assisted label, identity, grade/checks, usage, and
+timings. The ten restored historical matrix rows remain intact; only the two
+configuration-case matrix rows differ from the later bounded-pair snapshot.
+Assisted TDD is still excluded (`sampleSize: 0`), preflight is not executable,
+the five unsupported MCP-only queue modes remain excluded, and the supported
+denominator is 116 arm slots. Every HTML ledger has exactly 50 rows and says
+`Showing 50 of 212 unique evaluator jobs`.
+
+Both new configuration comparisons are `insufficient-samples` (one sample per
+arm). The regression gate reports SUCCESS/passed with no failures at minimum
+three samples; that is no mature regression finding, **not an eval pass**.
+Historical report-wide measured cost is **$284.072609 across 88/212 jobs**,
+not the total bill or the fresh cohort cost. Fresh measured coverage remains
+4/8 and $20.079202; interrupted attempts with absent usage remain explicitly
+unknown in earlier audit sections and are not recovered by these reports.
+Gradle baseline report and the four runtime chains are not yet terminal at
+this checkpoint. No additional evaluation or report refresh was requested.
