@@ -974,3 +974,43 @@ of zero-compatible agents. No report artifacts are assessed as final yet.
 No new eval, retry, report refresh, control, or evaluated-target mutation was
 requested. Historical grades, controls, ledger, and the unrelated selfcheck
 remain separate and unchanged.
+
+#### Completed configuration pairs — 16:17 UTC
+
+Gradle configuration baseline
+[9567207](https://teamcity-nightly.labs.intellij.net/build/9567207) is now
+terminal FAILURE: **15:59:58–16:15:09 UTC, 911 seconds**. Its sole downloaded
+artifact is `/tmp/tc-two-project-results.55tDhX/9567207/publish/eval-result.json`.
+Identity matches the expected Gradle configuration case/hash, baseline arm,
+`cli-only`, full harness revision `e93b46cd89c752e9d8a1c18ff818db457013133a`,
+and profile `claude-default-two-project-3600s-v1`. The USD-cap field is absent;
+agent timeout is 3600 seconds, exit 0, no timeout, no error category. Overall
+and grade status are **failed, 4/10**, not an execution-error result.
+
+Passed: `configurationValidated`, `minimumJobs`, `requiredArtifactRules`, and
+`sourceMutations`. Failed: `toolchain`, `jobCount`, `requiredStepTypes`,
+`requiredStepProperties`, `requiredAgentRequirements`, and `requiredJobs`.
+Thus the fresh Gradle pair is **skill 7/10 versus baseline 4/10**, with the
+skill additionally passing the toolchain, job-count, and runner-type checks.
+Both still fail the step-property, agent-requirement, and per-job checks;
+neither is a successful configuration sample. These safe booleans do not
+identify the precise baseline JDK, actual job count, or alternative runner.
+The completed Maven configuration pair remains a tie at 8/8. These are single
+pairs on the changed contracts, not statistical lift or runtime success.
+
+Baseline measured usage: **$7.360833**, 192 input / 64,665 output tokens,
+8,490,016 cache-read / 149,012 cache-write tokens. Published tool counters:
+110 total, 40 recognized TeamCity CLI, zero MCP/TeamCity or MCP-probe calls,
+70 other calls; no trajectory-based attribution is made. Phase seconds:
+bootstrap 7, preparation 3.082, agent 886.904, observation 0.503, grading 1.513,
+cleanup 0.004, harness total 892.007. `verificationDiagnostics` is absent,
+so no runtime chain, per-job counts, or JDK runtime proof is available from
+this configuration result. Cleanup remains deferred, with no object deletion.
+
+Measured coverage is now **4/8 evals, $20.079202**; the four runtime eval costs
+remain unknown, not zero. At this check runtime evals `9567212`, `9567210`,
+`9567206`, and `9567215` are still RUNNING. All eight heads remain nonterminal.
+All four configuration reports are running; the four first-green reports
+wait for their unfinished eval dependencies, not a proven compatibility
+blocker. No terminal report publication is available to assess yet. No new
+eval, retry, report refresh, control, or evaluated-target repair was requested.
