@@ -1140,3 +1140,138 @@ nonterminal and report `9567209` is running; the other three runtime reports
 wait for their eval dependencies. Earlier report snapshots with this baseline
 marked RUNNING are superseded by its safe terminal artifact, not retroactively
 rewritten. No new eval, retry, refresh, control, or target mutation was requested.
+
+#### Final runtime results and cohort completion — assessed 19:30 UTC
+
+The remaining safe artifacts and all reports were assessed at **19:30 UTC**
+on 2026-10-01 (the queued heartbeat timestamp is not the observation time).
+All eight evals finished by **17:00:19 UTC**, all reports by **17:09:11**, and
+all heads by **17:09:16**. The exact full-revision-filtered CLI list contains
+all original 24 IDs and no additional eval child for this revision; no new
+invocation was requested by the monitor. The three remaining evals have no
+cancellation metadata.
+
+| Runtime case / arm | Eval | UTC start–finish | TeamCity wall | Outcome | Measured USD |
+| --- | --- | --- | --- | --- | --- |
+| Maven / skill | [9567212](https://teamcity-nightly.labs.intellij.net/build/9567212) | 15:59:58–17:00:19 | 3621 s | agent-timeout; no completed grade | unknown |
+| Gradle / skill | [9567206](https://teamcity-nightly.labs.intellij.net/build/9567206) | 15:59:57–17:00:19 | 3622 s | agent-timeout; no completed grade | unknown |
+| Gradle / baseline | [9567215](https://teamcity-nightly.labs.intellij.net/build/9567215) | 15:59:58–16:43:09 | 2591 s | failed, 10/14 | 9.9591695 |
+
+All three `publish/eval-result.json` files, in the existing temporary results
+directory, match their expected case/hash/arm, `cli-only`, full harness
+revision `e93b46cd89c752e9d8a1c18ff818db457013133a`, and profile
+`claude-default-two-project-3600s-v1`. Each confirms **no USD-cap field** and
+the 3600-second agent timeout. No real prompts, trajectories, or eval logs
+were inspected.
+
+Both skill runtime results are `errored` / `agent-timeout`, exit **124**,
+`agentTimedOut: true`, empty checks, and absent `gradeStatus`,
+`verificationDiagnostics`, and `agentUsage`. They are not fabricated 0/12 or
+0/14 grades, and no chain IDs, per-job counts, runtime JDK proof, or measured
+cost can be recovered from these safe results. This does not establish the
+state of every underlying target build. Published numeric counters are 123
+tools for Maven and 133 for Gradle, zero recognized CLI/MCP calls in both;
+these counters alone do not establish an alternative transport or explain
+the timeout. No trace-based attribution is made.
+
+Gradle baseline exits 0, without timeout or error category, but fails four
+checks: `requiredStepTypes`, `requiredStepProperties`,
+`requiredAgentRequirements`, and `requiredJobs`. All ten other checks pass:
+`configurationValidated`, `firstBuild`, `testsExecutedAndReported`,
+`artifactsPublished`, `toolchain`, `sourceMutations`, `minimumJobs`, `jobCount`,
+`requiredArtifactRules`, and `jobResults`. Thus it achieves a real successful
+runtime chain but not the complete configuration/runtime contract.
+
+Its frozen `unique-pipeline` verification head is
+[9569614](https://teamcity-nightly.labs.intellij.net/build/9569614), with
+11 recorded attempts and two unique successful members. Test job
+[9569468](https://teamcity-nightly.labs.intellij.net/build/9569468) has one
+successful test and two artifacts; package job
+[9568438](https://teamcity-nightly.labs.intellij.net/build/9568438) has zero
+tests and two artifacts. Aggregate evidence is **one successful test / four
+artifacts**. The per-job `jobResults` check passes, unlike a mere aggregate
+count. Read-only CLI metadata confirms all three SUCCESS; the test job ran
+16:34:12–16:36:04 (112 s), package 16:19:30–16:22:34 (184 s). The package job
+appears both directly and beneath the test job in the dependency DAG; the
+diagnostics correctly count it once. Both jobs declare JDK21, with
+`declaredMatch: true` and **`runtimeVerified: false`**. These target builds were
+not manually repaired by this monitor.
+
+Gradle baseline usage is 260 input / 60,057 output tokens, 13,738,379 cache-read
+/ 157,921 cache-write, and **$9.9591695**. Tool counters: 147 total, 56
+recognized TeamCity CLI, zero MCP/TeamCity or probes, 91 other. The two timeout
+usage records are absent, not zero. All three defer cleanup and report no
+objects removed.
+
+| Eval | Bootstrap | Preparation | Agent | Observation | Build wait | Grading | Cleanup | Harness total |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 9567212 | 6 | 3.114 | 3600.002 | 0.038 | 1.500 | absent | 0.005 | 3604.659 |
+| 9567206 | 6 | 3.132 | 3600.002 | 0.174 | 2.023 | absent | 0.006 | 3605.337 |
+| 9567215 | 10 | 3.176 | 2560.151 | 0.264 | 2.068 | 4.986 | 0.005 | 2570.650 |
+
+Values are published seconds, not inferred model-thinking time; TeamCity wall
+times are separate. No budget or timeout was increased.
+
+#### Final report verification and bounded outcome
+
+The remaining four reports all finished SUCCESS; their evaluator heads remain
+FAILURE because the evals did not satisfy the entire contract.
+
+| Case / arm | Head / terminal UTC | Report / UTC start–finish / wall | Collection marker UTC |
+| --- | --- | --- | --- |
+| Maven / baseline | [9567194](https://teamcity-nightly.labs.intellij.net/build/9567194), 16:39:12 | [9567209](https://teamcity-nightly.labs.intellij.net/build/9567209), 16:30:20–16:39:11, 531 s | 16:30:26.010671 |
+| Gradle / baseline | [9567198](https://teamcity-nightly.labs.intellij.net/build/9567198), 16:52:11 | [9567216](https://teamcity-nightly.labs.intellij.net/build/9567216), 16:43:10–16:52:11, 541 s | 16:43:15.358783 |
+| Maven / skill | [9567200](https://teamcity-nightly.labs.intellij.net/build/9567200), 17:09:16 | [9567211](https://teamcity-nightly.labs.intellij.net/build/9567211), 17:00:20–17:09:11, 531 s | 17:00:26.508581 |
+| Gradle / skill | [9567193](https://teamcity-nightly.labs.intellij.net/build/9567193), 17:09:16 | [9567205](https://teamcity-nightly.labs.intellij.net/build/9567205), 17:00:20–17:09:11, 531 s | 17:00:26.268873 |
+
+Only the three allowed publications per report were downloaded to the existing
+`report-<id>/publish/` directories. Reports `9567209` and `9567216` contain
+five and six terminal cohort records, respectively; the still-running cells
+in those older snapshots are not final evidence. **Both `9567211` and
+`9567205` contain all eight terminal cohort results**, so no refresh is needed
+or authorized. All eight identities, checks, status/grade, exit/timeout/error,
+usage, numeric tool counters, phase timings, and available verification
+diagnostics match their safe artifacts. Missing timeout usage/diagnostics are
+sanitized to empty objects and missing gradeStatus to null, not to cost zero
+or a scored failure. The verified profile fingerprint remains `e0be5a54...`.
+
+Every remaining report preserves all **204** pre-cohort evaluator records,
+including all 202 restored records plus the previous bounded-pair results,
+with their original verdicts, revisions, identities, checks, usage, timings,
+and assisted labels. The ten restored case rows are still represented; where
+the matrix selects a fresh result, the historical run remains in history,
+not regraded against the new contract. Each report has 216 references / 212
+unique evaluator IDs, zero warnings, exactly 50 HTML ledger rows, and the
+116-supported-slot denominator. Assisted TDD remains excluded, preflight
+not executable, and the five MCP-only queue modes unsupported.
+
+The final matrix selects the eight new results under their own matching
+case/version/revision/profile. All four pairs have only one sample per arm
+and `insufficient-samples`. Regression JSON has no mature failures, with
+33 insufficient-sample and 33 insufficient-history findings at minimum three
+samples; report/regression SUCCESS is **not** a claim of eval success.
+Final report-wide measured usage is **$301.844881 across 90/212 jobs**, an
+incomplete historical total, not the cost of this cohort.
+
+The bounded fresh cohort is complete: **eight invoked/eight terminal, two
+full passes, four completed failed grades, two ungraded agent timeouts**.
+Fresh measured cost is **$37.8514745 across six of eight invocations**, plus
+unknown costs for skill runtime `9567212` and `9567206`. Earlier unknown
+interrupted-attempt costs remain separately recorded, not merged into this
+cohort or treated as zero. There was no $3 cap in any of these eight runs.
+
+For the user's requested coverage, both repositories now have fresh paired
+configuration and first-green evidence on source-executable contracts. Maven
+configuration ties at 8/8; Gradle configuration is 7/10 skill versus 4/10
+baseline and remains active, as independently confirmed after the user's
+annotation. Neither Gradle configuration arm passes completely. In runtime,
+the two baseline arms obtain successful builds but fail other contract
+assertions (Maven 11/12, Gradle 10/14); both skill arms time out. This does not
+show a skill advantage for first-green execution, and one pair does not prove
+statistical lift. Reference controls remain non-eval evidence.
+
+No additional eval, control, retry, report refresh, target repair, or project
+deletion was requested. Unrelated validation selfcheck `9566936` remains a
+separate unexplained failure. Concurrent dirty code/skill/cleanup/proposal
+files and the user's PDF were untouched. Only this audit is committed/pushed;
+the completed cohort monitor can be deleted after this result is reported.
