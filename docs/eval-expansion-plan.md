@@ -548,3 +548,36 @@ At the 00:19 UTC check, skill report `9523475` is running (started 00:18:58)
 and baseline replacement `9523528` remains running. No further eval or report
 refresh was dispatched. Await the baseline and both publications before
 closing the monitor; retain both canceled originals and their unknown costs.
+
+Replacement baseline **`9523528` finished FAILURE at 00:25:39 UTC**
+(1322 seconds of evaluator wall time). Its safe result was downloaded to
+`/tmp/tc-eval-chain.bAnthA/baseline/publish/eval-result.json`; case, case
+version, baseline arm, CLI-only mode, harness `8543bc8`, profile, and $3 limit
+match the skill counterpart. It is **`errored` / `agent-budget-exhausted`**,
+exit **1**, no timeout. There is **no completed grade**: `checks` is empty,
+and gradeStatus / verificationDiagnostics are absent. Do not represent this
+as a scored 0/6 or as a successful evaluation.
+
+Measured replacement cost is **$3.032801** (observed overshoot $0.032801).
+Usage: 100 input tokens, 26208 output, 2927857 cache-read, 84417 cache-write.
+Phase seconds: bootstrap 6, preparation 2.698, agent 695.414, observation
+0.223, build wait 609.460, cleanup 0.004, runner total 1307.800. Thus the
+post-agent wait is separate from paid-agent wall time; the longer evaluator
+duration is not another 22 minutes of measured model work. Cleanup is deferred.
+
+The safe result's queue reason is `other`. A subsequent, narrowly scoped CLI
+check found baseline target chain `9523533` still queued with jobs `9523602`
+and `9523603` (queued 00:11:26 UTC). Both child queue reasons report **no idle
+compatible agents**, while the head waits for its first child to start. This
+is a capacity/provisioning observation, not proof of zero compatible agents
+or a JDK mismatch. Compatible-agent counts are not exposed in the inspected
+first-class view. It is also a later observation, not a reconstruction of the
+exact grading instant. No evaluated target was changed or canceled.
+
+The two completed replacement invocations measured **$6.0440475** in total.
+This excludes both canceled originals `9523476`/`9523479` and is **not** a
+complete experiment cost or proof of savings versus the earlier pair. Skill
+report `9523475` remains running; baseline report `9523478` started at
+00:25:39 UTC and is running. Both eval outcomes are now terminal and
+unsuccessful. Await their safe report publications; no report-only refresh or
+additional evaluation has been dispatched.
