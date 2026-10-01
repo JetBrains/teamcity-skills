@@ -907,3 +907,70 @@ the inspected metadata, and its raw logs were not read. Replaying its static
 known shape through the local adapter/grader gives all eight expected checks;
 that synthetic check does not explain or erase the server failure. Do not
 attribute it to the two-project cases without evidence.
+
+#### First terminal configuration results — 16:10 UTC
+
+Three exact eval children have completed. Only their safe
+`publish/eval-result.json` artifacts were downloaded, under
+`/tmp/tc-two-project-results.55tDhX/<eval-id>/publish/`. All three match the
+case hashes above, expected arm, `cli-only`, full harness revision
+`e93b46cd89c752e9d8a1c18ff818db457013133a`, and profile
+`claude-default-two-project-3600s-v1`. Each artifact confirms that
+`agentMaxBudgetUsd` is **absent**, agent timeout is 3600 seconds, agent exit is
+0, `agentTimedOut` is false, and `errorCategory` is null. These are completed
+configuration grades, not runtime first-green results.
+
+| Case / arm | Eval | UTC start–finish | TeamCity wall | Grade | Measured USD |
+| --- | --- | --- | --- | --- | --- |
+| Maven configuration / skill | [9567214](https://teamcity-nightly.labs.intellij.net/build/9567214) | 15:59:58–16:09:39 | 581 s | passed, 8/8 | 3.636170 |
+| Maven configuration / baseline | [9567202](https://teamcity-nightly.labs.intellij.net/build/9567202) | 15:59:57–16:09:58 | 601 s | passed, 8/8 | 5.080621 |
+| Gradle configuration / skill | [9567203](https://teamcity-nightly.labs.intellij.net/build/9567203) | 15:59:57–16:09:18 | 561 s | failed, 7/10 | 4.001578 |
+
+Both Maven arms pass every check: `configurationValidated`, `minimumJobs`,
+`toolchain`, `requiredStepTypes`, `requiredStepProperties`,
+`forbiddenStepProperties`, `requiredArtifactRules`, and `sourceMutations`.
+Their `caseStatus: draft` is inventory metadata, not a preflight-only or
+unexecuted result. This fresh pair is a configuration-quality tie; its measured
+time/cost difference is one observation, not evidence of statistical lift.
+
+Gradle skill passes `configurationValidated`, `minimumJobs`, `toolchain`,
+`jobCount`, `requiredStepTypes`, `requiredArtifactRules`, and `sourceMutations`.
+It fails `requiredStepProperties`, `requiredAgentRequirements`, and
+`requiredJobs`. The agent exited normally but the configuration grade failed;
+do not turn this into an agent execution error, a runtime build diagnosis, or
+a pass. The safe booleans do not identify which individual property or
+requirement was wrong. Baseline is still pending, so there is no completed
+Gradle comparison yet.
+
+| Eval | Input / output tokens | Cache-read / cache-write tokens | Tool calls / recognized TeamCity CLI calls |
+| --- | --- | --- | --- |
+| 9567214 | 92 / 39,119 | 3,377,630 / 96,116 | 61 / 0 |
+| 9567202 | 168 / 35,912 | 6,166,442 / 109,101 | 100 / 38 |
+| 9567203 | 90 / 41,750 | 3,560,026 / 116,920 | 59 / 0 |
+
+These are the published numeric tool-summary counters; zero recognized CLI
+calls alone does not establish an alternative transport or explain a grade.
+No raw eval logs, prompts, or trajectories were read.
+
+| Eval | Bootstrap | Preparation | Agent | Observation | Grading | Cleanup | Harness total |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 9567214 | 10 | 2.913 | 550.227 | 0.396 | 1.479 | 0.005 | 555.021 |
+| 9567202 | 7 | 3.444 | 578.501 | 0.380 | 1.119 | 0.005 | 583.449 |
+| 9567203 | 7 | 3.411 | 543.131 | 0.170 | 1.031 | 0.004 | 547.748 |
+
+Timings are published seconds, with TeamCity wall time reported separately.
+All three omit `verificationDiagnostics`: configuration-only results provide
+no frozen runtime chain, per-job test/artifact counts, or runtime JDK proof.
+The toolchain checks pass, but that must not be promoted to runtime-verified
+Java 21. Cleanup is deferred and `temporaryObjectsRemoved` is false; this
+monitor deleted nothing.
+
+Measured coverage so far is **3/8 evals, $12.718369**. This is neither the final
+cohort cost nor a spending cap; costs for the five running evals remain unknown.
+At this checkpoint all eight heads are nonterminal; reports `9567213`,
+`9567201`, and `9567204` are running. The other five reports are queued with
+the exact reason `Build dependencies have not been built yet`, not evidence
+of zero-compatible agents. No report artifacts are assessed as final yet.
+No new eval, retry, report refresh, control, or evaluated-target mutation was
+requested. Historical grades, controls, ledger, and the unrelated selfcheck
+remain separate and unchanged.
