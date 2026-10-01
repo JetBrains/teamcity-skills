@@ -1,6 +1,9 @@
 # Reference executability check only. Never collect this as an agent eval.
-# Queue with --branch main --revision 940cdb0b4d15c178ca1624095e24b69914b2c9cd.
-# A revision alone leaves an unspecified checkout ref in this CLI/server pair.
+# Source: main at 940cdb0b4d15c178ca1624095e24b69914b2c9cd.
+# This control root monitors only its default branch. Verify its remote HEAD,
+# use default-branch dispatch, then verify the exact run revision via CLI listing.
+# This CLI/server pair uses <unspecified> with --revision alone and rejects the
+# logical branch "main" on a default-only root (even if its children check out).
 name: Spring demo reference - not an eval
 parameters:
   env.DEMO_ENV: local
