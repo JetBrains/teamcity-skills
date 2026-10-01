@@ -456,6 +456,14 @@ the `build` action.
 Prefer the smallest pipeline that can prove the repository. Preserve existing
 multi-job topology when the repository already defines it.
 
+Keep one primary verification pipeline identified throughout the task. A
+capability probe answers only its narrow diagnostic question; it does not
+replace the requested build/test jobs or prove their outputs. Reuse the primary
+pipeline for concrete corrections. If a separate probe is necessary, state the
+question it will settle, then apply the finding to the primary configuration
+or report the remaining blocker. Do not multiply probe pipelines to retry an
+unchanged failure or bypass an accepted queue wait.
+
 #### Report Meaningful Build Status
 
 Annotate the main stages of whatever pipeline is produced (build, test,
@@ -511,9 +519,11 @@ Do not describe a successful syntax parse as successful TeamCity validation.
 Stop before queueing the build and report that semantic YAML validation is
 missing.
 
-Keep validation and diagnostic files outside the repository checkout. For
-example, pull a saved Pipeline to a path under `/tmp` (or the platform's
-temporary directory), not to a hidden file in the repository. A CI setup task
+Retain the final configuration at the source path requested by the user. After
+server-side corrections, reconcile that file with the read-back configuration
+and validate it again before the verification run. Keep temporary validation
+copies and diagnostic files under `/tmp` (or the platform's temporary directory),
+not at the final configuration path or in other checkout files. A CI setup task
 must leave the checkout unchanged except for the explicitly requested
 configuration source path and changes the user authorized; an untracked probe
 file is still a source mutation.
@@ -797,6 +807,11 @@ connection in a named child project; do not ask for unrestricted REST writes.
 
 Re-run after each concrete fix. Continue only while each rerun has new evidence
 or a plausible fix.
+
+After a diagnostic probe, confirm the primary pipeline's complete dependency
+chain, required tests, and job-local outputs. A successful probe or child does
+not override a failed primary head. The final report must identify that primary
+pipeline and its verification run, distinct from diagnostic runs.
 
 The task is complete only when one of these is true:
 

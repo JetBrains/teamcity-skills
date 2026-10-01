@@ -236,6 +236,34 @@ def local_mcp_probe(tool_mode: str, value: Optional[str]) -> bool:
     raise EvalError("EVAL_MCP_LOCAL_PROBE must be true or false")
 
 
+def agent_task_prompt(case: dict, server: str, target_project: str) -> str:
+    """Expose the requested deliverable, not the private grading contract.
+
+    Both arms receive this identical task context. The output path must agree
+    with the source used to bind a verification pipeline after the agent exits.
+    """
+    prompt = case["prompt"].replace("{{teamcity.server}}", server) \
+                           .replace("{{teamcity.targetProject}}", target_project)
+    if case["kind"] not in ("queue-stall-diagnosis", "queue-recovery"):
+        prompt += (
+            "\n\nRepository context: the checked-out default branch is "
+            f"{case['repository']['defaultBranch']!r} at the pinned revision. "
+            "Ensure the VCS root monitors that branch before triggering a build."
+        )
+    requested = case.get("requestedConfiguration")
+    if requested:
+        prompt += (
+            f"\n\nConfiguration deliverable: retain the final {requested['format']} "
+            f"configuration at {requested['sourcePath']!r}, relative to the checkout. "
+            "Keep that file consistent with the final server-stored configuration "
+            "you validate and, when a build is requested, use for verification. "
+            "Keep temporary diagnostic configurations separate from this deliverable. "
+            "This output requirement does not authorize builds or source changes "
+            "beyond the task above."
+        )
+    return prompt
+
+
 def transport_prompt_contract(tool_mode: str, use_local_mcp_probe: bool = False) -> str:
     """Return the evaluation-only TeamCity transport contract.
 
@@ -1972,7 +2000,10 @@ def run(
         result["agentMaxBudgetUsd"] = max_budget
 
     if dry_run:
-        prompt = PLACEHOLDER.sub(lambda m: f"<{m.group(1)}>", case["prompt"])
+        prompt = PLACEHOLDER.sub(
+            lambda m: f"<{m.group(1)}>",
+            agent_task_prompt(case, "{{teamcity.server}}", "{{teamcity.targetProject}}"),
+        )
         result.update(status="dry-run", prompt=prompt, projectName=project_name)
         return result
 
@@ -2044,17 +2075,10 @@ def run(
             if arm == "skill" else None
         )
 
-        prompt = case["prompt"].replace("{{teamcity.server}}", url) \
-                               .replace("{{teamcity.targetProject}}", target_project)
+        prompt = agent_task_prompt(case, url, target_project)
         transport_contract = transport_prompt_contract(
             tool_mode, use_local_mcp_probe
         )
-        if not fixture_case:
-            prompt += (
-                "\n\nRepository context: the checked-out default branch is "
-                f"{case['repository']['defaultBranch']!r} at the pinned revision. "
-                "Ensure the VCS root monitors that branch before triggering a build."
-            )
         if fixture_case:
             phases.enter("agent")
             if recovery_case:
