@@ -1091,3 +1091,52 @@ are queued waiting for unfinished dependencies. No new terminal eval result
 or measured usage is available: fresh cohort coverage remains **4/8,
 $20.079202**, with four unknown costs. No new run, refresh, or target change
 was requested. The monitor remains active for those four runtime chains.
+
+#### Maven baseline runtime result — 16:31 UTC
+
+Maven first-green baseline
+[9567210](https://teamcity-nightly.labs.intellij.net/build/9567210) finished
+FAILURE at **16:30:19 UTC**, after starting at 15:59:58 (**1821 seconds**).
+Only `/tmp/tc-two-project-results.55tDhX/9567210/publish/eval-result.json`
+was downloaded. It matches `clean-spring-boot-maven`, case hash
+`c8ea3ee033a54c0ee5680ea887110be767763144f44ab1ad9aee3927dcdb5f10`, baseline,
+`cli-only`, harness `e93b46cd89c752e9d8a1c18ff818db457013133a`, and profile
+`claude-default-two-project-3600s-v1`. The USD-cap field is absent, timeout
+3600 seconds, agent exit 0, `agentTimedOut: false`, and no error category.
+Overall/grade status is **failed, 11/12**.
+
+The only failed check is `requiredArtifactRules`. Passed checks are
+`configurationValidated`, `firstBuild`, `testsExecutedAndReported`,
+`artifactsPublished`, `toolchain`, `sourceMutations`, `minimumJobs`,
+`requiredStepTypes`, `requiredStepProperties`, `forbiddenStepProperties`, and
+`requiredTests`. Therefore a real successful build was obtained, but the
+complete eval contract was not satisfied. Actual artifact presence and a
+complete declared publication rule set are different assertions; the safe
+result does not specify which individual rule failed.
+
+Frozen verification head
+[9568295](https://teamcity-nightly.labs.intellij.net/build/9568295), selected
+by `unique-pipeline`, reports seven attempts and exactly one member,
+[9568849](https://teamcity-nightly.labs.intellij.net/build/9568849): SUCCESS,
+**39 tests, all 39 successful, one artifact**. Read-only CLI dependency-tree
+and job metadata independently confirm the head and sole child SUCCESS;
+the child ran **16:23:25–16:24:28 UTC (63 seconds)** and says `Tests passed: 39`.
+JDK diagnostics require 21 and show one matching declaration in one job;
+`runtimeVerified` remains false. No evaluated target was repaired by this
+monitor, and no attempt-level cause is inferred from logs or trajectories.
+
+Measured usage is **$7.813103**: 224 input / 57,318 output tokens,
+10,002,696 cache-read / 137,028 cache-write. Published counters: 124 tool
+calls, 65 recognized TeamCity CLI, zero MCP/TeamCity or probe calls, 59 other.
+Phase seconds: bootstrap 8, preparation 3.383, agent 1796.789, observation
+0.395, build wait 2.091, grading 3.210, cleanup 0.005, harness total 1805.873.
+Agent-process duration is not model-thinking time. Cleanup is deferred and
+objects are not removed.
+
+Fresh measured coverage is now **5/8 evals, $27.892305**; the three running
+eval costs remain unknown. Maven skill `9567212` and Gradle skill/baseline
+`9567206`/`9567215` are still RUNNING. Maven baseline head `9567194` is
+nonterminal and report `9567209` is running; the other three runtime reports
+wait for their eval dependencies. Earlier report snapshots with this baseline
+marked RUNNING are superseded by its safe terminal artifact, not retroactively
+rewritten. No new eval, retry, refresh, control, or target mutation was requested.
