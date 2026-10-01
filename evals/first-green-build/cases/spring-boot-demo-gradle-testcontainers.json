@@ -4,7 +4,7 @@
   "kind": "first-green-build",
   "status": "draft",
   "skill": "teamcity-first-green-build",
-  "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} and get a green verification chain for this Kotlin/Gradle Java 21 repository. Inspect its generated-source and integration-test requirements. Keep build/package work and Testcontainers tests in separate jobs; packaging must not execute tests. Prepare the generation prerequisites in each isolated job, verify Docker availability wherever required, import the repository's JUnit XML, and publish the application JAR. Keep repository sources unchanged. Java 21 may be selected on the agent or through a suitable build container.",
+  "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} and get a green verification chain for this Kotlin/Gradle Java 21 repository. Inspect its generated-source and integration-test requirements. Use native Gradle runners for generation, packaging, and tests, with script steps for Docker preflight. Keep build/package work and Testcontainers tests in exactly two separate jobs; packaging must not execute tests. Prepare the generation prerequisites in each isolated job. Declare a durable Docker-capable agent requirement and run docker info in every job that requires Docker. Import the repository's JUnit XML into TeamCity, publish the application JAR from the package job, and publish raw JUnit XML as downloadable artifacts from the test job. Keep repository sources unchanged. Java 21 may be selected on the agent or through a suitable build container.",
   "teamcity": {
     "server": "runner-configured",
     "targetProject": "runner-configured"

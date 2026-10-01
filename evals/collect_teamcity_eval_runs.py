@@ -30,7 +30,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from first_green_evidence import safe_verification_diagnostics
+from first_green_evidence import safe_verification_diagnostics, safe_verification_error
 
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -449,6 +449,9 @@ def download_result(warnings, server, run_id, known_case_ids=None):
                 and result["agentMaxBudgetUsd"] > 0 else None
             ),
             "verificationDiagnostics": safe_verification_diagnostics(result.get("verificationDiagnostics")),
+            "verificationErrorCategory": safe_verification_error(result.get("verificationErrorCategory")),
+            **{name: result[name] for name in ("agentTimeoutSeconds", "buildTimeoutSeconds")
+               if type(result.get(name)) is int and result[name] > 0},
             "agentToolSummary": safe_agent_tool_summary(result.get("agentToolSummary")),
             "phaseTimings": safe_phase_timings(result.get("phaseTimings")),
             "permissionFailureSurface": (

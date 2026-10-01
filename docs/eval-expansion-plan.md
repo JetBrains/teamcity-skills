@@ -1335,3 +1335,77 @@ workspace and staged whitespace checks passed. Only the counter helper/call-site
 its new synthetic test file, and this audit are included in this repair;
 pre-existing MCP-isolation edits in the same runner and all other concurrent
 code/skill/cleanup/proposal/PDF changes are excluded.
+
+### User-requested 120-minute JVM rerun — preparation, 2026-10-01
+
+The user explicitly requested Maven and Gradle build evals with a 120-minute
+timeout, **after fixing problems in the skill and harness**. This is new bounded
+run authorization, not a continuation of the completed eight-invocation cohort
+or a revival of its deleted monitor. Clarification was requested on skill-only
+versus paired reruns and agent versus build-wait timeout. No new eval has been
+queued at this preparation checkpoint. No USD cap is being introduced.
+
+The repair addresses confirmed defects and contract gaps, not an invented root
+cause for the two historical skill timeouts:
+
+- The skill now explicitly audits saved YAML per job: native Maven/Gradle
+  runners, JDK/capability selectors, Docker preflight where code generation or
+  tests need it, and job-local outputs. It distinguishes JUnit import from raw
+  XML publication and documents source-preserving separate Gradle generator
+  and compilation invocations when a diagnosed task-graph error requires them.
+  It also removes an obsolete REST-fallback exception and bounds unsupported
+  CLI-operation discovery. No repository/server-specific answer is hardcoded.
+- The Maven case asked to import XML but graded XML artifact publication as
+  well. Both runtime prompts now explicitly state the already-graded runner
+  and output requirements; Gradle also states the exact two-job topology and
+  Docker scheduling/preflight requirement. This resolves an instruction/contract
+  mismatch rather than weakening any assertion. Expected checks, source pins,
+  verification commands and case statuses are unchanged. Configuration-only
+  cases, including the user's active Gradle row, are untouched.
+- The harness now publishes a separately allowlisted
+  `verificationErrorCategory`, preserving `agent-timeout` as the primary
+  failure while identifying absent pipeline, absent queued build, ambiguous
+  pipeline, incomplete chain, queue stall, wait expiry, or failed observation.
+  It never publishes CLI error text, scripts or parameters. The collector
+  retains that field and both numeric agent/build-wait limits. A timeout without
+  a completed grade or provider usage still has no invented grade or cost.
+  The previously committed environment-prefixed CLI-counter correction remains.
+
+New runtime case versions (only the prompt field changed):
+
+- Maven: `f8e61aed249c5d89f02f76e3d83f5346c505a9a4b4bd8e7e3eda2d01cbcfee9c`
+- Gradle: `437c6bddded92924d2beb9f27f39097a38cbd8b2128704fe43042e9aff4e06fd`
+
+These versions and the new timeout/profile must remain separate from previous
+samples; a new skill-only result cannot establish paired statistical lift.
+Historical grades and unknown costs remain unchanged.
+
+Preflight uses only authenticated first-class CLI on
+`https://teamcity-nightly.labs.intellij.net`, parent `TeamCity_Sandbox_TCEvals`.
+The stored `RunEvalCase` YAML passed server validation and matches committed
+jobs/parameters after excluding its preserved server-local Claude connection
+reference. Its head is attached to `TeamCity_Sandbox_TCEvals_Evals`.
+Evaluator `executionTimeoutMin` is 0 (no shorter TeamCity timeout), and the
+exact `env.EVAL_AGENT_MAX_BUDGET_USD` lookup reports not found. The server-local
+connection and persistent evaluator settings are not changed.
+
+Current-workspace validation: **205 unit tests passed**, including five new
+synthetic failure/timeout/privacy tests; **22 cases valid**; skill validator and
+whitespace checks passed. Concurrent MCP-isolation/runner YAML/skill edits,
+cleanup/proposal changes and the user's PDF remain outside this repair.
+
+An export of the exact staged tree independently passed **187 tests**, all
+22 cases, and skill validation. The VCS-root readback now shows default branch
+`refs/heads/korotkova/evals` and branch specification `+:refs/heads/*`; no root
+change was made here. The preflight snapshot is under
+`/tmp/tc-jvm-120min.cZ6sxB` and the tested staged export under
+`/tmp/tc-jvm-staged.HCxHDx`.
+
+With no alternative selected in the optional clarification, the announced
+narrow interpretation is **two skill-only first-green evals**, one Maven and
+one Gradle: agent timeout **7200 seconds**, existing build wait **3600 seconds**,
+unchanged queue checkpoint/stall **120/600 seconds**, no USD cap and no automatic
+retry. The build wait is a separate post-agent observation phase, not a promise
+that the entire evaluator/report chain ends within 120 minutes. The new profile
+is `claude-default-jvm-skill-7200s-v1`. Baseline/configuration/control runs are
+not part of this dispatch.

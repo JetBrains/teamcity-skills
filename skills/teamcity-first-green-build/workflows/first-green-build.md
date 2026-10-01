@@ -69,9 +69,11 @@ first-green stopping condition below.
 - Keep a small in-memory cache of server facts learned during the task. Reuse
   it while the target server, parent project, repository, and TeamCity object
   have not changed.
-- Do not use plain REST with `curl`, ad hoc scripts, or generic REST escape
-  hatches unless the user explicitly asks for that path, except for the direct
-  patch-upload fallback in step 5.
+- Follow the transport restriction in `SKILL.md`; a missing command does not
+  authorize a REST escape hatch. If the task permits only CLI, do not search
+  for MCP alternatives. After checking the relevant command's help once,
+  report an unsupported required operation as a capability gap rather than
+  repeatedly trying aliases or broadening permissions.
 - After authenticating to a TeamCity server, discover its version and the
   capabilities exposed by the selected TeamCity surface.
 - Before queueing a build, validate every generated or modified TeamCity YAML
@@ -413,6 +415,10 @@ that fallback.
 
 Create or update the selected TeamCity pipeline using the confirmed VCS root and
 the repository commands discovered in step 2.
+
+For Maven/Gradle, read `shared/build-step-selection.md`, including its JVM
+verification/output audit. Apply that audit to the saved YAML before queueing
+and confirm the corresponding tests and downloadable outputs before stopping.
 
 Pipeline contents should include:
 

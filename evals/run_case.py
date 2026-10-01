@@ -79,7 +79,7 @@ from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
 from queue_recovery import QueueRecoveryFixture, forbidden_queue_transport, safe_fixture_diagnostics
 from first_green_evidence import (
     EvidenceError, chain_nodes, jdk_evidence, jdk_selectors, observe_chain,
-    safe_verification_diagnostics, select_pipeline,
+    safe_verification_diagnostics, safe_verification_error, select_pipeline,
 )
 
 
@@ -93,6 +93,10 @@ class _Graded(Exception):
 
 class NoBuildQueued(EvalError):
     """The agent finished without queuing a build during the wait window."""
+
+    def __init__(self, message, category="build-not-queued"):
+        self.category = category
+        super().__init__(message)
 
 
 class BuildWaitTimeout(EvalError):
@@ -1815,6 +1819,12 @@ def publishable_result(result: dict) -> dict:
     verification = safe_verification_diagnostics(result.get("verificationDiagnostics"))
     if verification:
         published["verificationDiagnostics"] = verification
+    verification_error = safe_verification_error(result.get("verificationErrorCategory"))
+    if verification_error:
+        published["verificationErrorCategory"] = verification_error
+    build_timeout = result.get("buildTimeoutSeconds")
+    if type(build_timeout) is int and build_timeout > 0:
+        published["buildTimeoutSeconds"] = build_timeout
     max_budget = result.get("agentMaxBudgetUsd")
     if type(max_budget) in (int, float) and math.isfinite(max_budget) and max_budget > 0:
         published["agentMaxBudgetUsd"] = max_budget
@@ -1852,7 +1862,8 @@ def wait_for_build(
         raise NoBuildQueued("no verification head observed within the wait budget")
     definitions = {key: tc.pipeline_definition(key) for key in tc.pipeline_ids(project_id)}
     if not definitions:
-        raise NoBuildQueued("the agent created no pipeline in the temporary project")
+        raise NoBuildQueued("the agent created no pipeline in the temporary project",
+                            "verification-no-pipeline")
     source = None
     source_path = (case or {}).get("requestedConfiguration", {}).get("sourcePath")
     if checkout and source_path:
@@ -2120,6 +2131,7 @@ def run(
         # Bound discovery after an abnormal exit. A chain already queued still
         # gets the full (unpaid) build wait rather than an early partial grade.
         budget = int(env.get("EVAL_BUILD_TIMEOUT", "3600"))
+        result["buildTimeoutSeconds"] = budget
         no_build_budget = budget
         if agent_exit != 0 or agent_run.get("failureCategory"):
             no_build_budget = min(budget, int(env.get("EVAL_FAILED_AGENT_GRACE", "120")))
@@ -2182,23 +2194,33 @@ def run(
                 case=case, checkout=checkout,
                 no_build_timeout=no_build_budget,
             )
-        except NoBuildQueued:
+        except NoBuildQueued as exc:
+            result["verificationErrorCategory"] = exc.category
             result["errorCategory"] = result.get("errorCategory") or "build-not-queued"
             raise
         except BuildQueueStalled as exc:
+            result["verificationErrorCategory"] = "build-queue-stalled"
             result["errorCategory"] = result.get("errorCategory") or "build-queue-stalled"
             result["queueWaitReason"] = exc.reason
             raise
         except BuildWaitTimeout:
+            result["verificationErrorCategory"] = "build-wait-timeout"
             result["errorCategory"] = result.get("errorCategory") or "build-wait-timeout"
+            raise
+        except EvalError:
+            result["verificationErrorCategory"] = "verification-observation-failed"
             raise
         phases.enter("grading")
         # How many builds it took to get green is a quality signal in itself:
         # green on the first attempt and green on the sixth are not the same
         # work, and the graded checks alone cannot tell them apart.
-        chain_observed, result["verificationDiagnostics"] = observe_chain(
-            tc, project_id, build, case["expected"]["toolchain"]["jdk"]
-        )
+        try:
+            chain_observed, result["verificationDiagnostics"] = observe_chain(
+                tc, project_id, build, case["expected"]["toolchain"]["jdk"]
+            )
+        except EvalError:
+            result["verificationErrorCategory"] = "verification-observation-failed"
+            raise
         observed = {
             **chain_observed,
             "buildTypeCount": len(tc.build_types(project_id)),
@@ -2220,6 +2242,7 @@ def run(
       except _Graded:
         pass
       except EvidenceError as exc:
+        result["verificationErrorCategory"] = exc.category
         result["errorCategory"] = result.get("errorCategory") or exc.category
         result["error"] = exc.category
       except EvalError as exc:
