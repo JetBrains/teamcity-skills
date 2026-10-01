@@ -1275,3 +1275,63 @@ deletion was requested. Unrelated validation selfcheck `9566936` remains a
 separate unexplained failure. Concurrent dirty code/skill/cleanup/proposal
 files and the user's PDF were untouched. Only this audit is committed/pushed;
 the completed cohort monitor can be deleted after this result is reported.
+
+### Post-cohort diagnosis and CLI-counter repair — 2026-10-01
+
+After the completed cohort was reported and its monitor deleted, the user's
+"продолжи" was scoped to safe diagnosis and a confirmed harness-counter fix.
+No further Claude eval, control, retry, report refresh, timeout/budget increase,
+or evaluated-target mutation was requested. The monitor remains deleted.
+
+Read-only first-class CLI inspection on the same nightly server and sandbox
+resolved the exact pipeline IDs from verification heads `9568295` (Maven
+baseline) and `9569614` (Gradle baseline), then pulled their stored YAML.
+Only structural projections were printed, not raw YAML, scripts, parameters,
+logs, prompts, or trajectories. These are **present-day saved-configuration
+observations**, not a historical regrade or an immutable configuration snapshot.
+Materialized pipeline-job settings can show empty steps/artifact rules; the
+stored YAML, also used by the harness adapter, is the relevant source here.
+
+- Maven has one native `maven` step and only the publication rule
+  `target/clean-spring-boot-project-*.jar`; it has no XML publication rule.
+  Exact artifact listing of child `9568849` shows a `publish` directory, and
+  listing that directory shows only
+  `clean-spring-boot-project-0.0.1-SNAPSHOT.jar` (64,457,324 bytes).
+  The earlier artifact count of one refers to a root entry, not independently
+  to a leaf file. This is consistent with the saved `requiredArtifactRules`
+  failure: 39 successful imported tests do not also prove XML publication.
+- Gradle has two jobs, `build` and `test`, with four `script` steps each and
+  no native `gradle` step. Both scripts match the generator and explicit
+  `docker info` patterns, but neither job's `runs-on` matches the required
+  Docker/container-engine declaration. JAR and XML publication rules are
+  present. Thus the missing runner types, runner-specific task properties,
+  and declared Docker requirements are concrete contract gaps. This does
+  **not** mean Docker was unavailable or tests failed: the frozen chain and
+  per-job runtime evidence already passed. Shell-text pattern matches alone
+  do not establish execution order or whether a mentioned task executes.
+
+A separate confirmed diagnostic defect was reproduced with synthetic events:
+`agent_tool_summary` previously recognized only Bash command strings beginning
+with `teamcity`. It missed the skill-prescribed
+`TEAMCITY_URL=... teamcity ...` form and falsely accepted executable-name
+prefixes such as `teamcity-helper`. The new bounded parser recognizes leading
+environment assignments, `env`/`env --`, and exact executable basenames/paths.
+Counts remain one per Bash tool call and the published schema remains numeric
+only. Shell wrappers, line continuations, and later compound commands are not
+fully parsed; the counter is not proof of transport compliance.
+
+Six synthetic regression tests cover the supported forms, lookalikes,
+malformed commands, unparsed wrappers, and publication privacy. This correction
+does not establish which commands the historical agents actually ran, explain
+the two skill timeouts, recover missing usage, or change any historical grade
+or counter. No real agent trajectory was read. The two timeout costs therefore
+remain unknown and cohort measured coverage remains $37.8514745 across six of
+eight invocations.
+
+Local validation of the concurrent workspace: **200 unit tests passed**.
+An export of the exact staged tree, excluding concurrent work, independently
+passed **182 unit tests**. Both trees validated **22 cases / zero errors**;
+workspace and staged whitespace checks passed. Only the counter helper/call-site,
+its new synthetic test file, and this audit are included in this repair;
+pre-existing MCP-isolation edits in the same runner and all other concurrent
+code/skill/cleanup/proposal/PDF changes are excluded.

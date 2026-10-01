@@ -1244,6 +1244,35 @@ def tool_calls(trace: pathlib.Path) -> list:
     return calls
 
 
+def is_teamcity_cli_command(command: str) -> bool:
+    """Recognize a leading CLI invocation, not arbitrary shell programs.
+
+    Environment assignments and the env launcher are common when explicitly
+    selecting a server. Counts remain per Bash tool call, not per subprocess;
+    wrappers, line continuations, and later commands in a shell program are
+    intentionally unparsed. This counter is not proof of transport compliance.
+    """
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()")
+        lexer.whitespace_split = True
+        words = list(lexer)
+    except ValueError:
+        return False
+
+    def skip_assignments(index: int) -> int:
+        while index < len(words) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[index]):
+            index += 1
+        return index
+
+    index = skip_assignments(0)
+    if index < len(words) and pathlib.PurePosixPath(words[index]).name == "env":
+        index += 1
+        if index < len(words) and words[index] == "--":
+            index += 1
+        index = skip_assignments(index)
+    return index < len(words) and pathlib.PurePosixPath(words[index]).name == "teamcity"
+
+
 def agent_tool_summary(trace: pathlib.Path) -> dict:
     """Count tool surfaces without retaining names, inputs, or agent prose.
 
@@ -1288,7 +1317,7 @@ def agent_tool_summary(trace: pathlib.Path) -> dict:
             if (
                 name == "Bash"
                 and isinstance(command, str)
-                and command.lstrip().startswith("teamcity")
+                and is_teamcity_cli_command(command)
             ):
                 summary["teamcityCliCalls"] += 1
                 continue
