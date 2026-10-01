@@ -1064,3 +1064,30 @@ not the total bill or the fresh cohort cost. Fresh measured coverage remains
 unknown in earlier audit sections and are not recovered by these reports.
 Gradle baseline report and the four runtime chains are not yet terminal at
 this checkpoint. No additional evaluation or report refresh was requested.
+
+#### Fourth configuration report assessed — 16:25 UTC
+
+Gradle baseline head
+[9567199](https://teamcity-nightly.labs.intellij.net/build/9567199) finished
+FAILURE at **16:24:15 UTC**. Its report
+[9567208](https://teamcity-nightly.labs.intellij.net/build/9567208) finished
+SUCCESS at the same time, after 16:15:14–16:24:15 (**541 seconds**). All four
+configuration chains are now terminal; publication success does not change
+either failed Gradle configuration grade.
+
+The three allowed publications were downloaded under
+`/tmp/tc-two-project-results.55tDhX/report-9567208/publish/`. The collection
+marker is **16:15:20.186728 UTC**. All 212 unique evaluator records and the
+entire case matrix exactly equal verified report `9567201`; regression JSON
+also matches exactly. Thus this fourth report preserves the same completed
+configuration checks/identities/cost, original historical evidence, profile
+separation, assisted exclusion, unsupported modes, and not-executable
+preflight. The HTML ledger independently contains exactly 50 rows, labelled
+`Showing 50 of 212 unique evaluator jobs`. No warnings or mature regression
+failures are present; neither statement is a new eval pass.
+
+At 16:25 UTC all four original first-green evals remain RUNNING; their reports
+are queued waiting for unfinished dependencies. No new terminal eval result
+or measured usage is available: fresh cohort coverage remains **4/8,
+$20.079202**, with four unknown costs. No new run, refresh, or target change
+was requested. The monitor remains active for those four runtime chains.
