@@ -1570,3 +1570,41 @@ Its jobs match the committed evaluator except for the preserved server-local
 Claude connection; parameters match. The exact eval-job execution timeout is
 0 and its USD-budget parameter is absent. No persistent evaluator setting,
 Claude connection, case assertion/status/hash, or source pin was changed.
+
+#### Source-bound repair dispatch — 2026-10-01 23:19 UTC
+
+Repair **`34d671a2023d015c367b1c4f9c44fbbef96e58f7`** is pushed. The read-back
+evaluator VCS root still uses `refs/heads/korotkova/evals` and monitors
+`+:refs/heads/*`; it was not changed. A full-revision-filtered listing was empty
+before dispatch. Exactly two new skill-only first-green invocations were then
+requested with explicit branch and full SHA, clean checkout, and rebuilt
+dependencies:
+
+| Case | Head | Eval | Report | Eval start UTC |
+| --- | --- | --- | --- | --- |
+| Maven | [9595989](https://teamcity-nightly.labs.intellij.net/build/9595989) | [9595992](https://teamcity-nightly.labs.intellij.net/build/9595992) | [9595993](https://teamcity-nightly.labs.intellij.net/build/9595993) | 23:19:00 |
+| Gradle | [9595988](https://teamcity-nightly.labs.intellij.net/build/9595988) | [9595990](https://teamcity-nightly.labs.intellij.net/build/9595990) | [9595991](https://teamcity-nightly.labs.intellij.net/build/9595991) | 23:18:59 |
+
+Both evals queued at 23:18:59 UTC and are RUNNING at this checkpoint; reports
+wait on them. Each head's dependency tree and all six IDs in the exact-SHA
+listing were checked. The two eval IDs are distinct; repeated references to
+each eval within its own tree are not additional invocations. Interim
+`status: SUCCESS` on a RUNNING job is not a terminal pass or proof of Claude
+progress.
+
+Requested per-run settings: `cli-only`, `claude -p`, skill arm,
+`claude-default-jvm-source-bound-7200s-v1`, agent/build timeouts 7200/3600
+seconds, queue checkpoint/stall 120/600 seconds, explicit nightly server and
+`TeamCity_Sandbox_TCEvals`. No USD cap was supplied. Case versions remain
+`f8e61aed249c5d89f02f76e3d83f5346c505a9a4b4bd8e7e3eda2d01cbcfee9c` (Maven)
+and `437c6bddded92924d2beb9f27f39097a38cbd8b2128704fe43042e9aff4e06fd` (Gradle).
+Source pins remain unchanged. The new task context is tracked by this new
+harness revision/profile, not compared as a paired improvement against older
+baseline runs.
+
+At terminal, safe artifacts must still verify actual identity/profile/limits,
+absent cap, primary/secondary errors, checks or absent grade, chain/JDK evidence,
+timings, and measured usage. Cost is not yet available. No baseline/control/
+configuration invocation, automatic retry, report-only refresh, target repair,
+project deletion, or new/revived monitor was started. The only pending error-log
+permission request still concerns `9590221` and `9586812`, not these eval logs.
