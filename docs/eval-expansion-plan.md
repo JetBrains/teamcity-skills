@@ -814,3 +814,30 @@ Read-only evaluator preflight found the USD-limit parameter absent. Stored
 Claude connection reference, which is preserved; parameters match. The
 checked-in runner was server-validated. Do not overwrite its connection or
 copy connection credentials into this audit.
+
+Both repaired control jobs then finished **SUCCESS**: package `9564790`
+15:42:34–15:45:37 UTC (183 s), test `9564789` 15:42:38–15:46:09 UTC (211 s).
+Packaging imported zero tests and published `spring-boot-demo-local.jar`
+(39,403,230 bytes). The test job imported the expected
+`org.usmanzaheer1995.springbootdemo.SpringBootDemoApplicationTests.contextLoads`
+as SUCCESS (741 ms), and published its JUnit XML (7,720 bytes). Both exact
+source revisions were confirmed by full-SHA-filtered CLI listing. This proves
+the source-preserving Gradle workaround; no runtime JDK version was inferred
+from its declaration alone.
+
+Head `9564788` nevertheless finished **FAILURE** at 15:46:14 UTC. Its focused
+control failure summary reports `invalid_branch_name`: logical branch `main`
+is not monitored by this default-only VCS root, so default revisions were
+selected. The attached root itself correctly declares `refs/heads/main` and
+has no branch specification. Do not promote the composite failure to green
+because its children succeeded.
+
+The first-class CLI has no VCS-root update command. The source-preserving
+dispatch correction is to select the root's configured default branch, after
+verifying public `refs/heads/main` still equals the pinned SHA, and then verify
+the actual run revision via the exact full-SHA-filtered CLI listing. Control
+**`9566498`** was dispatched this way with a request to reuse successful
+children `9564790`/`9564789`; however the YAML's `allow-reuse: false` prevented
+reuse. Actual new children are test **`9566500`** and package **`9566499`**.
+They must be monitored normally, not represented as reused or already green.
+No additional control was queued to bypass that accepted queue.
