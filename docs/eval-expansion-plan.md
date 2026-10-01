@@ -1442,3 +1442,131 @@ unknown. Keep canceled or externally re-added invocations separate and request
 no automatic replacement. Historical grades, restored rows and assisted
 exclusions remain unchanged; do not compare these new versions/profile as a
 fresh pair against old baseline samples. No deleted monitor was revived.
+
+#### Terminal 120-minute results — assessed 2026-10-02
+
+The user requested another check, concrete repairs, and necessary reruns
+("проверь еще раз, исправь, перезапусти что надо"). Read-only first-class CLI
+checks confirm the original six IDs on full revision `8d75c0f7b5a9acb7214f8bed1c2c50e567fa9f86`,
+with exactly two evaluator invocations and no replacements. Both agents ended
+**before** their 7200-second limits, but neither produced a completed grade.
+
+| Skill eval | Terminal UTC (2026-10-01) / wall | Outcome | Measured provider cost |
+| --- | --- | --- | --- |
+| Maven [9584489](https://teamcity-nightly.labs.intellij.net/build/9584489) | 20:59:35 / 3991 s | errored; exit 1, not timed out; `agent-result-failed` | $13.472917 |
+| Gradle [9584490](https://teamcity-nightly.labs.intellij.net/build/9584490) | 20:57:45 / 3881 s | errored; exit 1, not timed out; `agent-result-failed` | $10.3049765 |
+
+Both safe artifacts also report `verification-pipeline-ambiguous`. Checks are
+empty; `gradeStatus` and `verificationDiagnostics` are absent. These are
+**ungraded errors, not scored 0/12 or 0/14 results**. Exact case IDs/versions,
+skill arm, cli-only mode, harness revision, and
+`claude-default-jvm-skill-7200s-v1` match dispatch. Agent/build-wait limits
+remain 7200/3600 seconds; `agentMaxBudgetUsd` is absent. Cleanup was deferred,
+with no objects removed. Artifacts are under
+`/tmp/tc-jvm-results.VFEQNI/<eval-id>/publish/eval-result.json`.
+
+The pair's measured total is **$23.7778935 across both invocations**, not an
+estimate or a new cap. Earlier unknown timeout/interruption costs remain
+unknown and outside this amount. Safe usage and timings:
+
+| Field | Maven | Gradle |
+| --- | ---: | ---: |
+| Input / output tokens | 292 / 97,650 | 226 / 89,886 |
+| Cache read / cache write tokens | 18,031,244 / 200,691 | 12,579,523 / 175,834 |
+| Tool calls / recognized CLI calls | 160 / 1 | 125 / 0 |
+| Bootstrap / preparation seconds | 6 / 2.772 | 6 / 2.911 |
+| Agent / observation seconds | 3971.682 / 0.328 | 3860.841 / 0.168 |
+| Build wait / cleanup / total seconds | 1.579 / 0.005 / 3976.366 | 2.012 / 0.005 / 3865.938 |
+
+Grading duration is absent. Agent-process duration includes tools and waits,
+not measured thinking time. Recognized CLI counters undercount shell wrappers
+and compound commands; 0/1 does not establish that CLI was unused. These safe
+totals explain the scale of measured usage, not which activity caused it.
+No real trajectories, prompts, or eval logs were read. The provider's exact
+failure subtype is not retained by this harness; the primary exit cause
+therefore remains unknown.
+
+Both report jobs succeeded: [9584492](https://teamcity-nightly.labs.intellij.net/build/9584492)
+ran 20:57:45–21:08:37 UTC; [9584491](https://teamcity-nightly.labs.intellij.net/build/9584491)
+ran 20:59:40–21:10:01 UTC. Their heads `9584488` and `9584487` finished FAILURE
+at 21:08:37 and 21:10:02. Only `index.html`, `runs.json`, and `regressions.json`
+were downloaded for each report. Both snapshots contain both terminal new
+records, matching all safe artifact fields and the profile's SHA256
+`b172c10655d38111b10d17c5028e4e146ceb0b2c151193cb47515f270fe83344`.
+Collection markers (20:57:55.375240 and 20:59:46.865814 UTC) mark the start of
+collection, not a single instantaneous observation of every job.
+
+Both reports preserve all **212** preceding unique jobs with unchanged
+identities, revisions, verdicts, checks, usage, timings, and assisted flags.
+There are now 214 unique evaluator jobs, 22 contracts, 116 supported arm slots,
+zero warnings, all ten restored case rows, and exactly 50 HTML ledger rows.
+Assisted TDD remains excluded with sampleSize 0; preflight remains not
+executable and the five MCP-only queue modes unsupported. The user's Gradle
+configuration case remains active. Each regression file has 33
+insufficient-sample and 33 insufficient-history findings, zero mature failures,
+and a minimum of three samples. Report SUCCESS is not eval success. The report
+total **$325.622775 across 92/214 jobs** is incomplete historical measured
+coverage, not this pair's cost. No report refresh was requested.
+
+#### Confirmed task-context gap and bounded completion repair
+
+Scoped saved-YAML/metadata inspection found two Maven pipelines (`maven-verify`
+and `probe-b`) and three Gradle pipelines (`probeB`, `probeC`, `probeD`). Only
+Gradle `probeD` topology was inspected: one job with three steps
+(`script`, `gradle`, `script`) and no publication rules, not the requested
+two-job verification pipeline. No topology is inferred from the other names.
+Maven's saved verification job has script/Maven steps and three publication
+rules but no `runs-on`. Its successful child `9585397` has zero tests and
+zero artifacts; it is not proof of Maven verification. Other checked Maven
+children remain queued with no idle compatible agents: compatibility count
+was unavailable, so this is not proof of zero-compatible agents.
+
+Gradle head `9590221` failed although child `9590225` succeeded. A failed head
+cannot be promoted to green from its child. Its root declares
+`refs/heads/main` with `+:refs/heads/main`; an invalid branch is not inferred
+from earlier control failures. Permission was requested for only narrow CLI
+error summaries of `9590221` and `9586812`; no such summaries have been read
+at this checkpoint. No evaluated target was repaired, canceled, or deleted.
+
+A separate harness contract gap is confirmed directly in code: observation
+reads `requestedConfiguration.sourcePath`, but that path was not supplied to
+the agent. Both runtime cases expect `.teamcity.yml` without mentioning it in
+their prompt. The repair exposes only the requested format/path in task
+context, identically for both arms, and keeps dry-run previews consistent.
+Private assertions, reference commands, and historical outcomes remain hidden.
+The final file must match the validated/read-back verification configuration;
+temporary diagnostics remain separate. This does not authorize source edits
+or builds when the task prohibits them.
+
+The skill now keeps a primary pipeline distinct from capability probes,
+returns concrete probe findings to that pipeline, retains the requested final
+source, and requires its full chain/tests/outputs before claiming completion.
+It does not prescribe a repository/server-specific solution or delete probes.
+Strict source matching and fail-closed ambiguity remain unchanged. We cannot
+tell from the safe artifacts whether the old source file was absent,
+mismatched, or matched multiple pipelines; this correction is **not** proof
+that either historical agent failure was caused by a missing file.
+
+Five new synthetic tests verify public context, private-answer exclusion,
+identical skill/baseline invocation context, configuration-only stopping
+conditions, fixtures, and dry-run behavior. The source-binding regression now
+also exercises a non-default path with multiple pipelines. Workspace validation:
+**210 tests passed**, all **22 cases valid**, skill validation and whitespace
+checks passed. Concurrent MCP isolation, runner YAML, skill routing, cleanup,
+proposal, and PDF changes remain excluded from this repair.
+
+Any necessary live rerun is bounded to one fresh skill-only invocation per
+affected JVM runtime case, with the same 7200/3600-second limits, 120/600-second
+queue settings, and no USD cap. It tests the concrete task-context/completion
+repair, not a claim that the unknown primary failure has been fixed. No
+baseline/control/configuration rerun, automatic retry, timeout increase,
+manual target repair, or revival of a deleted monitor is authorized here.
+
+The exact staged export at `/tmp/tc-jvm-exact.kuTskz` independently passed
+**192 unit tests**, all 22 cases, and skill validation; only this audit, the
+task-context helper/call sites, two synthetic test files, and three workflow
+hunks are included. Server-stored evaluator YAML was validated without a push.
+Its jobs match the committed evaluator except for the preserved server-local
+Claude connection; parameters match. The exact eval-job execution timeout is
+0 and its USD-budget parameter is absent. No persistent evaluator setting,
+Claude connection, case assertion/status/hash, or source pin was changed.

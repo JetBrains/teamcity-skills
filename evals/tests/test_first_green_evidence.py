@@ -70,12 +70,15 @@ class FirstGreenEvidenceTest(unittest.TestCase):
         tc, _ = self.fixture()
         tc.pipeline_ids.return_value = ["main", "probe"]
         tc.pipeline_definition.side_effect = lambda key: {"jobs": {"test": {}} if key == "main" else {"probe": {}}}
-        with tempfile.TemporaryDirectory() as directory:
-            root = pathlib.Path(directory)
-            (root / ".teamcity.yml").write_text("jobs:\n  test: {}\n")
-            build = runner.wait_for_build(tc, "project", 10, checkout=root,
-                                          case={"requestedConfiguration": {"sourcePath": ".teamcity.yml"}})
-        self.assertEqual("source-matched", build["selection"])
+        for source_path in (".teamcity.yml", "ci/final.yml"):
+            with self.subTest(source_path=source_path), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                source = root / source_path
+                source.parent.mkdir(parents=True, exist_ok=True)
+                source.write_text("jobs:\n  test: {}\n")
+                build = runner.wait_for_build(tc, "project", 10, checkout=root,
+                                              case={"requestedConfiguration": {"sourcePath": source_path}})
+            self.assertEqual("source-matched", build["selection"])
 
     def test_waits_failed_sibling_despite_successful_head_and_package(self):
         tc, terminal = self.fixture()
