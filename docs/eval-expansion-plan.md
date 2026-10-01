@@ -1409,3 +1409,36 @@ retry. The build wait is a separate post-agent observation phase, not a promise
 that the entire evaluator/report chain ends within 120 minutes. The new profile
 is `claude-default-jvm-skill-7200s-v1`. Baseline/configuration/control runs are
 not part of this dispatch.
+
+#### Exact dispatch — 19:53 UTC
+
+The repair was pushed as **`8d75c0f7b5a9acb7214f8bed1c2c50e567fa9f86`**.
+Exactly two fresh skill first-green invocations queued at **19:53:02 UTC**:
+
+| Case | Head | Eval | Report |
+| --- | --- | --- | --- |
+| Maven | [9584487](https://teamcity-nightly.labs.intellij.net/build/9584487) | [9584489](https://teamcity-nightly.labs.intellij.net/build/9584489) | [9584491](https://teamcity-nightly.labs.intellij.net/build/9584491) |
+| Gradle | [9584488](https://teamcity-nightly.labs.intellij.net/build/9584488) | [9584490](https://teamcity-nightly.labs.intellij.net/build/9584490) | [9584492](https://teamcity-nightly.labs.intellij.net/build/9584492) |
+
+Both used explicit branch `korotkova/evals` and the full repair revision,
+clean checkout, and rebuilt dependencies. The current root's monitored branch
+specification permits that explicit branch (unlike the earlier default-only
+control root). The exact full-revision-filtered CLI listing contains all six
+IDs and exactly two distinct eval children. Both evals started at **19:53:04
+UTC** and are RUNNING at dispatch; report jobs wait on them. A RUNNING state
+is not proof of Claude progress or a successful target build.
+
+Per-run settings are `cli-only`, `claude -p`, skill arm,
+`claude-default-jvm-skill-7200s-v1`, agent/build timeouts **7200/3600 seconds**,
+queue checkpoint/stall **120/600 seconds**, sandbox `TeamCity_Sandbox_TCEvals`,
+and no USD-limit override. No baseline, configuration eval, control, or retry
+was started. Measured cost and final outcomes are not yet available.
+
+At completion, assess only safe eval-result/report artifacts, including exact
+case versions, revision/profile, both limits, primary and secondary error
+categories, all checks, frozen-chain diagnostics, per-job counts, declared
+versus runtime JDK evidence, timings and measured usage. Missing cost remains
+unknown. Keep canceled or externally re-added invocations separate and request
+no automatic replacement. Historical grades, restored rows and assisted
+exclusions remain unchanged; do not compare these new versions/profile as a
+fresh pair against old baseline samples. No deleted monitor was revived.
