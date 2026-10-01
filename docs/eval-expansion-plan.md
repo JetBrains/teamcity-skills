@@ -841,3 +841,69 @@ children `9564790`/`9564789`; however the YAML's `allow-reuse: false` prevented
 reuse. Actual new children are test **`9566500`** and package **`9566499`**.
 They must be monitored normally, not represented as reused or already green.
 No additional control was queued to bypass that accepted queue.
+
+Control **`9566498` finished SUCCESS at 15:57:52 UTC**. Package `9566499`
+ran 15:54:39–15:57:11 (152 s); test `9566500` ran 15:54:39–15:57:51
+(192 s). Both succeeded on the exact pinned source revision, confirmed through
+the full-SHA-filtered CLI listing. A read-only check through the actual harness
+adapter and grader passes all **14** first-green assertions: package has zero
+tests / one artifact, test has one successful required test / one artifact.
+The two jobs declare JDK21; runtimeVerified remains false. This is reference
+executability/adapter evidence only, **not an LLM eval sample**. Default-branch
+dispatch resolved the composite's invalid-branch problem without VCS-root or
+repository-source edits.
+
+### Fresh four-case cohort (one pair per changed case)
+
+After both independent source controls were successful, exactly **eight fresh
+Claude invocations** were requested at approximately **15:59:57 UTC**: one
+skill/baseline pair for each of the four existing changed cases. There is no
+provider USD cap, no automatic retry, and no requirement to keep spending
+until all arms are green. All use `RunEvalCase`, `cli-only`, `claude -p`,
+profile **`claude-default-two-project-3600s-v1`**, agent/build waits of
+3600/3600 seconds, queue checkpoint/stall of 120/600 seconds, and sandbox
+`TeamCity_Sandbox_TCEvals`. The optional USD-limit parameter was verified absent
+immediately before dispatch; terminal artifacts must confirm its absence too.
+
+The evaluator's attached VCS root also monitors only its configured default
+branch, `refs/heads/korotkova/evals`. To avoid the diagnosed dispatch issue,
+the cohort used default-branch selection after checking local and remote HEAD
+both equal **`e93b46cd89c752e9d8a1c18ff818db457013133a`**. Every one of the 24
+head/eval/report IDs below then appeared in the CLI listing filtered by that
+exact full revision. Dependencies were explicitly rebuilt: all eight eval
+children are distinct. No simultaneous dirty workspace changes were included.
+
+| Case | Arm | Head | Eval | Report |
+| --- | --- | --- | --- | --- |
+| clean-spring-boot-maven-pipeline | skill | 9567195 | 9567214 | 9567213 |
+| clean-spring-boot-maven-pipeline | baseline | 9567197 | 9567202 | 9567201 |
+| spring-boot-demo-gradle-testcontainers-pipeline | skill | 9567196 | 9567203 | 9567204 |
+| spring-boot-demo-gradle-testcontainers-pipeline | baseline | 9567199 | 9567207 | 9567208 |
+| clean-spring-boot-maven | skill | 9567200 | 9567212 | 9567211 |
+| clean-spring-boot-maven | baseline | 9567194 | 9567210 | 9567209 |
+| spring-boot-demo-gradle-testcontainers | skill | 9567193 | 9567206 | 9567205 |
+| spring-boot-demo-gradle-testcontainers | baseline | 9567198 | 9567215 | 9567216 |
+
+Expected case hashes (same for both arms):
+
+- Maven configuration: `4010fdb37216e71fd87d1bee13b1864494f2d1e1951168490298e27d28ee8083`
+- Gradle configuration: `cddaf659fc193df77f889c22e47f537f4c4f613f955c4648617fa0ac8701126f`
+- Maven first-green: `c8ea3ee033a54c0ee5680ea887110be767763144f44ab1ad9aee3927dcdb5f10`
+- Gradle first-green: `39558c88c58c18a15088f53b90680e3aafcc2ce964b329bffac533dd0946c885`
+
+At 16:00 UTC all eight eval children are RUNNING, which is not proof of model
+progress or success. Monitor these exact chains, download only the safe result
+JSON and report publications at terminal, and retain actual cost coverage,
+errors, every check, per-job diagnostics, and historical revision separation.
+Any external cancellation/re-add must be audited separately, including unknown
+cost when no safe result is available. No further paid eval is authorized by
+this cohort.
+
+The revision-filtered list also exposed a separate validation-pipeline
+selfcheck `9566936` FAILURE (`Grade a pipeline of known shape`, exit 1), with
+zero imported tests; case validation `9566935` succeeded. This selfcheck is
+not one of the eight evaluations. Its underlying cause is not established by
+the inspected metadata, and its raw logs were not read. Replaying its static
+known shape through the local adapter/grader gives all eight expected checks;
+that synthetic check does not explain or erase the server failure. Do not
+attribute it to the two-project cases without evidence.
