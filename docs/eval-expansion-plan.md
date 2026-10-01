@@ -778,3 +778,39 @@ Control evidence:
 - [Gradle control head 9531520](https://teamcity-nightly.labs.intellij.net/buildConfiguration/TeamCity_Sandbox_TCEvals_CoverageControls20261001_SpringDemoReferenceNotEval/9531520)
 - [Package control 9531521](https://teamcity-nightly.labs.intellij.net/buildConfiguration/TeamCity_Sandbox_TCEvals_CoverageControls20261001_SpringDemoReferenceNotEval_virtual_package_V__1/9531521)
 - [Test control 9531522](https://teamcity-nightly.labs.intellij.net/buildConfiguration/TeamCity_Sandbox_TCEvals_CoverageControls20261001_SpringDemoReferenceNotEval_virtual_test_V__1/9531522)
+
+### Control Gradle diagnosis and source-preserving repair
+
+The user then requested "найди проблему исправь и продолжи", authorizing the
+focused control-error diagnosis previously requested. The first-class CLI's
+failure summaries for `9531521` and `9531522` both expose the same
+`WorkValidationException`: `compileKotlin` consumes `generateJooq` and
+`openApiGenerate` outputs without declared task dependencies. This is a
+Gradle task-graph error, not evidence of a missing JDK or unavailable Docker.
+No eval logs/prompts/trajectories were inspected.
+
+The isolated reference YAML now runs `generateJooq openApiGenerate` and then
+`bootJar` or `test` in **separate Gradle runner steps**. This avoids the invalid
+same-invocation task graph while keeping the pinned repository unchanged.
+The case's reference verification command was corrected accordingly; the
+case prompt does not give away this diagnosis or workaround. Structural
+configuration grading still does not claim to execute Gradle: the runtime
+checks must reject failed compilation even if the required tasks are declared.
+An additional regression test makes that distinction explicit.
+
+Validation: **195 unit tests passed**, all **22 cases valid**, whitespace check
+clean. The changed control YAML passed nightly server validation and its exact
+stored jobs/parameters were read back. Control **`9564788`** queued at
+**15:34:20 UTC**, on branch `main`, pinned revision
+`940cdb0b4d15c178ca1624095e24b69914b2c9cd`, with clean checkout and dependency
+rebuilding. Exact children are package **`9564790`** and test **`9564789`**.
+Initially the queue reported no idle compatible agents / waiting for a starting
+agent. Those are capacity/provisioning observations, not zero-compatible
+proof. The workaround is not confirmed until both jobs complete successfully
+with their own outputs. No paid eval was launched at this checkpoint.
+
+Read-only evaluator preflight found the USD-limit parameter absent. Stored
+`RunEvalCase` jobs match the checked-in runner except for the server-local
+Claude connection reference, which is preserved; parameters match. The
+checked-in runner was server-validated. Do not overwrite its connection or
+copy connection credentials into this audit.

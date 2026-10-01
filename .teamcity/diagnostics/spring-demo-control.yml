@@ -27,8 +27,14 @@ jobs:
           docker info >/dev/null
           "$JAVA_HOME/bin/java" -version
       - type: gradle
-        name: Generate sources and package without tests
-        tasks: generateJooq openApiGenerate bootJar
+        name: Generate JOOQ and OpenAPI sources
+        tasks: generateJooq openApiGenerate
+        use-gradle-wrapper: true
+      # The pinned upstream build lacks generator -> compileKotlin dependencies.
+      # Separate invocations consume generated files without editing that source.
+      - type: gradle
+        name: Package without tests
+        tasks: bootJar
         use-gradle-wrapper: true
     files-publication:
       - path: build/libs/*.jar
@@ -55,8 +61,12 @@ jobs:
           docker info >/dev/null
           "$JAVA_HOME/bin/java" -version
       - type: gradle
-        name: Generate sources and run Testcontainers tests
-        tasks: generateJooq openApiGenerate test
+        name: Generate JOOQ and OpenAPI sources
+        tasks: generateJooq openApiGenerate
+        use-gradle-wrapper: true
+      - type: gradle
+        name: Run Testcontainers tests
+        tasks: test
         use-gradle-wrapper: true
     files-publication:
       - path: build/test-results/test/*.xml

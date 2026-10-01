@@ -33,7 +33,8 @@ def gradle_observed():
             "id": f"pipeline/{key}", "name": key,
             "parameters": {"env.JAVA_HOME": "%env.JDK_21_0%"},
             "steps": [step("script", **{"script-content": "docker info"}),
-                      step("gradle", tasks=f"generateJooq openApiGenerate {target}")],
+                      step("gradle", tasks="generateJooq openApiGenerate"),
+                      step("gradle", tasks=target)],
             "artifactRules": artifacts,
             "agentRequirements": ["container.engine.osType = linux"],
         })
@@ -112,6 +113,21 @@ class TwoProjectCoverageTest(unittest.TestCase):
     def test_generation_is_required_in_each_isolated_job(self):
         self.observed["jobs"][0]["steps"][1]["properties"]["tasks"] = "bootJar"
         self.assertFalse(self.grades()["requiredJobs"]["passed"])
+
+    def test_reference_uses_separate_generation_and_compilation_invocations(self):
+        self.assertEqual(
+            "DEMO_ENV=local ./gradlew --no-daemon generateJooq openApiGenerate && "
+            "DEMO_ENV=local ./gradlew --no-daemon test bootJar",
+            self.gradle["verification"]["command"],
+        )
+        # Structural settings alone cannot prove Gradle's task graph works.
+        for result in self.observed["jobResults"]:
+            result.update(status="FAILURE", tests=[], artifacts=[])
+        self.observed.update(buildStatus="FAILURE", tests=[], testCount=0, artifacts=[])
+        checks = self.grades()
+        self.assertTrue(checks["requiredJobs"]["passed"])
+        self.assertFalse(checks["firstBuild"]["passed"])
+        self.assertFalse(checks["jobResults"]["passed"])
 
     def test_lifecycle_build_cannot_silently_execute_tests_in_package_job(self):
         self.observed["jobs"][0]["steps"][1]["properties"]["tasks"] += " build"
