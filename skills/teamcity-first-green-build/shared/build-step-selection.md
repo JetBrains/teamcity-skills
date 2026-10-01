@@ -46,6 +46,36 @@ TeamCity server's supported capabilities.
   server exposes them; otherwise use the project's standard command in a script
   step.
 
+## JVM Verification And Outputs
+
+Before queueing, read back the stored Pipeline YAML and check each job against
+the requested outcome, not only against the schema. Confirm native runner
+types and their `goals`/`tasks`, explicit JDK selection, required agent
+capabilities, and the publication rules on the job that produces each output.
+Materialized Pipeline job settings can omit YAML-defined steps and artifacts;
+use `teamcity pipeline pull` for this audit.
+
+- Maven verification normally uses `verify` without skipping tests. A wrapper
+  launcher is not sufficient if its supporting files are missing; use a
+  supported installed Maven version when the repository permits it.
+- Importing JUnit results and publishing raw XML as an artifact are separate
+  operations. When both are requested, configure both; a green Tests tab or a
+  published JAR does not prove that the XML is downloadable.
+- Inspect Gradle generated-source dependencies before combining tasks. If a
+  task-graph validation error proves that compilation consumes undeclared
+  generator outputs and sources must stay unchanged, separate generation and
+  compilation into successive native Gradle runner invocations. Do not disable
+  validation or replace all Gradle runners with scripts as a workaround.
+- Testcontainers may also be used by code generation. Any isolated job that
+  needs containers, including packaging when applicable, needs a durable
+  Docker-capable agent requirement and an explicit `docker info` preflight.
+  Derive the selector from this server; an OS/JDK requirement alone is not
+  Docker capability evidence. Keep tests out of a requested package-only job
+  and run them in the test job, with its own report publication.
+
+After the requested chain and outputs pass, finish with that evidence. Do not
+start another build or continue discovery to polish an already complete result.
+
 ## Meaningful Build Status
 
 Every generated pipeline must report a live, meaningful status; a generic

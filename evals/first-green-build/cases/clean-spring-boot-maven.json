@@ -4,7 +4,7 @@
   "kind": "first-green-build",
   "status": "active",
   "skill": "teamcity-first-green-build",
-  "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} and get a green Maven verification build on Java 21. Inspect the repository's Maven and test setup; keep repository sources unchanged, import its JUnit XML, and publish the application JAR. Select Java 21 on the agent or through a suitable build container.",
+  "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} and get a green Maven verification build on Java 21. Inspect the repository's Maven and test setup; use a native Maven runner with verify and do not skip tests. Keep repository sources unchanged, import its JUnit XML into TeamCity, and publish both the application JAR and raw JUnit XML as downloadable build artifacts. Select Java 21 on the agent or through a suitable build container.",
   "teamcity": {
     "server": "runner-configured",
     "targetProject": "runner-configured"

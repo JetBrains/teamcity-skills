@@ -3,6 +3,17 @@
 import re
 
 
+VERIFICATION_ERROR_CATEGORIES = {
+    "verification-no-pipeline", "verification-pipeline-ambiguous",
+    "verification-chain-incomplete", "verification-observation-failed",
+    "build-not-queued", "build-wait-timeout", "build-queue-stalled",
+}
+
+
+def safe_verification_error(value):
+    return value if isinstance(value, str) and value in VERIFICATION_ERROR_CATEGORIES else None
+
+
 class EvidenceError(RuntimeError):
     def __init__(self, category):
         self.category = category
