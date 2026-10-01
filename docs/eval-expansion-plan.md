@@ -495,3 +495,27 @@ their heads are running and reports wait on their own evals. Running status is
 not proof of Claude progress or a successful result. Verify safe terminal
 artifacts before any outcome/cost claim. The previous restoration monitor
 remains deleted; the unrelated CLI-eval monitor is untouched.
+
+At the 2026-10-01 00:04 UTC check, **both original eval children had been
+canceled externally**: baseline `9523479` finished at 00:03:32 UTC after
+750 seconds, and skill `9523476` finished at 00:03:43 UTC after 771 seconds.
+Both expose `UNKNOWN` / `Canceled (Exit code 143)` and **zero artifacts**.
+No safe result, measured usage, completed grade, or cancellation actor/cause
+is available from the inspected metadata. The trigger user associated with
+snapshot/re-add metadata is not evidence of who canceled a job.
+
+The original heads/reports now reference replacements: baseline eval
+`9523528` (queued 00:03:32, started 00:03:37 UTC) and skill eval `9523530`
+(queued 00:03:43, started 00:03:47 UTC). Both have trigger type
+`reAddedOnStop`, are running, and appear in the exact full-revision-filtered
+CLI listing for `8543bc8`. This monitor did not request either replacement.
+The report jobs still await those dependencies. Confirm each replacement's
+case/arm/profile/budget from its safe terminal artifact before comparison.
+
+Keep originals `9523476` and `9523479` as separate interrupted invocations,
+not scored samples or duplicates to discard. Their spend is unknown; the
+per-process $3 cap is **not a cumulative cap across canceled/re-added
+invocations**. Do not claim this pair's total is bounded by $6. Current-head
+report collection may omit those now-unreferenced originals, so retain this
+explicit audit even if the final dashboard does not include them. No further
+evaluation, retry, or target mutation was performed.
