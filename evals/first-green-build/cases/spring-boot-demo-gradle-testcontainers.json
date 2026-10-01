@@ -36,7 +36,7 @@
     "Grep"
   ],
   "verification": {
-    "command": "DEMO_ENV=local ./gradlew --no-daemon generateJooq openApiGenerate test bootJar",
+    "command": "DEMO_ENV=local ./gradlew --no-daemon generateJooq openApiGenerate && DEMO_ENV=local ./gradlew --no-daemon test bootJar",
     "testReportPaths": [
       "build/test-results/test/*.xml"
     ],
