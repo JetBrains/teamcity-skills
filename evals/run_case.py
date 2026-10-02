@@ -10,6 +10,11 @@ checks out the pinned revision, invokes the agent, and grades the observable
 outcome. Build/configuration cases provision a temporary TeamCity project;
 queue-stall cases use a deterministic CLI fixture and consume no build agent.
 
+Live source-bound Pipeline cases check their verification chain during agent
+execution. A terminal failed head with successful children and no structured
+failure evidence stops the paid agent; it never triggers a retry or cancels a
+TeamCity build. See docs/eval-expansion-plan.md for the monitoring contract.
+
 Configuration comes from the environment, never from the case:
 
     TEAMCITY_URL           server to evaluate against
@@ -85,6 +90,7 @@ from pipeline_validation import (
     ScriptConfigurationError, safe_script_diagnostics, script_step_diagnostics,
     validate_pipeline_scripts,
 )
+from build_monitor import LiveBuildMonitor, STOP_CATEGORY, safe_monitor_diagnostics
 
 
 class EvalError(RuntimeError):
@@ -370,13 +376,20 @@ class TeamCity:
     ``toolUse`` assertion would conceal REST calls made by the harness.
     """
 
-    def __init__(self, cli: str, url: str, token: str, base_env: dict):
+    def __init__(self, cli: str, url: str, token: str, base_env: dict, command_timeout: int = 300):
         self.cli = cli
         self.url = url.rstrip("/")
         self.token = token
         self.base_env = dict(base_env)
+        self.command_timeout = command_timeout
+        self.deadline = None
 
     def _run(self, arguments: list, json_output: bool = False) -> str:
+        budget = self.command_timeout
+        if self.deadline is not None:
+            budget = min(budget, self.deadline - time.monotonic())
+        if budget <= 0:
+            raise EvalError("TeamCity CLI read checkpoint exceeded its budget")
         environment = dict(self.base_env)
         environment["TEAMCITY_URL"] = self.url
         environment["TEAMCITY_TOKEN"] = self.token
@@ -384,7 +397,7 @@ class TeamCity:
         try:
             completed = subprocess.run(
                 [self.cli, *arguments], env=environment, capture_output=True,
-                text=True, errors="replace", timeout=300,
+                text=True, errors="replace", timeout=budget,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise EvalError("TeamCity CLI lifecycle command could not run") from exc
@@ -1501,7 +1514,7 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
                  mcp_config: Optional[pathlib.Path] = None,
                  transport_contract: str = "",
                  use_strict_mcp_config: bool = True,
-                 use_local_mcp_probe: bool = False) -> dict:
+                 use_local_mcp_probe: bool = False, build_monitor=None) -> dict:
     # The runner owns the output format, because grading reads the trace, and the
     # case owns the tool policy, because which tools exist is part of the question.
     command = env.get("EVAL_AGENT_CMD", "claude -p") + " --output-format stream-json --verbose"
@@ -1533,6 +1546,12 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
     agent_env = dict(env)
     agent_env.pop("TEAMCITY_TOKEN", None)
     agent_env.pop("EVAL_MCP_TOKEN", None)
+
+    def monitored(outcome):
+        if build_monitor is not None:
+            outcome["buildMonitorDiagnostics"] = build_monitor.diagnostics()
+        return outcome
+
     with trace.open("w") as sink:
         sink.write(f"$ {command}\n--- prompt ---\n{prompt}\n--- output ---\n")
         sink.flush()
@@ -1542,17 +1561,48 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
             start_new_session=(os.name == "posix"),
         )
         try:
-            process.communicate(input=prompt, timeout=timeout)
+            if build_monitor is None:
+                process.communicate(input=prompt, timeout=timeout)
+            else:
+                deadline = time.monotonic() + timeout
+                pending_input = prompt
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(command, timeout)
+                    try:
+                        process.communicate(input=pending_input, timeout=min(
+                            remaining, build_monitor.interval_seconds
+                        ))
+                        break
+                    except subprocess.TimeoutExpired:
+                        # communicate retains partially sent stdin; do not resend it.
+                        pending_input = None
+                        if time.monotonic() >= deadline:
+                            raise
+                        category = build_monitor.checkpoint(deadline)
+                        if time.monotonic() >= deadline:
+                            raise subprocess.TimeoutExpired(command, timeout)
+                        if category == STOP_CATEGORY and process.poll() is None:
+                            stop_agent_processes(process)
+                            build_monitor.mark_stopped()
+                            print("[eval-build-monitor] stopped agent: " + STOP_CATEGORY,
+                                  file=sys.stderr, flush=True)
+                            return monitored({
+                                "exitCode": process.returncode,
+                                "timedOut": False, "timeoutSeconds": timeout,
+                                "failureCategory": STOP_CATEGORY,
+                            })
         except subprocess.TimeoutExpired:
             stop_agent_processes(process)
             sink.write(f"\n--- runner ---\nAgent timed out after {timeout}s.\n")
             sink.flush()
-            return {"exitCode": 124, "timedOut": True, "timeoutSeconds": timeout}
+            return monitored({"exitCode": 124, "timedOut": True, "timeoutSeconds": timeout})
         except BaseException:
             stop_agent_processes(process)
             raise
-    return {"exitCode": process.returncode, "timedOut": False, "timeoutSeconds": timeout,
-            "failureCategory": agent_result_category(trace)}
+    return monitored({"exitCode": process.returncode, "timedOut": False, "timeoutSeconds": timeout,
+                      "failureCategory": agent_result_category(trace)})
 
 
 def set_graded_status(result: dict, agent_run: dict) -> None:
@@ -1852,6 +1902,9 @@ def publishable_result(result: dict) -> dict:
     verification = safe_verification_diagnostics(result.get("verificationDiagnostics"))
     if verification:
         published["verificationDiagnostics"] = verification
+    monitor = safe_monitor_diagnostics(result.get("buildMonitorDiagnostics"))
+    if monitor:
+        published["buildMonitorDiagnostics"] = monitor
     configuration = safe_script_diagnostics(result.get("configurationDiagnostics"))
     if configuration:
         published["configurationDiagnostics"] = configuration
@@ -2138,11 +2191,19 @@ def run(
                         if uses_cli else agent_environment_without_cli(env, url)
                     )
                     phases.enter("agent")
+                    monitor = None
+                    if case["kind"] == "first-green-build":
+                        monitor = LiveBuildMonitor(
+                            TeamCity(tc.cli, url, token, env, command_timeout=10),
+                            project_id, checkout,
+                            case.get("requestedConfiguration", {}).get("sourcePath"),
+                        )
                     agent_run = invoke_agent(
                         prompt, checkout, agent_env, trace,
                         int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
                         case.get("agentTools"), mcp_config, transport_contract,
                         use_strict_mcp_config, use_local_mcp_probe,
+                        build_monitor=monitor,
                     )
                     phases.enter("observation")
             except BridgeError as exc:
@@ -2151,6 +2212,8 @@ def run(
         result["agentExitCode"] = agent_exit
         result["agentTimedOut"] = agent_run["timedOut"]
         result["agentTimeoutSeconds"] = agent_run["timeoutSeconds"]
+        if "buildMonitorDiagnostics" in agent_run:
+            result["buildMonitorDiagnostics"] = agent_run["buildMonitorDiagnostics"]
         usage = agent_usage(trace)
         if usage:
             result["agentUsage"] = usage
@@ -2169,6 +2232,15 @@ def run(
         # gets the full (unpaid) build wait rather than an early partial grade.
         budget = int(env.get("EVAL_BUILD_TIMEOUT", "3600"))
         result["buildTimeoutSeconds"] = budget
+        if agent_run.get("failureCategory") == STOP_CATEGORY:
+            # The paid process has stopped. Preserve the incident, do not grade
+            # partial output, wait for another build, repair a target or retry.
+            result["status"] = "errored"
+            result["verificationErrorCategory"] = STOP_CATEGORY
+            result["verificationDiagnostics"] = {
+                "terminalChain": result["buildMonitorDiagnostics"].get("lastChain", {}),
+            }
+            raise _Graded
         no_build_budget = budget
         if agent_exit != 0 or agent_run.get("failureCategory"):
             no_build_budget = min(budget, int(env.get("EVAL_FAILED_AGENT_GRACE", "120")))
@@ -2277,6 +2349,11 @@ def run(
         }
         result["checks"] = grade(case, observed)
         set_graded_status(result, agent_run)
+        terminal = result["verificationDiagnostics"].get("terminalChain", {})
+        if terminal.get("requiresInvestigation") and terminal.get("problemEvidence") == "unavailable":
+            # Also cover agents that finish before the first live checkpoint.
+            # Keep their completed grade and primary error, but expose the gap.
+            result["verificationErrorCategory"] = STOP_CATEGORY
 
       except _Graded:
         pass
