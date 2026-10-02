@@ -70,6 +70,9 @@ class VerificationFailureTest(unittest.TestCase):
             (runner.BuildQueueStalled("no-idle-compatible-agents"), "build-queue-stalled"),
             (runner.EvidenceError("verification-pipeline-ambiguous"), "verification-pipeline-ambiguous"),
             (runner.EvidenceError("verification-chain-incomplete"), "verification-chain-incomplete"),
+            (runner.ScriptConfigurationError({"checkedScriptStepCount": 1,
+                 "invalidScriptStepCount": 1, "issues": [{"jobIndex": 1, "stepIndex": 2,
+                 "category": "unsupported-script-key"}]}), "verification-invalid-script-steps"),
             (runner.EvalError("private server output"), "verification-observation-failed"),
         ]
         for error, category in errors:
@@ -97,6 +100,16 @@ class VerificationFailureTest(unittest.TestCase):
         self.assertEqual("verification-no-pipeline", failure.exception.category)
         tc.builds.assert_not_called()
 
+    def test_invalid_scripts_have_safe_diagnostics_without_fabricated_grade(self):
+        diagnostics = {"checkedScriptStepCount": 2, "invalidScriptStepCount": 1,
+                       "issues": [{"jobIndex": 1, "stepIndex": 2,
+                                   "category": "missing-script-source"}]}
+        result = self.run_failure(runner.ScriptConfigurationError(diagnostics), timed_out=False)
+        self.assertEqual("verification-invalid-script-steps", result["errorCategory"])
+        self.assertEqual(diagnostics, result["configurationDiagnostics"])
+        self.assertEqual({}, result["checks"])
+        self.assertNotIn("gradeStatus", result)
+
     def test_secondary_error_and_timeout_publication_are_allowlisted(self):
         for value in ("private payload", {}, [], True, None):
             result = runner.publishable_result({"verificationErrorCategory": value,
@@ -108,6 +121,10 @@ class VerificationFailureTest(unittest.TestCase):
         artifact = {"caseId": "example", "arm": "skill", "status": "errored",
                     "agentTimedOut": True, "errorCategory": "agent-timeout", "checks": {},
                     "verificationErrorCategory": "verification-no-pipeline",
+                    "configurationDiagnostics": {"checkedScriptStepCount": 1,
+                        "invalidScriptStepCount": 1, "script": "private raw content",
+                        "issues": [{"jobIndex": 1, "stepIndex": 2,
+                                    "category": "unsupported-script-key", "name": "private job"}]},
                     "agentTimeoutSeconds": 7200, "buildTimeoutSeconds": 7200,
                     "error": "private raw error"}
 
@@ -123,6 +140,7 @@ class VerificationFailureTest(unittest.TestCase):
             result = collector.download_result([], "https://example.invalid", 42, {"example"})
             self.assertEqual("agent-timeout", result["errorCategory"])
             self.assertEqual("verification-no-pipeline", result["verificationErrorCategory"])
+            self.assertEqual(1, result["configurationDiagnostics"]["invalidScriptStepCount"])
             self.assertEqual(7200, result["agentTimeoutSeconds"])
             self.assertEqual(7200, result["buildTimeoutSeconds"])
             self.assertNotIn("private", json.dumps(result))

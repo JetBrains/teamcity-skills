@@ -81,6 +81,10 @@ from first_green_evidence import (
     EvidenceError, chain_nodes, jdk_evidence, jdk_selectors, observe_chain,
     safe_verification_diagnostics, safe_verification_error, select_pipeline,
 )
+from pipeline_validation import (
+    ScriptConfigurationError, safe_script_diagnostics, script_step_diagnostics,
+    validate_pipeline_scripts,
+)
 
 
 class EvalError(RuntimeError):
@@ -644,7 +648,8 @@ def grade(case: dict, observed: dict) -> dict:
 
     checks["configurationValidated"] = {
         "expected": expected["configurationValidated"],
-        "observed": observed["buildTypeCount"] > 0 and observed["buildStatus"] is not None,
+        "observed": (observed["buildTypeCount"] > 0 and observed["buildStatus"] is not None
+                     and not script_step_diagnostics(observed.get("jobs", []))["issues"]),
         "detail": f"{observed['buildTypeCount']} build configuration(s) created",
     }
     # "firstBuild" is the case's name for the outcome the skill iterates toward,
@@ -795,7 +800,7 @@ def grade_configuration(case: dict, observed: dict) -> dict:
 
     checks["configurationValidated"] = {
         "expected": True,
-        "observed": bool(jobs),
+        "observed": bool(jobs) and not script_step_diagnostics(jobs)["issues"],
         "detail": f"{len(jobs)} job(s): {[j['name'] for j in jobs]}",
     }
     checks["minimumJobs"] = {
@@ -1847,6 +1852,9 @@ def publishable_result(result: dict) -> dict:
     verification = safe_verification_diagnostics(result.get("verificationDiagnostics"))
     if verification:
         published["verificationDiagnostics"] = verification
+    configuration = safe_script_diagnostics(result.get("configurationDiagnostics"))
+    if configuration:
+        published["configurationDiagnostics"] = configuration
     verification_error = safe_verification_error(result.get("verificationErrorCategory"))
     if verification_error:
         published["verificationErrorCategory"] = verification_error
@@ -1907,6 +1915,10 @@ def wait_for_build(
             if not isinstance(source, dict):
                 raise EvidenceError("verification-pipeline-ambiguous")
     pipeline_id, selection = select_pipeline(definitions, source)
+    # Stored YAML, not virtual job metadata, is authoritative for script fields.
+    # Check only the selected verification pipeline; unrelated probes are not
+    # evidence about it. Fail before querying builds or sleeping in the queue.
+    configuration_diagnostics = validate_pipeline_scripts(definitions[pipeline_id])
     latest, attempts = None, 0
     queued = {}
     while time.time() < deadline:
@@ -1924,6 +1936,7 @@ def wait_for_build(
                 if len(nodes) < 2:
                     raise EvidenceError("verification-chain-incomplete")
                 return {**latest, "state": "finished", "nodes": nodes,
+                        "configurationDiagnostics": configuration_diagnostics,
                         "pipelineId": pipeline_id, "selection": selection, "attempts": attempts,
                         "status": "SUCCESS" if all(node["status"] == "SUCCESS" for node in nodes)
                         else "FAILURE"}
@@ -2196,6 +2209,7 @@ def run(
             }
             result["toolCalls"] = observed["toolCalls"]
             result["jobs"] = observed["jobs"]
+            result["configurationDiagnostics"] = script_step_diagnostics(observed["jobs"])
             result["checks"] = grade_configuration(case, observed)
             add_transport_checks(
                 result["checks"], tool_mode, result["agentToolSummary"],
@@ -2234,6 +2248,7 @@ def run(
         except EvalError:
             result["verificationErrorCategory"] = "verification-observation-failed"
             raise
+        result["configurationDiagnostics"] = build["configurationDiagnostics"]
         phases.enter("grading")
         # How many builds it took to get green is a quality signal in itself:
         # green on the first attempt and green on the sixth are not the same
@@ -2265,6 +2280,11 @@ def run(
 
       except _Graded:
         pass
+      except ScriptConfigurationError as exc:
+        result["configurationDiagnostics"] = exc.diagnostics
+        result["verificationErrorCategory"] = exc.category
+        result["errorCategory"] = result.get("errorCategory") or exc.category
+        result["error"] = exc.category
       except EvidenceError as exc:
         result["verificationErrorCategory"] = exc.category
         result["errorCategory"] = result.get("errorCategory") or exc.category

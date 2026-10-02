@@ -31,6 +31,7 @@ import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from first_green_evidence import safe_verification_diagnostics, safe_verification_error
+from pipeline_validation import safe_script_diagnostics
 
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -61,6 +62,7 @@ SAFE_ERROR_CATEGORIES = {
     "agent-timeout", "agent-permission-failure", "agent-exit-failed",
     "agent-budget-exhausted", "agent-result-failed",
     "verification-pipeline-ambiguous", "verification-chain-incomplete",
+    "verification-invalid-script-steps",
     "build-not-queued", "build-wait-timeout", "build-queue-stalled",
     "mcp-not-invoked", "mcp-cli-invoked", "mcp-no-configuration",
     "mcp-sideload-flags-disabled", "mcp-enterprise-managed-config",
@@ -449,6 +451,7 @@ def download_result(warnings, server, run_id, known_case_ids=None):
                 and result["agentMaxBudgetUsd"] > 0 else None
             ),
             "verificationDiagnostics": safe_verification_diagnostics(result.get("verificationDiagnostics")),
+            "configurationDiagnostics": safe_script_diagnostics(result.get("configurationDiagnostics")),
             "verificationErrorCategory": safe_verification_error(result.get("verificationErrorCategory")),
             **{name: result[name] for name in ("agentTimeoutSeconds", "buildTimeoutSeconds")
                if type(result.get(name)) is int and result[name] > 0},
@@ -504,6 +507,8 @@ def classify(server, run, result):
             return "agent-budget-exhausted", "Claude reached the configured API spending limit"
         if result.get("errorCategory") == "agent-result-failed":
             return "agent-result-failed", "Claude reported an unsuccessful completion"
+        if result.get("errorCategory") == "verification-invalid-script-steps":
+            return "verification-invalid-script-steps", "stored Pipeline has invalid script source parameters"
         if result.get("errorCategory") in ("verification-pipeline-ambiguous", "verification-chain-incomplete"):
             return result["errorCategory"], "verification chain could not be bound unambiguously"
         if (

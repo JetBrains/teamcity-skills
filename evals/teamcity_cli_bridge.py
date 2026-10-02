@@ -18,6 +18,8 @@ import sys
 import threading
 from typing import Callable, Iterable, Optional
 
+from pipeline_validation import validate_pipeline_scripts
+
 
 class BridgeError(RuntimeError):
     """The bridge could not start or rejected an unsafe operation."""
@@ -222,6 +224,24 @@ class TeamCityCliBridge:
         self.wrapper_dir = workspace / "teamcity-cli-bridge"
 
     def execute(self, arguments: list, cwd: pathlib.Path) -> subprocess.CompletedProcess:
+        # Apply the same public runner check to both arms. Reject malformed
+        # scripts before upload/queueing, while the agent can still correct them.
+        positionals = _positional(arguments)
+        if (not any(flag in arguments for flag in ("--help", "-h"))
+                and len(positionals) >= 2 and positionals[0] == "pipeline"
+                and positionals[1] in {"create", "push", "validate"}):
+            operation = positionals[1]
+            if operation == "create":
+                filename = _flag_value(arguments, "--file", "-f") or ".teamcity.yml"
+            else:
+                index = 3 if operation == "push" else 2
+                filename = positionals[index] if len(positionals) > index else ".teamcity.yml"
+            import yaml
+            try:
+                document = yaml.safe_load((cwd / filename).read_text())
+            except (OSError, UnicodeError, yaml.YAMLError):
+                raise BridgeError("could not read Pipeline YAML for script-parameter validation") from None
+            validate_pipeline_scripts(document)
         command_env = dict(self.base_env)
         command_env["TEAMCITY_URL"] = self.server_url
         command_env["TEAMCITY_TOKEN"] = self.token
