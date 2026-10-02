@@ -1823,3 +1823,67 @@ pair's cost. The Gradle record 9620081 is still a running snapshot with null
 result/revision and is not final evidence. At this checkpoint Gradle head/eval
 9620077/9620081 remain RUNNING, and report 9620080 waits for its dependency.
 No new run, refresh, cancellation, target edit or deletion was requested.
+
+#### Gradle script-gate result — assessed 2026-10-02 12:42 UTC
+
+[Gradle eval 9620081](https://teamcity-nightly.labs.intellij.net/build/9620081)
+finished **FAILURE** at 12:38:45 UTC (11:50:24 start; wall **2901 seconds**).
+Only `publish/eval-result.json` was downloaded to
+`/tmp/tc-script-gate-results.3vJGX7/gradle/publish/`. Identity checks confirm
+`spring-boot-demo-gradle-testcontainers`, unchanged case hash
+`437c6bddded92924d2beb9f27f39097a38cbd8b2128704fe43042e9aff4e06fd`, skill arm,
+`cli-only`, harness `a6577850db71510c895325c5904b0cd3bfb9d90d`, profile
+`claude-default-jvm-script-gate-7200s-v1`, 7200/3600-second limits, and no
+`agentMaxBudgetUsd`. Case status remains draft. Agent exit is **0**, timeout
+false; no primary or secondary execution-error category is reported. Result
+and grade are **failed**, with **12/14 checks passed**.
+
+Failed checks are `requiredAgentRequirements` and `requiredJobs`. Passed:
+`configurationValidated`, `firstBuild`, `testsExecutedAndReported`,
+`artifactsPublished`, `toolchain`, `sourceMutations`, `minimumJobs`, `jobCount`,
+`requiredStepTypes`, `requiredStepProperties`, `requiredArtifactRules`, and
+`jobResults`. Final configuration diagnostics report **4 checked script steps,
+0 invalid, no issues**. Read-only saved-YAML projection independently confirms
+all four use `script-content`, with no `script` alias or conflicting file
+source; no script contents were exposed.
+
+Both saved jobs (`Package` and `IntegrationTests`) select only
+`runs-on: {self-hosted: [{arch: aarch64}]}`. The contract requires an explicit
+Docker/container-engine marker globally and in each job's agent requirements.
+That marker is absent, explaining the failed global requirement check and a
+confirmed violation of each per-job contract. This is a configuration-contract
+failure, **not evidence that the agents lacked Docker or were incompatible**;
+the runtime chain succeeded. No target was manually repaired or regraded.
+
+Source-matched verification diagnostics record head
+[9622244](https://teamcity-nightly.labs.intellij.net/build/9622244), attempts 3,
+one successful test and four artifacts. A first-class CLI tree confirms the
+head and both children finished **SUCCESS**:
+
+| Verification build | UTC start–finish | Tests / successful | Artifacts |
+| --- | --- | --- | --- |
+| [Head 9622244](https://teamcity-nightly.labs.intellij.net/build/9622244) | 12:33:36–12:36:52 | chain total 1 / 1 | chain total 4 |
+| [Package 9622130](https://teamcity-nightly.labs.intellij.net/build/9622130) | 12:33:36–12:36:30 | 0 / 0 | 2 |
+| [IntegrationTests 9622129](https://teamcity-nightly.labs.intellij.net/build/9622129) | 12:33:36–12:36:47 | 1 / 1 | 2 |
+
+The test-only CLI projection confirms successful
+`org.usmanzaheer1995.springbootdemo.SpringBootDemoApplicationTests.contextLoads`
+(duration 1594 ms). JDK21 is declared by **2/2 jobs**, but `runtimeVerified`
+remains **false**. Successful runtime does not erase either failed contract.
+
+Measured Gradle cost is **$13.1155885** (artifact floating-point representation
+`13.115588500000001`). Tokens: 264 input / 103505 output / 16894547 cache-read /
+207022 cache-write. Safe counters: 144 total tools, 3 recognized CLI, zero
+TeamCity MCP/probe calls; the recognized-CLI undercount caveat still applies.
+Phase seconds: bootstrap 10, preparation 2.887, agent 2864.082, observation
+0.166, build wait 3.85, grading 4.909, cleanup 0.005, total 2875.9. Cleanup is
+deferred and temporary objects were not removed.
+
+Both new evals now have measured usage: **$20.354528 combined**, separate from
+the preceding source-bound pair's $19.9898895 and unknown historical costs.
+This skill-only pair provides coverage, not a baseline comparison or statistical
+lift. Report 9620080 started at 12:38:47 UTC and is still RUNNING, as is head
+9620077 (nonterminal FAILURE); the earlier Maven report's running Gradle cell
+remains stale. The monitor stays active for terminal report verification.
+No new eval, retry, control, report refresh, timeout increase, cancellation,
+target repair or project deletion was requested.
