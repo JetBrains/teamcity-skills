@@ -2092,3 +2092,72 @@ the completed script-gate/two-project monitors and leaves
 `finish-korotkova-cli-eval-pair` untouched. It reports meaningful changes only,
 cannot launch replacements, and deletes only itself after terminal safe
 evidence assessment, audit push and the final result/cost report.
+
+#### Monitored Gradle result — assessed 2026-10-02 17:45 UTC
+
+[Gradle eval 9635073](https://teamcity-nightly.labs.intellij.net/build/9635073)
+finished **SUCCESS** at **17:41:14 UTC** (16:55:13 start; wall **2761 seconds**).
+Only `publish/eval-result.json` was downloaded, to
+`/tmp/tc-monitored-jvm-results.klGFJr/gradle/publish/eval-result.json`.
+The safe result confirms case `spring-boot-demo-gradle-testcontainers`, hash
+`437c6bddded92924d2beb9f27f39097a38cbd8b2128704fe43042e9aff4e06fd`, skill arm,
+`cli-only`, harness `13be384dddce0262ed840555c5cd56ad1359f509`, profile
+`claude-default-jvm-monitored-7200s-v1`, limits **7200/3600 seconds**, and absent
+`agentMaxBudgetUsd`. Case status is still **draft**; this assessment does not
+promote it. Agent exit is **0**, timeout false, result/grade both **passed**,
+primary error null and no secondary verification-error category.
+
+**All 14/14 checks passed**: `configurationValidated`, `firstBuild`,
+`testsExecutedAndReported`, `artifactsPublished`, `toolchain`,
+`sourceMutations`, `minimumJobs`, `jobCount`, `requiredStepTypes`,
+`requiredStepProperties`, `requiredArtifactRules`, `requiredAgentRequirements`,
+`requiredJobs`, and `jobResults`. In particular, the explicit Docker scheduling
+and per-job contracts that failed in the previous sample now pass. This is a
+new result, not a repair/regrade of the previous 12/14 sample. Configuration
+diagnostics record **4 checked script steps, 0 invalid, no issues**.
+
+First-class CLI metadata and tree independently confirm a terminal successful
+source-matched Pipeline head and two successful jobs. A full-source-revision
+filtered head listing includes **9637730** on pinned source
+`940cdb0b4d15c178ca1624095e24b69914b2c9cd`; the result records two head attempts.
+The listing also includes earlier head 9636632; no new attempt was requested
+by this monitoring turn.
+
+| Verification build | UTC start–finish | Tests / successful | Artifact count |
+| --- | --- | --- | --- |
+| [Head 9637730](https://teamcity-nightly.labs.intellij.net/build/9637730) | 17:35:07–17:37:59 | chain total 1 / 1 | chain total 4 |
+| [Build/package 9637732](https://teamcity-nightly.labs.intellij.net/build/9637732) | 17:35:08–17:37:31 | 0 / 0 | 2 |
+| [Testcontainers tests 9637731](https://teamcity-nightly.labs.intellij.net/build/9637731) | 17:35:07–17:37:59 | 1 / 1 | 2 |
+
+The test-only CLI projection independently confirms no package-job tests and
+one successful
+`org.usmanzaheer1995.springbootdemo.SpringBootDemoApplicationTests.contextLoads`
+test, **702 ms**, in the test job. Passing `jobResults` establishes the required
+own-job JAR and raw JUnit XML artifact contracts. Java21 is declared by **2/2
+jobs**, but **runtimeVerified remains false**; do not turn declaration evidence
+into independent runtime verification.
+
+The new live monitor recorded **44 checkpoints, 0 read failures**, 60-second
+interval, final state `observed`, and **stoppedAgent=false**. Its last chain
+matches successful head 9637730 and both children; `requiresInvestigation`
+is false and the failure pattern is `none`. `problemEvidence=unavailable` is
+not a measured zero problem count. This verifies checkpoint execution on a
+successful live eval, not live validation of the emergency-stop path.
+
+Measured invocation cost is **$10.465626** (artifact float
+`10.465625999999995`). Usage: **206 input / 91146 output / 12480812 cache-read /
+193644 cache-write tokens**. Safe tool counters: 119 total, 1 recognized CLI,
+zero TeamCity MCP/probe calls; the prior recognized-CLI undercount caveat still
+applies. Phase seconds: bootstrap 6, preparation 2.904, agent 2725.604,
+observation 0.504, build wait 5.195, grading 5.278, cleanup 0.005,
+total 2739.49. Cleanup remains deferred; no target project was deleted.
+
+At this checkpoint Maven eval/head 9635070/9635068 remain RUNNING; report
+9635069 is queued with exact reason **Build dependencies have not been built
+yet**, not an agent-compatibility conclusion. Gradle report 9635072 started
+17:41:15 UTC and is RUNNING; its evaluator head 9635071 is also nonterminal.
+Do not claim report verification or whole-pair completion yet. Maven/new-pair
+total cost remains unknown; this Gradle measurement is separate from previous
+pairs and historical costs. The heartbeat stays active. No new eval, control,
+retry, refresh, target mutation, cancellation or budget/timeout change was made.
+Only this audit addition is committed/pushed; concurrent changes are preserved.
