@@ -6,6 +6,7 @@ import re
 VERIFICATION_ERROR_CATEGORIES = {
     "verification-no-pipeline", "verification-pipeline-ambiguous",
     "verification-chain-incomplete", "verification-observation-failed",
+    "verification-invalid-script-steps",
     "build-not-queued", "build-wait-timeout", "build-queue-stalled",
 }
 

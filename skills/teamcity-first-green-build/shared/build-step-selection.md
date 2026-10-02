@@ -46,6 +46,31 @@ TeamCity server's supported capabilities.
   server exposes them; otherwise use the project's standard command in a script
   step.
 
+## Script Parameter Gate
+
+Pipeline schema validation can accept a step's `type` without checking its
+runner-specific fields. For every `type: script` step, use **`script-content`**
+for non-empty inline commands, or **`script-file`** for a non-empty script path;
+do not use `script`, and do not supply both sources. For example:
+
+```yaml
+steps:
+  - type: script
+    name: Check Docker
+    script-content: |-
+      echo "##teamcity[progressMessage 'Checking Docker']"
+      docker info
+```
+
+Check these fields in the actual file before upload, then in the server-stored
+YAML before queueing or waiting. `pipeline validate` returning valid is not
+proof that the script runner is usable; virtual job step listings may even be
+empty while YAML-defined steps exist. A missing/blank content field produces
+`Invalid step parameters: Script content must be specified`; correct the
+configuration before diagnosing agent capacity. For a file source, separately
+verify that checkout provides the file. This check does not prove shell syntax,
+parameter resolution, or runtime compatibility.
+
 ## JVM Verification And Outputs
 
 Before queueing, read back the stored Pipeline YAML and check each job against

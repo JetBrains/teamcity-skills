@@ -528,6 +528,13 @@ must leave the checkout unchanged except for the explicitly requested
 configuration source path and changes the user authorized; an untracked probe
 file is still a source mutation.
 
+Also apply the **Script Parameter Gate** in `shared/build-step-selection.md`
+to every script step in the exact local and server-stored YAML. A schema-valid
+`type: script` with content under the wrong key is still an invalid runner.
+Do this before queueing or waiting, including when queue metadata only says
+there are no idle compatible agents. Fix the script definition first; that
+generic queue reason does not establish a capacity shortage.
+
 ### 9. Validate Compatibility
 
 Before spending time debugging build failures, validate that the generated

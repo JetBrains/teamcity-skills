@@ -1608,3 +1608,101 @@ timings, and measured usage. Cost is not yet available. No baseline/control/
 configuration invocation, automatic retry, report-only refresh, target repair,
 project deletion, or new/revived monitor was started. The only pending error-log
 permission request still concerns `9590221` and `9586812`, not these eval logs.
+
+#### Source-bound pair terminal evidence and shared script defect — 2026-10-02
+
+Both source-bound skill evals and their reports are terminal. Safe artifacts
+match the dispatched case hashes, `cli-only`, harness `34d671a`, profile
+`claude-default-jvm-source-bound-7200s-v1`, 7200/3600-second agent/build limits,
+and absent USD cap. Neither eval completed grading: checks are empty and
+`gradeStatus`/`verificationDiagnostics` are absent. These are ungraded errors,
+not scored zeroes or passes.
+
+| Case / eval | Started / finished UTC | Wall | Agent exit / timeout | Primary / secondary error | Measured USD |
+| --- | --- | --- | --- | --- | --- |
+| [Maven 9595992](https://teamcity-nightly.labs.intellij.net/build/9595992) | Oct 1 23:19:00 / Oct 2 00:41:51 | 4971s | 1 / false | agent-result-failed / build-queue-stalled | 8.624968 |
+| [Gradle 9595990](https://teamcity-nightly.labs.intellij.net/build/9595990) | Oct 1 23:18:59 / Oct 2 00:12:30 | 3211s | 0 / false | build-queue-stalled / build-queue-stalled | 11.3649215 |
+
+Measured pair cost is **$19.9898895**, separate from the previous
+9584489/9584490 pair ($23.7778935) and earlier interrupted attempts with unknown
+cost. Maven usage: 210 input / 62935 output / 10980456 cache-read / 155204
+cache-write tokens; Gradle: 224 / 106052 / 13316023 / 204539. Reported tool
+counts are 117/121, but recognized CLI counts of 2/2 remain an undercounting
+caveat, not evidence of only two actual CLI operations.
+
+Phase seconds (bootstrap / preparation / agent / observation / build wait /
+cleanup / total): Maven 6 / 3.107 / 4342.787 / 0.451 / 610.713 / 0.005 /
+4957.063; Gradle 6 / 3.150 / 2580.847 / 0.097 / 611.306 / 0.005 / 3195.406.
+Safe queue reason is `other` for both. Cleanup was deferred; no target deletion
+or cancellation was performed.
+
+[Gradle report 9595991](https://teamcity-nightly.labs.intellij.net/build/9595991)
+succeeded at 00:21:46; its Maven cell is an interim running snapshot.
+[Maven report 9595993](https://teamcity-nightly.labs.intellij.net/build/9595993)
+succeeded at 00:50:23 and contains both final results. Heads 9595988/9595989
+failed. No refresh is needed. The later snapshot retains 216 unique eval jobs,
+116 slots, the 50-row ledger, restored historical provenance, assisted TDD
+exclusion, and preflight-not-executable/unsupported-mode labels. Its
+$345.612664 measured across 94/216 jobs is incomplete historical coverage, not
+this pair's cost. Insufficient regression samples/history do not establish a
+pass or comparative lift.
+
+The user supplied the exact TeamCity UI error for Maven child
+[9596014](https://teamcity-nightly.labs.intellij.net/build/9596014):
+`Invalid step parameters: Script content must be specified`, and noted the
+same issue elsewhere. Read-only stored-YAML inspection confirmed the common
+defect in all eight script steps: two in Maven `maven_verify`, three each in
+Gradle `Build_Package` and `Integration_Tests` (children
+[9596030](https://teamcity-nightly.labs.intellij.net/build/9596030) and
+[9596029](https://teamcity-nightly.labs.intellij.net/build/9596029)). They use
+`script`, with neither `script-content` nor `script-file`. The working control
+uses `script-content`. No raw scripts, eval logs, prompts, or trajectories were
+read into this audit. The stored YAML was already available: missing this
+check was our diagnostic gap, not a reason to ask the user to diagnose it.
+
+Both malformed definitions pass `pipeline validate`; the refreshed server
+schema constrains step type but not runner-specific source fields. The
+harness's `configurationValidated` checks also lacked a universal script
+parameter check. Generic queue metadata and empty virtual-job step listings
+did not expose this defect. It is a confirmed configuration blocker, not proof
+of insufficient agent capacity, and does not explain Maven's provider exit 1
+or establish that no other problems remain. Historical grades are unchanged.
+
+#### User-authorized script-parameter repair and bounded rerun
+
+The user explicitly requested **"добавь и перезапусти"**. Scope: repair this
+shared skill/harness defect, then exactly one fresh skill-only first-green
+eval for each of the two affected repositories. Preserve the 7200-second agent
+limit, 3600-second build wait, queue checkpoint/stall 120/600, unchanged case
+hashes/source pins, `claude -p`, and no USD cap. This does not authorize baseline,
+configuration, control, automatic retry, report-refresh, timeout increases,
+manual evaluated-target repair, or resurrecting deleted monitors.
+
+The skill now requires correct script source fields and saved-YAML inspection
+before queueing/waiting, without treating schema success as runner validity.
+A shared harness validator rejects the `script` alias, missing/blank sources,
+non-string sources, and conflicting inline/file sources. The CLI bridge
+applies it before `pipeline validate/create/push` for both arms, returning
+only fixed reasons and numeric job/step positions so the agent can correct
+the file. Real server validation remains required. Post-agent observation
+independently checks the source-bound stored pipeline before polling; both
+graders refuse `configurationValidated` for invalid script steps. This narrow
+gate does not claim to verify shell syntax, script-file existence, parameter
+resolution, or runtime/agent compatibility.
+
+Safe `configurationDiagnostics` publish only counts, positions, and allowlisted
+categories. `verification-invalid-script-steps` survives artifact/report
+collection while preserving an earlier primary agent error and absent grade.
+Read-only replay detects 2/2 invalid old Maven scripts and 6/6 old Gradle scripts,
+and accepts both working control scripts. This is a validator regression check,
+not a historical regrade or a new live control. No evaluated target was edited.
+
+Validation: **223 workspace tests and 205 tests in the exact staged export**
+passed; all 22 cases and skill validation passed, with no whitespace errors.
+The exact export excludes concurrent MCP isolation, evaluator YAML, cleanup,
+proposal, skill routing/debugging, and PDF changes. Stored evaluator YAML passes
+the server validator and the new script check; its jobs match committed YAML
+except for the preserved server-local Claude connection, and parameters match.
+The exact eval job has no USD-cap parameter. Its attached root is still
+`TeamCity_Sandbox_TCEvals_Evals`, `refs/heads/korotkova/evals`, monitored by
+`+:refs/heads/*`; no persistent evaluator settings or root were changed.
