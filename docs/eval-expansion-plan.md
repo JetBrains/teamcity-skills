@@ -2427,3 +2427,67 @@ This dispatch record is an audit-only follow-up commit; the running evaluator
 remains pinned to `c1d9bd8cb4cdbc47bded388fd3d27cba70dd097a`, not to subsequent
 documentation commits. Historical results remain untouched, and all unrelated
 dirty files are preserved.
+
+#### Maven branch-selection rerun: terminal eval, report pending — 2026-10-02 23:41 UTC
+
+The single bounded heartbeat snapshot at 23:41 UTC found evaluator job
+[9648383](https://teamcity-nightly.labs.intellij.net/build/9648383) **finished
+SUCCESS** at 23:38:41 UTC. Evaluator head 9648381 and report 9648382 were still
+RUNNING; the report started at 23:38:41 UTC. Their provisional SUCCESS statuses
+are not terminal report evidence. No additional status polling, report refresh,
+retry, target mutation, or unrelated validation repair was performed.
+
+Only `publish/eval-result.json` was downloaded, to
+`/tmp/tc-maven-branch-rerun-results.hWtv7P/eval-9648383/publish/`. It identifies
+run `20261002-231946-e2beef`, active case `clean-spring-boot-maven`, unchanged
+case version `f8e61aed249c5d89f02f76e3d83f5346c505a9a4b4bd8e7e3eda2d01cbcfee9c`,
+arm `skill`, mode `cli-only`, harness revision
+`c1d9bd8cb4cdbc47bded388fd3d27cba70dd097a`, and profile
+`claude-default-jvm-monitored-7200s-v1`. Agent/build timeouts remain 7200/3600
+seconds. The artifact contains no `agentMaxBudgetUsd` field, consistent with
+the dispatch's explicit no-cap preflight; it does not independently expose the
+agent command or queue checkpoint/stall settings.
+
+Both result and grade are **passed**. Agent exit is **0**, timeout is false,
+errorCategory is null, and no secondary-error fields are present. All **12/12**
+checks pass: configurationValidated, firstBuild, testsExecutedAndReported,
+artifactsPublished, toolchain, sourceMutations, minimumJobs, requiredStepTypes,
+requiredStepProperties, forbiddenStepProperties, requiredArtifactRules, and
+requiredTests. Configuration diagnostics report **1 checked script step,
+0 invalid, no issues**.
+
+The source-matched verification chain required **one attempt**:
+[head 9648400](https://teamcity-nightly.labs.intellij.net/build/9648400) and
+[child 9648401](https://teamcity-nightly.labs.intellij.net/build/9648401) are
+both finished SUCCESS. The child has **39/39 successful tests and 7 artifacts**.
+The terminal failure pattern is `none` and requiresInvestigation is false.
+`problemEvidence: unavailable` is not a failure or evidence that first-class
+CLI diagnosis would be unavailable. JDK diagnostics require **21**, with a
+matching declaration on **1/1 jobs**, but **runtimeVerified is false**; the
+passed toolchain check must not be represented as independent runtime proof.
+
+The live guard reports **18 checks**, **0 read failures**, interval **60s**,
+state `observed`, and **stoppedAgent: false**; its last observed head/child
+states are the successful chain above. This run did not exercise the failed-
+head stop path and does not establish that the unchanged monitor's diagnostic
+gap is repaired. The prior head's `invalid_branch_name` remains historical
+evidence, not a failure attributed to this successful rerun.
+
+Phase timings (seconds): bootstrap 4; preparation 2.174; agent 1114.844;
+observation 0.239; build wait 1.738; grading 2.060; cleanup 0.003; total 1121.058.
+Measured usage is **$8.177791** (serialized floating-point value
+8.177791000000004), input 198 tokens, output 64,732, cache read 9,976,762 and
+cache write 156,185. The tool summary records 113 total calls, 0 TeamCity MCP
+calls, 0 MCP probes, 1 classified TeamCity CLI call and 112 other calls; this
+summary is not a reconstructed agent trajectory. Cleanup remains deferred and
+temporaryObjectsRemoved is false; no manual cleanup was requested.
+
+Keep this new measured cost separate from prior Gradle 9635073 **$10.465626**,
+interrupted Maven 9635070 **UNKNOWN**, and the earlier **$20.354528** and
+**$19.9898895** pairs. This single successful skill sample provides coverage,
+not statistical evidence of advantage over baseline or a controlled causal
+proof of the skill edit. Report artifact assessment, snapshot freshness and
+preservation of the 220 prior unique evaluator records remain pending. The
+monitor stays active until all three outer IDs and the report are terminal and
+the final safe-artifact/audit/publication requirements are satisfied. Historical
+grades, provenance, restored rows, exclusions and ledger entries are unchanged.
