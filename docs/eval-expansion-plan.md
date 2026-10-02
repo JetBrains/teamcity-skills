@@ -2016,3 +2016,79 @@ Publication makes the monitor available to future explicitly authorized runs
 using this new harness revision. It does not activate monitoring for the
 completed pair or prove live-provider intervention. No new eval, retry,
 control, report refresh or recurring monitor was requested or started.
+
+#### User-authorized monitored JVM rerun — 2026-10-02 16:55 UTC
+
+The user explicitly requested fresh evals and green-build coverage for
+`kawser2133/clean-spring-boot-project` and
+`usmanzaheer1995/spring-boot-demo`. The announced scope is exactly one new
+**skill-only first-green eval per repository**, on the published monitoring
+revision **`13be384dddce0262ed840555c5cd56ad1359f509`**. This does not add a
+baseline/configuration/control sample or authorize automatic replacements,
+report refreshes, budget/timeout increases or manual evaluated-target repair.
+The new monitor is a concrete harness change, not a fix for the unknown Maven
+head-failure cause or a guarantee that the Gradle agent will satisfy its Docker
+scheduling contract. Old results remain separate and unchanged.
+
+Authenticated first-class CLI preflight used the explicit nightly server and
+parent `TeamCity_Sandbox_TCEvals`. The stored `RunEvalCase` YAML passed server
+validation and the script-source gate (2 script steps, 0 invalid). Its jobs
+match committed YAML except for the preserved server-local Claude connection;
+parameters match. The server has no `import-parameters` declaration and retains
+its existing local Claude connection reference instead of the committed one.
+The attached VCS root remains `TeamCity_Sandbox_TCEvals_Evals`, with default
+`refs/heads/korotkova/evals` and monitored branches `+:refs/heads/*`. No server
+configuration, connection or root was changed. The exact eval job's
+`executionTimeoutMin` is 0; exact USD-cap lookup returns not found. The tested
+isolated code export again passed **229 unit tests and 22 case contracts**.
+
+A separate push-triggered validation chain on this same revision contains
+failed jobs **9634671** (schema/unit-test wrapper, exit 1 at 16:49:28 UTC) and
+**9634673** (known-shape grader selfcheck, exit 1 at 16:50:29 UTC). Both expose
+only step-level failure metadata, zero reported tests; validation job 9634671
+has no artifacts. Their causes remain unknown without reading raw logs, which
+were not accessed. The local passing checks do not erase or explain these
+server failures. They are not paid cohort samples and were not retried or
+repaired as part of this dispatch. Evaluator YAML validation was independent.
+Agent-centric compatibility listings did not include the virtual eval job;
+that absence was not interpreted as zero compatible agents. Both accepted
+eval children subsequently started within one second of queueing.
+
+A full-revision head listing was empty before dispatch. Exactly two fresh
+chains were requested with full revision, explicit branch, clean checkout and
+rebuilt dependencies. Dependency trees and the full-SHA listing confirm all
+six IDs and two distinct eval children:
+
+| Repository | Head | Eval | Report | Queued / eval start UTC |
+| --- | --- | --- | --- | --- |
+| Maven | [9635068](https://teamcity-nightly.labs.intellij.net/build/9635068) | [9635070](https://teamcity-nightly.labs.intellij.net/build/9635070) | [9635069](https://teamcity-nightly.labs.intellij.net/build/9635069) | 16:55:11 / 16:55:12 |
+| Gradle | [9635071](https://teamcity-nightly.labs.intellij.net/build/9635071) | [9635073](https://teamcity-nightly.labs.intellij.net/build/9635073) | [9635072](https://teamcity-nightly.labs.intellij.net/build/9635072) | 16:55:12 / 16:55:13 |
+
+Both evals are **RUNNING**, not final successes or proof of Claude progress.
+Requested profile is `claude-default-jvm-monitored-7200s-v1`, arm `skill`,
+`cli-only`, `claude -p`, agent/build limits **7200/3600 seconds**, queue
+checkpoint/stall **120/600 seconds**, and no USD cap. At completion the safe
+results must independently confirm effective identity/profile/limits and
+monitor diagnostics. Case hashes remain Maven
+`f8e61aed249c5d89f02f76e3d83f5346c505a9a4b4bd8e7e3eda2d01cbcfee9c` and Gradle
+`437c6bddded92924d2beb9f27f39097a38cbd8b2128704fe43042e9aff4e06fd`; source pins
+remain `315ca51dcb0ec25f2cce8f99fa239ec23717f3f6` and
+`940cdb0b4d15c178ca1624095e24b69914b2c9cd`, respectively. Case statuses and
+assertions are unchanged: Gradle must still distinguish package and integration
+test jobs, declare Docker scheduling, report its actual test and own artifacts.
+
+Current costs are **unknown**, not zero; the preceding pair's measured
+**$20.354528** and older source-bound pair's **$19.9898895** remain separate.
+This pair adds coverage, not a paired baseline comparison or statistical lift.
+Monitor only these new chains, assess permitted terminal result/report
+artifacts and stale snapshot timing, and preserve every failed/interrupted
+outcome, missing usage and historical grade. Never spend on another invocation
+merely to obtain green. All unrelated working-copy changes remain untouched;
+only this new audit section is prepared for commit/push.
+
+A new thread heartbeat, **`monitor-jvm-evals-with-head-failure-guard`**, is
+ACTIVE every five minutes for these six IDs only. It is not a recreation of
+the completed script-gate/two-project monitors and leaves
+`finish-korotkova-cli-eval-pair` untouched. It reports meaningful changes only,
+cannot launch replacements, and deletes only itself after terminal safe
+evidence assessment, audit push and the final result/cost report.
