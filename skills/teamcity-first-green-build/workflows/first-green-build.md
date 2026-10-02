@@ -363,19 +363,33 @@ or queueing a build. Follow the narrowly scoped procedure in
 `shared/vcs-connections-and-auth.md`; do not ask the user to perform this
 ordinary attachment merely because the root was created successfully.
 
-#### Branch Specification Is A Build Gate
+#### Verify Branch Selection Before Queueing
 
-Before queueing the first build, identify the repository's default branch and
-read the new VCS root back. Its branch specification must monitor the branch
-that will be queued. For example, a repository whose default branch is
-`master` needs a matching rule such as `+:refs/heads/master` when the root has
-an explicit branch specification.
+Do not assume that a Git branch name, a full Git ref, and a
+TeamCity logical branch name are interchangeable.
 
-If TeamCity reports that the selected branch is closed, excluded, or not
-monitored, that build is failed even when its build steps and tests passed:
-TeamCity may substitute a default revision. Update the VCS root/pipeline and
-rerun it on a monitored branch; do not report the result as the first green
-build.
+Before queueing a build:
+
+- Inspect the VCS roots actually attached to the pipeline.
+- Read their default branches and branch specifications.
+- Confirm how the intended Git branch maps to the branch value
+  accepted by the selected TeamCity run command.
+- For the default branch, use the tool's supported default-branch
+  selection. Do not blindly copy the local Git branch into `--branch`.
+
+The presence of a branch in `branchSpec` does not by itself prove
+that the requested logical branch name is correct. YAML validation
+does not validate this mapping either.
+
+Preserve the requested repository, branch and revision pin.
+Do not switch to `main`/`master` or broaden branch filters merely
+to suppress a branch-selection error.
+
+If TeamCity reports `invalid_branch_name` or substitutes default-branch
+revisions, treat the run as failed even if its jobs and tests pass.
+Inspect the branch mapping and correct the demonstrated mismatch.
+Retry only after a concrete correction and within the user's
+authorized run limits.
 
 #### Build-Time VCS Credential Stop Rule
 

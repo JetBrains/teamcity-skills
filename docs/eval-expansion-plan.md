@@ -2320,3 +2320,71 @@ unrelated dirty files are preserved. After reporting the final links and cost,
 delete only **`monitor-jvm-evals-with-head-failure-guard`**. Leave
 `finish-korotkova-cli-eval-pair` and every other monitor untouched; do not
 continue spending to seek green.
+
+#### User-authorized Maven branch-selection skill repair and rerun — 2026-10-02 23:18 UTC
+
+On 2026-10-03 Lisbon time, the user approved the previously drafted skill
+corrections and requested one rerun of the failed eval. Scope is **one new
+Maven skill first-green invocation**, not another Gradle sample, baseline,
+configuration/control run, automatic replacement or report-only refresh.
+Gradle's passed 14/14 sample remains unchanged. The evaluated application,
+existing target pipeline and historical results are not manually repaired.
+
+The follow-up read-only diagnosis corrects the earlier evidence limitation:
+first-class `teamcity run log 9638330 --failed --json` exposes one structured
+problem of type **`invalid_branch_name`**. A bounded head-log excerpt confirms
+that TeamCity marked the head failed at 17:50:18 UTC because requested logical
+branch `development` did not match a monitored branch, substituting default
+branch revisions. The successful child and 39 passed tests do not remove that
+problem. `run view` lacked the fields used by the monitor, but **the cause was
+available through another first-class CLI command**; the earlier broad claim
+of CLI unavailability was incorrect. Historical artifacts/grades remain
+unchanged. Current read-back of the attached VCS root has default
+`refs/heads/development` and branch specification `+:refs/heads/development`;
+it is not evidence that merely adding that rule fixes logical-name selection,
+nor proof of the exact settings at every earlier attempt.
+
+Only the two agreed skill sections change: replace the branch-specification
+gate with Git-ref/default/logical-branch selection guidance in
+`skills/teamcity-first-green-build/workflows/first-green-build.md`, and add
+failed-head diagnosis using the CLI's structured `problems` array in
+`shared/build-log-debugging.md`. Preserve the intended source pin, require
+concrete corrections before retries, and require successful head plus jobs.
+No speculative universal `--branch` replacement is prescribed. **Harness
+monitor code is unchanged**: it still checks metadata and may report the
+unexplained-head category. These skill changes do not claim to have repaired
+that separate observability defect or proven green.
+
+The exact staged-code export at `/tmp/tc-maven-branch-skill.PkWTk8/export/`
+passes skill validation, **227 unit tests**, **22 case contracts**, and
+whitespace checks. The test count reflects the current committed code,
+including previously published concurrent changes, not the older 229-test
+monitor-only export. No Claude or TeamCity build was started by local tests.
+
+Authenticated first-class CLI preflight confirms nightly server
+`https://teamcity-nightly.labs.intellij.net`, parent `TeamCity_Sandbox_TCEvals`,
+and existing `RunEvalCase` pipeline. Its stored YAML passes server validation
+and the script-source gate (**2 checked, 0 invalid**). Read-back differs from
+current committed YAML only at name/import declarations, the server-local
+Claude connection, and retained `env.EVAL_STRICT_MCP_CONFIG`; no server YAML or
+parameters were changed. The attached root is `TeamCity_Sandbox_TCEvals_Evals`,
+repository `https://github.com/JetBrains/teamcity-skills`, default
+`refs/heads/korotkova/evals`, branch specification `+:refs/heads/*`.
+The evaluator job's execution timeout is 0; exact USD-cap lookup is not found.
+
+Dispatch will pin the newly published full revision, explicit branch
+`korotkova/evals`, clean checkout and rebuilt dependencies. Retain profile
+`claude-default-jvm-monitored-7200s-v1`, arm `skill`, mode `cli-only`, command
+`claude -p`, agent/build limits **7200/3600 seconds**, queue checkpoint/stall
+**120/600**, and no USD cap. Maven case hash remains
+`f8e61aed249c5d89f02f76e3d83f5346c505a9a4b4bd8e7e3eda2d01cbcfee9c`, source pin
+`315ca51dcb0ec25f2cce8f99fa239ec23717f3f6`; no case assertions or prompts change.
+New usage remains **UNKNOWN** until measured. Keep previous Gradle $10.465626
+and interrupted Maven UNKNOWN separate, as well as the earlier $20.354528 and
+$19.9898895 pairs. No statistical lift is established by this single skill run.
+
+Only these skill edits and this additive audit are prepared for publication.
+All unrelated cleanup/proposal/PDF changes remain untouched. Do not revive
+deleted monitors or alter `finish-korotkova-cli-eval-pair`. Follow the new exact
+chain to terminal safe-result/report assessment without launching another
+attempt or manually mutating its target.

@@ -17,6 +17,28 @@ symptoms to the smallest useful fix.
    pipeline definition, parameters, credentials, or build environment
    requirements.
 
+### Failed Pipeline Head With Successful Jobs
+
+A failed pipeline head must be investigated even when all child
+jobs succeeded.
+
+With TeamCity CLI, read the head's structured failure summary:
+
+```bash
+TEAMCITY_URL=<confirmed-server> teamcity run log <head-id> --failed --json
+```
+
+Inspect the `problems` array. Missing `problemOccurrences` in
+`run view --json` does not mean that failure evidence is unavailable.
+
+For `invalid_branch_name`, investigate the requested branch and
+the attached VCS roots before changing build steps or application code.
+
+Report the head ID, problem type and concise cause. Respect the task's
+data restrictions; do not dump secrets, agent trajectories or full logs.
+Claim first-green success only when the pipeline head and all required
+jobs finish successfully on the intended sources.
+
 ## Log Reading Rules
 
 - Start narrow. Use `filter=errors` before reading large log ranges.
