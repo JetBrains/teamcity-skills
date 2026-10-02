@@ -2260,3 +2260,63 @@ report refresh, budget/timeout increase, target mutation or cancellation was
 made. The heartbeat remains active solely for outstanding terminal report
 assessment and final audit. Only this audit addition is committed/pushed;
 all concurrent dirty files remain untouched.
+
+#### Monitored JVM pair final report and completion — 2026-10-02 18:02 UTC
+
+The bounded final snapshot confirms **all six dispatched IDs are terminal**.
+Maven evaluator head 9635068 is FAILURE and report 9635069 is SUCCESS, both
+finished at **18:02:16 UTC**. Gradle evaluator head 9635071 and report 9635072
+remain SUCCESS, finished at 17:51:26. Their eval jobs remain respectively
+FAILURE (Maven 9635070) and SUCCESS (Gradle 9635073). Report publication success
+does not turn the interrupted Maven evaluation into a green build.
+
+[Final report 9635069](https://teamcity-nightly.labs.intellij.net/build/9635069)
+ran **17:53:24–18:02:16 UTC (532 seconds)**. Only `publish/index.html`,
+`runs.json`, and `regressions.json` were downloaded to
+`/tmp/tc-monitored-jvm-results.klGFJr/report-9635069/publish/`.
+Its snapshot **17:53:30.088379 UTC** is after both evals finished and supersedes
+the earlier Gradle report's stale running Maven cell. It selects final Maven
+9635070 as **`verification-unexplained-head-failure`** and Gradle 9635073 as
+**passed**, both on harness `13be384dddce0262ed840555c5cd56ad1359f509`.
+
+Both report records match every shared safe-result field: case/version,
+arm/mode, revision, exit/timeout, limits, primary/secondary errors, checks,
+configuration and verification diagnostics, build-monitor counters, timings,
+and measured usage where present. Both profile fingerprints equal SHA256 of
+`claude-default-jvm-monitored-7200s-v1`; both are unassisted and have no USD cap.
+Maven's absent grade normalizes to null, and absent usage/configuration
+diagnostics normalize to empty objects, not a grade, zero cost, or successful
+validation. Its matrix metric score remains null. The retained monitor evidence
+is **56 checkpoints / 0 read failures / stoppedAgent=true**, with failed head
+9638330 and successful child 9638689. The failure cause remains unavailable.
+Gradle retains **14/14 checks**, **44 checkpoints / 0 read failures /
+stoppedAgent=false**, successful head 9637730 and both children, and declared
+Java21 in 2/2 jobs without independent runtime verification. Maven has no
+completed JDK grading diagnostics; these missing fields are not inferred.
+
+All **218 pre-pair evaluator records are exactly unchanged** against the final
+script-gate report. Since report 9635072, only Maven record 9635070 and its case
+matrix row changed. The final report retains **220 unique jobs**, all 22 case
+IDs, the ten restored rows and their provenance, 116 supported arm slots,
+assisted TDD exclusion with sample size zero, non-executable preflight and
+unsupported-mode labels, and exactly **50 HTML ledger rows** with the
+50-of-220 label. HTML visibly includes the paid-agent-stop reason. All retained
+heads across two pipelines were collected with zero warnings. Regression
+findings remain 33 insufficient-history and 33 insufficient-samples, minimum
+three samples, with no mature failures; this skill-only pair is not a measured
+baseline advantage. Gradle's contract remains draft, not promoted.
+
+New-pair spending is **$10.465626 measured for Gradle + UNKNOWN for Maven**;
+the pair total is **UNKNOWN**. Report-wide **$376.432818 across 97/220 measured
+jobs** is incomplete historical coverage, not the new-pair total or a complete
+bill. The preceding script-gate pair's **$20.354528**, source-bound pair's
+**$19.9898895**, and unknown historical spending remain separate.
+
+This bounded monitoring task and safe-artifact assessment are complete, while
+Maven's underlying head failure remains unresolved. No new eval, control,
+retry, report refresh, budget/timeout increase, target change, cancellation or
+project deletion was performed. Only this audit is committed/pushed; all
+unrelated dirty files are preserved. After reporting the final links and cost,
+delete only **`monitor-jvm-evals-with-head-failure-guard`**. Leave
+`finish-korotkova-cli-eval-pair` and every other monitor untouched; do not
+continue spending to seek green.
