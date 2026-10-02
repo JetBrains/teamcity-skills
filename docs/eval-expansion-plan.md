@@ -2491,3 +2491,67 @@ preservation of the 220 prior unique evaluator records remain pending. The
 monitor stays active until all three outer IDs and the report are terminal and
 the final safe-artifact/audit/publication requirements are satisfied. Historical
 grades, provenance, restored rows, exclusions and ledger entries are unchanged.
+
+#### Maven branch-selection rerun: final report and completion — 2026-10-02 23:46 UTC
+
+The bounded 23:46 UTC snapshot confirms **all three dispatched IDs finished
+SUCCESS**: [head 9648381](https://teamcity-nightly.labs.intellij.net/build/9648381),
+[eval 9648383](https://teamcity-nightly.labs.intellij.net/build/9648383), and
+[report 9648382](https://teamcity-nightly.labs.intellij.net/build/9648382).
+Head/report finished at **23:44:52 UTC**; eval remains finished at 23:38:41.
+The report ran 23:38:41–23:44:52 UTC (**371 seconds**). No new eval or report
+refresh was requested.
+
+Only report `publish/index.html`, `runs.json`, and `regressions.json` were
+downloaded to `/tmp/tc-maven-branch-rerun-results.hWtv7P/report-9648382/publish/`.
+Snapshot time **23:38:43.942543 UTC** is after the eval finished. Its Maven
+matrix cell selects **9648383 passed** with the correct case version, skill
+arm, CLI-only mode and full `c1d9bd8cb4cdbc47bded388fd3d27cba70dd097a` revision.
+Every shared safe-result field matches the downloaded eval artifact exactly
+apart from the intentional profile-name fingerprint: the report's
+`27ae49b4fa7f379485dfb015fc02967ad6ac62e33e3ab0e4c48e1918d1c952a6` equals SHA256
+of `claude-default-jvm-monitored-7200s-v1`. The report records no USD cap,
+unassisted execution, exit 0 without timeout, all **12/12 checks passed**, the
+same configuration/verification/monitor diagnostics, timings and measured
+usage. JDK 21 remains a matching declaration, **not independently runtime
+verified**. The original safe artifact retains deferred cleanup; the report
+does not copy its cleanup/runId bookkeeping fields.
+
+The report's outer head record still says RUNNING with no finish/revision,
+because collection preceded its own publication. This is a **stale outer-head
+snapshot**, not the final head status; the later authenticated CLI snapshot
+above establishes terminal SUCCESS. The evaluator record is terminal and
+source-bound, and there are **no running evaluator records** in this report.
+No refresh is needed to manufacture a final outer-head cell.
+
+Comparison against final historical report 9635069 confirms **all 220 previous
+unique evaluator records are exactly unchanged**, including their full safe
+results, classifications, grades and provenance. The only added evaluator is
+9648383: **221 unique jobs** total (225 references before existing dependency
+deduplication). All **22 case IDs** remain; only the Maven case matrix row
+changes. The ten restored rows, assisted TDD exclusion with sample size zero,
+116 supported arm slots, non-executable preflight and unsupported modes remain
+intact. The preflight HTML row is identical. The HTML has **exactly 50 ledger
+rows** and the **50-of-221** label. Collection still covers all retained heads
+across two pipelines, with **zero warnings**.
+
+Regression status is passed with no mature failures, but findings remain
+**33 insufficient-history / 33 insufficient-samples**, minimum three samples.
+The new Maven cohort has one passing sample, and its baseline uses a different
+harness revision. This successful skill rerun is not statistical evidence of
+baseline advantage; it also does not repair or exercise the monitor's failed-
+head diagnostic path.
+
+New-run measured cost is **$8.177791**. Historical report usage increases by
+exactly that amount to **$384.610609 across 98/221 measured jobs**, not a complete
+bill. Previous Gradle **$10.465626**, interrupted Maven **UNKNOWN**, and the
+earlier **$20.354528** / **$19.9898895** pairs remain separate; old missing usage
+is not zero and has not been backfilled.
+
+The requested single rerun and terminal safe-artifact assessment are complete.
+Only this additive audit is committed/pushed; all unrelated dirty files remain
+unchanged. No additional eval, Gradle, baseline, control, retry, report refresh,
+limit increase, target repair, cancellation, project deletion, or unrelated
+validation repair was performed. After reporting the final links and measured
+cost, delete only **`monitor-maven-branch-skill-rerun`**. Leave
+`finish-korotkova-cli-eval-pair` and all other automations untouched.
