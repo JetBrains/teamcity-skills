@@ -2388,3 +2388,42 @@ All unrelated cleanup/proposal/PDF changes remain untouched. Do not revive
 deleted monitors or alter `finish-korotkova-cli-eval-pair`. Follow the new exact
 chain to terminal safe-result/report assessment without launching another
 attempt or manually mutating its target.
+
+#### Maven branch-selection skill repair dispatch — 2026-10-02 23:19 UTC
+
+Published skill/audit revision **`c1d9bd8cb4cdbc47bded388fd3d27cba70dd097a`**
+contains exactly the two agreed skill edits and the preceding audit addition.
+All unrelated working-copy changes were excluded. A full-revision listing of
+`RunEvalCase` was empty before submission; CLI dry-run confirmed the requested
+case, profile, limits, explicit branch, clean checkout and rebuilt dependencies.
+Exactly **one** new chain was then accepted:
+
+| Role | Build ID | Queued / started UTC | Observed state |
+| --- | --- | --- | --- |
+| Evaluator head | [9648381](https://teamcity-nightly.labs.intellij.net/build/9648381) | queued 23:19:39 | RUNNING |
+| Maven eval | [9648383](https://teamcity-nightly.labs.intellij.net/build/9648383) | 23:19:39 / 23:19:40 | RUNNING |
+| Report | [9648382](https://teamcity-nightly.labs.intellij.net/build/9648382) | queued with chain | QUEUED |
+
+The dependency tree and parent-scoped full-revision listing confirm these
+three distinct IDs on the published full SHA. The eval started one second
+after queueing. Report wait reason is **Build dependencies have not been built
+yet**, not an agent-capacity or compatibility conclusion. RUNNING and the
+nonterminal SUCCESS status are not final eval success or proof of agent
+progress. Effective identity, cap absence, usage, every check and monitor
+diagnostics still require the terminal safe artifact. Current cost is UNKNOWN.
+
+A new, single-run-scoped thread heartbeat
+**`monitor-maven-branch-skill-rerun`** is ACTIVE every five minutes. It monitors
+only 9648381/9648383/9648382, performs bounded snapshots, and reports meaningful
+changes only. Its instructions explicitly distinguish structured failure
+summary `problems` from missing `run view` fields and permit targeted
+verification-head diagnosis, not evaluator logs or trajectories. It cannot
+modify the evaluated target or request further runs. After terminal artifact
+and report assessment, additive audit push, and a final result/cost message,
+it deletes only itself. No deleted monitor was revived and
+`finish-korotkova-cli-eval-pair` was not changed. Gradle was not rerun.
+
+This dispatch record is an audit-only follow-up commit; the running evaluator
+remains pinned to `c1d9bd8cb4cdbc47bded388fd3d27cba70dd097a`, not to subsequent
+documentation commits. Historical results remain untouched, and all unrelated
+dirty files are preserved.
