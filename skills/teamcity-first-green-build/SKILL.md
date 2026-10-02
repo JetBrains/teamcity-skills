@@ -77,6 +77,14 @@ operation. A generic MCP read operation is acceptable only when its guide and
 schema explicitly permit the narrowly scoped read; never assume that a
 similarly named MCP tool has the same allowlist on another server.
 
+Before using MCP to create, update, or remove a TeamCity object, confirm that
+the target server's MCP connection has **brave mode** enabled. Safe mode permits
+reads and queueing a build, but brave mode is required for these controlled
+writes. Brave mode must be enabled by a TeamCity administrator for the
+confirmed server and does not replace the caller's project permissions. If it
+is unavailable, do not attempt an MCP write; use an available first-class CLI
+operation or provide the manual completion checklist.
+
 If neither surface supports the operation, stop that operation and give the
 concrete manual completion checklist required below. Do not fall back from a
 missing CLI or MCP capability to REST through the CLI or shell.
