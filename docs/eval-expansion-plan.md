@@ -1887,3 +1887,51 @@ lift. Report 9620080 started at 12:38:47 UTC and is still RUNNING, as is head
 remains stale. The monitor stays active for terminal report verification.
 No new eval, retry, control, report refresh, timeout increase, cancellation,
 target repair or project deletion was requested.
+
+#### Script-gate pair final report and completion — 2026-10-02 12:52 UTC
+
+All six dispatched IDs are now terminal: both evals and evaluator heads are
+**FAILURE**, both report jobs are **SUCCESS**. Maven head 9620076 finished at
+12:29:16 UTC; Gradle head 9620077 finished at 12:49:05 UTC. Publication success
+does not override either failed evaluation grade.
+
+[Final report 9620080](https://teamcity-nightly.labs.intellij.net/build/9620080)
+ran **12:38:47–12:48:59 UTC (612 seconds)**. Only `publish/index.html`,
+`runs.json`, and `regressions.json` were downloaded to
+`/tmp/tc-script-gate-results.3vJGX7/report-9620080/publish/`. Its snapshot is
+**12:38:58.692231 UTC**, after both evals finished. It contains both terminal
+`skill-output-failed` results; the older Maven report's running Gradle cell
+is superseded by this snapshot. No refresh was needed or requested.
+
+Both records exactly match their safe artifacts for case/version, arm/mode,
+harness revision, limits, exit/timeout, normalized primary/secondary error,
+every check, configuration and chain/JDK diagnostics, timings, usage and tool
+counters. Neither is assisted or USD-capped. Both profile fingerprints match
+the SHA256 of `claude-default-jvm-script-gate-7200s-v1`. Maven remains **11/12**
+with a failed verification head despite its successful child; Gradle remains
+**12/14** with a successful verification chain but missing explicit Docker
+agent requirements. The final stored script gate passes for both; independent
+JDK runtime verification remains absent for both. Historical grades are not
+recomputed, and no unresolved failure is relabeled green.
+
+All **216 pre-pair evaluator records** retain their original results and
+provenance (normalizing only the previously documented empty legacy
+`configurationDiagnostics`). Since report 9620079, only Gradle record 9620081
+and its selected matrix row changed. All 22 case IDs, ten restored rows, the
+50-of-218 HTML ledger, 116 supported slots, assisted TDD exclusion with sample
+size zero, preflight-not-executable and unsupported-mode labels are preserved.
+There are zero collection warnings. Regression findings remain 33
+insufficient-history and 33 insufficient-samples at minimum three samples,
+with no mature failures; that is not evidence of eval success or skill lift.
+
+Report-wide historical usage is **$365.967192 measured across 96/218 jobs**,
+not a complete historical bill. The bounded new pair costs **$20.354528**:
+Maven **$7.2389395**, Gradle **$13.1155885**, measured for both invocations.
+The preceding source-bound pair's $19.9898895 and unknown historical costs
+remain separate. This skill-only coverage is not a fresh paired comparison.
+
+Monitoring and safe-artifact assessment are complete. No extra evaluation,
+retry, control, report refresh, timeout/budget increase, target mutation or
+project deletion was performed. All concurrent dirty files remain preserved;
+only this audit is committed/pushed. After reporting the result, delete only
+`maven-gradle-evals-script-gate`; leave every other monitor untouched.
