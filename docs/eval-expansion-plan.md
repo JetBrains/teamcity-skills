@@ -1706,3 +1706,37 @@ except for the preserved server-local Claude connection, and parameters match.
 The exact eval job has no USD-cap parameter. Its attached root is still
 `TeamCity_Sandbox_TCEvals_Evals`, `refs/heads/korotkova/evals`, monitored by
 `+:refs/heads/*`; no persistent evaluator settings or root were changed.
+
+#### Script-parameter repair dispatch — 2026-10-02 11:50 UTC
+
+Repair **`a6577850db71510c895325c5904b0cd3bfb9d90d`** is pushed. A full-SHA
+listing was empty before dispatch. Exactly two fresh skill-only runtime evals
+were requested with that full revision, branch `korotkova/evals`, clean
+checkout, and rebuilt dependencies. Both dependency trees and the full-SHA
+listing then confirmed exactly these six IDs, including distinct eval children:
+
+| Case | Head | Eval | Report | Eval start UTC |
+| --- | --- | --- | --- | --- |
+| Maven | [9620076](https://teamcity-nightly.labs.intellij.net/build/9620076) | [9620078](https://teamcity-nightly.labs.intellij.net/build/9620078) | [9620079](https://teamcity-nightly.labs.intellij.net/build/9620079) | 11:50:24 |
+| Gradle | [9620077](https://teamcity-nightly.labs.intellij.net/build/9620077) | [9620081](https://teamcity-nightly.labs.intellij.net/build/9620081) | [9620080](https://teamcity-nightly.labs.intellij.net/build/9620080) | 11:50:24 |
+
+All queued at 11:50:23 UTC. Both evals are **RUNNING**, and reports await them;
+interim `SUCCESS` status on running jobs is not a pass or proof of Claude
+progress. Requested profile: `claude-default-jvm-script-gate-7200s-v1`,
+`cli-only`, `claude -p`, agent/build limits 7200/3600 seconds, queue
+checkpoint/stall 120/600, explicit nightly server and `TeamCity_Sandbox_TCEvals`,
+no USD cap. The evaluator's `executionTimeoutMin` is 0. Case hashes remain
+`f8e61aed249c5d89f02f76e3d83f5346c505a9a4b4bd8e7e3eda2d01cbcfee9c` (Maven)
+and `437c6bddded92924d2beb9f27f39097a38cbd8b2128704fe43042e9aff4e06fd` (Gradle).
+Source pins and case assertions/statuses are unchanged. New bridge feedback is
+part of this new harness/profile, not a same-harness comparison with an older
+baseline or a claim of statistical lift.
+
+This consumes the latest bounded rerun authorization. No additional eval,
+control, report refresh, manual target fix/cancellation, project deletion, or
+new/revived monitor was requested. Old failures remain separate. At terminal,
+download only the safe eval result and report artifacts, verify identity,
+limits/absent cap, configuration/chain/JDK diagnostics, checks or absent grade,
+timings and measured cost. Current cost is unknown, not zero. Unexpected
+external cancellations/replacements must remain separately audited; do not
+request replacements. Concurrent dirty changes remain unstaged and preserved.
