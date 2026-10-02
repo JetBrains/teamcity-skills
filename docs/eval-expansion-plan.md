@@ -2161,3 +2161,102 @@ total cost remains unknown; this Gradle measurement is separate from previous
 pairs and historical costs. The heartbeat stays active. No new eval, control,
 retry, refresh, target mutation, cancellation or budget/timeout change was made.
 Only this audit addition is committed/pushed; concurrent changes are preserved.
+
+#### Monitored Maven safety stop — assessed 2026-10-02 17:55 UTC
+
+[Maven eval 9635070](https://teamcity-nightly.labs.intellij.net/build/9635070)
+finished **FAILURE** at **17:53:24 UTC** (16:55:12 start; wall **3492 seconds**).
+Only `publish/eval-result.json` was downloaded, to
+`/tmp/tc-monitored-jvm-results.klGFJr/maven/publish/eval-result.json`.
+It confirms active case `clean-spring-boot-maven`, hash
+`f8e61aed249c5d89f02f76e3d83f5346c505a9a4b4bd8e7e3eda2d01cbcfee9c`, skill arm,
+`cli-only`, harness `13be384dddce0262ed840555c5cd56ad1359f509`, profile
+`claude-default-jvm-monitored-7200s-v1`, limits **7200/3600 seconds**, and absent
+`agentMaxBudgetUsd`.
+
+The live guard **did intervene**: `stoppedAgent=true`, state `intervened`,
+**56 checkpoints / 0 read failures**, interval 60 seconds. The last observed
+chain and post-agent terminal-chain diagnostics agree: head **9638330** is
+finished FAILURE, its sole child **9638689** is finished SUCCESS, pattern
+`head-failed-children-succeeded`, `problemEvidence=unavailable`, and
+`requiresInvestigation=true`. No measured problem count is available. This
+is live evidence of the paid-agent stop path, not proof of a dollar saving,
+a billing cap, or discovery of the underlying TeamCity failure cause.
+
+Agent exit is **-15**, timeout false, result **errored**, and both primary and
+secondary categories are **`verification-unexplained-head-failure`**. There
+is **no grade**, `checks` is empty, and no configuration, per-job grading or
+JDK declaration/runtime diagnostics were produced. Observation's `builds`
+array is empty; terminal-chain evidence is retained separately. Independent
+child success must not be used to fabricate a grade for interrupted output.
+
+First-class CLI metadata independently confirms the same terminal chain:
+
+| Verification build | Status | UTC start–finish |
+| --- | --- | --- |
+| [Head 9638330](https://teamcity-nightly.labs.intellij.net/build/9638330) | FAILURE | 17:50:19–17:52:13 |
+| [Maven verify 9638689](https://teamcity-nightly.labs.intellij.net/build/9638689) | SUCCESS | 17:50:19–17:52:09 |
+
+The test-only projection confirms **39/39 successful tests across six suites**
+in the verify child. The head's CLI metadata exposes neither
+`problemOccurrences`, `failedToStart` nor `canceledInfo`; therefore the
+**actual head-failure cause remains unknown**, not zero problems. No logs,
+prompts, trajectories or alternative API/UI surface were accessed. An
+agent-authored Java21.0.8 status indication is not independent JVM runtime
+verification. A full-source-revision-filtered listing confirms head 9638330
+on source pin `315ca51dcb0ec25f2cce8f99fa239ec23717f3f6`, and includes earlier
+failed heads 9637458 and 9635601 from the same eval. These are agent-invocation
+attempts, not additional eval samples or retries requested by this monitor.
+
+There is **no `agentUsage`**: the provider's final statistics were not obtained
+after intervention. Maven cost and the new pair's total are **UNKNOWN**, not
+zero. The only measured new-pair cost remains Gradle **$10.465626**; earlier
+script-gate **$20.354528**, source-bound **$19.9898895**, and unmeasured
+historical spending remain separate. Phase seconds: bootstrap 6, preparation
+2.851, agent 3469.896, observation 0.604, cleanup 0.005, total 3473.357;
+there are no build-wait or grading phases. Safe tool counters: 158 total,
+69 recognized CLI, 89 other, zero TeamCity MCP/probe calls. Cleanup is deferred;
+the guard stopped the paid process, not a TeamCity build, and no target was
+deleted or manually changed.
+
+#### Monitored Gradle report — assessed 2026-10-02 17:55 UTC
+
+[Report 9635072](https://teamcity-nightly.labs.intellij.net/build/9635072)
+finished **SUCCESS**, **17:41:15–17:51:26 UTC (611 seconds)**; evaluator head
+9635071 also finished SUCCESS at 17:51:26. Only `publish/index.html`,
+`runs.json`, and `regressions.json` were downloaded to
+`/tmp/tc-monitored-jvm-results.klGFJr/report-9635072/publish/`.
+The snapshot was generated at **17:41:22.683819 UTC**, after Gradle finished
+but before Maven's interruption. Gradle record 9635073 and its selected matrix
+cell are final **passed**. All shared safe-result fields match the original
+artifact, including all 14 checks, configuration and chain/JDK diagnostics,
+monitor counters, exit/timeout, phase timings and usage. Its profile fingerprint
+`27ae49b4fa7f379485dfb015fc02967ad6ac62e33e3ab0e4c48e1918d1c952a6` matches
+SHA256 of the requested profile; absent cap and secondary error normalize to
+null. It is not assisted, and Gradle's case remains draft.
+
+Maven record 9635070 is **stale running / result null** in this snapshot;
+its matrix cell still selects the previous 9620078 sample. Neither represents
+the final interrupted Maven result. At the bounded 17:55 checkpoint, Maven
+report **9635069** was RUNNING (started 17:53:24), while evaluator head
+**9635068** was nonterminal with FAILURE status. Await this already-running
+report; do not refresh or claim whole-pair publication complete.
+
+Programmatic comparison against final script-gate report 9620080 confirms
+**all 218 historical evaluator records exactly unchanged**, with only the two
+new IDs added, for **220 unique jobs**. All 22 case IDs are preserved; only
+the Gradle case matrix row changed. This preserves the ten restored rows and
+their grades/provenance, the assisted TDD exclusion (sample size zero), 116
+supported arm slots, the non-executable preflight and unsupported-mode labels.
+The HTML contains **exactly 50 ledger rows** and the 50-of-220 label. Collection
+is all retained heads across two pipelines, with **zero warnings**. Regression
+status is passed with no mature failures, but findings remain **33
+insufficient-history / 33 insufficient-samples**, minimum three samples;
+this does not establish statistical skill lift or override a failed eval.
+
+Report-wide measured historical usage is **$376.432818 across 97/220 jobs**,
+not a complete bill or the new pair total. No new eval, control, retry,
+report refresh, budget/timeout increase, target mutation or cancellation was
+made. The heartbeat remains active solely for outstanding terminal report
+assessment and final audit. Only this audit addition is committed/pushed;
+all concurrent dirty files remain untouched.
