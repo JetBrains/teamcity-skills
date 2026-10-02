@@ -1740,3 +1740,53 @@ limits/absent cap, configuration/chain/JDK diagnostics, checks or absent grade,
 timings and measured cost. Current cost is unknown, not zero. Unexpected
 external cancellations/replacements must remain separately audited; do not
 request replacements. Concurrent dirty changes remain unstaged and preserved.
+
+#### Maven script-gate result — assessed 2026-10-02 12:22 UTC
+
+[Maven eval 9620078](https://teamcity-nightly.labs.intellij.net/build/9620078)
+finished **FAILURE** at 12:20:15 UTC (started 11:50:24; wall 1791s). Its safe
+`publish/eval-result.json` matches the exact Maven case/hash, skill arm,
+`cli-only`, harness `a6577850db71510c895325c5904b0cd3bfb9d90d`, profile
+`claude-default-jvm-script-gate-7200s-v1`, 7200/3600-second limits, and absent
+USD cap. Agent exit is 0, no timeout; result and grade are **failed**, with
+no primary or secondary execution-error category. This is a completed grade,
+unlike the preceding ungraded source-bound pair.
+
+**11/12 checks passed.** Only `firstBuild` failed. Passed checks:
+`configurationValidated`, `testsExecutedAndReported`, `artifactsPublished`,
+`toolchain`, `sourceMutations`, `minimumJobs`, `requiredStepTypes`,
+`requiredStepProperties`, `forbiddenStepProperties`, `requiredArtifactRules`,
+and `requiredTests`. Final stored configuration has two checked script steps,
+zero invalid steps and no script-parameter issues. This establishes final
+configuration validity for that narrow gate, not what every intermediate
+agent attempt contained.
+
+The source-matched verification chain has one head attempt:
+[head 9620587](https://teamcity-nightly.labs.intellij.net/build/9620587) is
+**FAILURE**, while its sole child
+[Maven verify 9620878](https://teamcity-nightly.labs.intellij.net/build/9620878)
+is **SUCCESS**, with **39/39 successful tests and 8 artifacts**. A read-only CLI
+tree confirms both terminal states. The head ran 12:16:35–12:17:42 UTC; the child
+12:16:35–12:17:41. Head status text reports 39 passed tests and a successful
+child chain but does not explain its FAILURE. `run view` does not expose build
+problem details on this CLI, so the root cause remains unknown; no raw logs,
+prompts or trajectories were read. Child success does not override the failed
+head or justify regrading. JDK21 is declared for the one job, but
+`runtimeVerified` remains false; an agent-authored build-status message naming
+Java21 is not independent runtime proof.
+
+Measured cost: **$7.2389395** for this Maven invocation only; new Gradle cost is
+not yet available. Usage: 190 input / 59323 output / 8711109 cache-read /
+139109 cache-write tokens. Safe counters record 107 tools, 1 recognized CLI,
+zero TeamCity MCP calls; the recognized-CLI undercount caveat still applies.
+Phase seconds: bootstrap 8, preparation 2.866, agent 1762.223, observation
+0.086, build wait 2.317, grading 3.215, cleanup 0.005, total 1770.713.
+Cleanup is deferred; no project was deleted or target manually repaired.
+
+Safe result retained locally at
+`/tmp/tc-script-gate-results.3vJGX7/maven/publish/eval-result.json`.
+Maven report 9620079 is RUNNING, head 9620076 is nonterminal FAILURE.
+Gradle eval 9620081 remains RUNNING, report 9620080 waits on it. Monitor remains
+active; no new evaluation, retry, control, report refresh or cancellation was
+requested. Assess the terminal reports and remaining Gradle result before
+closing the monitor or claiming an overall outcome.
