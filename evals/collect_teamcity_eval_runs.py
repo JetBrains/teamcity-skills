@@ -32,6 +32,7 @@ import tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from first_green_evidence import safe_verification_diagnostics, safe_verification_error
 from pipeline_validation import safe_script_diagnostics
+from build_monitor import STOP_CATEGORY, safe_monitor_diagnostics
 
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -63,6 +64,7 @@ SAFE_ERROR_CATEGORIES = {
     "agent-budget-exhausted", "agent-result-failed",
     "verification-pipeline-ambiguous", "verification-chain-incomplete",
     "verification-invalid-script-steps",
+    "verification-unexplained-head-failure",
     "build-not-queued", "build-wait-timeout", "build-queue-stalled",
     "mcp-not-invoked", "mcp-cli-invoked", "mcp-no-configuration",
     "mcp-sideload-flags-disabled", "mcp-enterprise-managed-config",
@@ -424,6 +426,7 @@ def download_result(warnings, server, run_id, known_case_ids=None):
         error_category = safe_error_category(result.get("errorCategory"))
         if result.get("agentTimedOut") is True:
             error_category = "agent-timeout"
+        monitor = safe_monitor_diagnostics(result.get("buildMonitorDiagnostics"))
         return {
             "caseId": known_value(result.get("caseId"), known_case_ids),
             "caseStatus": known_value(result.get("caseStatus"), SAFE_CASE_STATUSES),
@@ -451,6 +454,7 @@ def download_result(warnings, server, run_id, known_case_ids=None):
                 and result["agentMaxBudgetUsd"] > 0 else None
             ),
             "verificationDiagnostics": safe_verification_diagnostics(result.get("verificationDiagnostics")),
+            **({"buildMonitorDiagnostics": monitor} if monitor else {}),
             "configurationDiagnostics": safe_script_diagnostics(result.get("configurationDiagnostics")),
             "verificationErrorCategory": safe_verification_error(result.get("verificationErrorCategory")),
             **{name: result[name] for name in ("agentTimeoutSeconds", "buildTimeoutSeconds")
@@ -500,7 +504,11 @@ def classify(server, run, result):
                 if check.get("passed") is False
             ]
             detail = "failed assertions: " + ", ".join(failed_checks) if failed_checks else "runner graded a failed result"
+            if result.get("verificationErrorCategory") == STOP_CATEGORY:
+                detail += "; terminal head failed with successful children; cause unavailable through CLI"
             return "skill-output-failed", detail
+        if result.get("errorCategory") == STOP_CATEGORY:
+            return STOP_CATEGORY, "paid agent stopped: terminal head failed with successful children; cause unavailable through CLI; investigate before rerun"
         if result.get("errorCategory") == "agent-permission-failure":
             return "agent-permission-failure", "Claude's non-interactive tool policy denied required commands"
         if result.get("errorCategory") == "agent-budget-exhausted":

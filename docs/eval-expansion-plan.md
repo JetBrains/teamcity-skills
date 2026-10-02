@@ -1935,3 +1935,84 @@ retry, control, report refresh, timeout/budget increase, target mutation or
 project deletion was performed. All concurrent dirty files remain preserved;
 only this audit is committed/pushed. After reporting the result, delete only
 `maven-gradle-evals-script-gate`; leave every other monitor untouched.
+
+#### User-requested unexplained-head monitoring — 2026-10-02, local implementation
+
+The user asked why Maven's failed head remained unexplained and requested
+monitoring to avoid wasting further paid agent time. A fresh read-only check
+of head 9620587 with authenticated first-class **TeamCity CLI 1.3.0** confirms
+the diagnostic limitation: `run view --json` exposes FAILURE and the status
+text reporting 39 passed tests / one successful child, but exposes neither
+`problemOccurrences`, `failedToStart` nor `canceledInfo`. The CLI has no
+first-class run-problems command. Missing fields are **unavailable evidence**,
+not zero build problems. No logs, prompts, trajectories, REST or UI bypass
+were used, so the actual TeamCity head-failure cause remains unestablished.
+The earlier runner also omitted the head state and this evidence gap from
+the safe result: that is a harness observability defect, not an explanation
+of the TeamCity failure.
+
+The working copy now includes an internal read-only live monitor for
+source-bound first-green Pipeline YAML cases, identically in both arms:
+
+- During the agent phase, check after each 60-second process wait. Each
+  checkpoint has a 15-second total CLI read deadline, individual commands at
+  most 10 seconds, additionally bounded by the existing agent deadline.
+  Existing agent/build timeouts and USD-budget settings are unchanged.
+- Bind the server pipeline to the case's local YAML; inspect only that
+  temporary project's selected head and dependency tree. Missing/incomplete
+  source, ambiguous pipelines, nonterminal builds and ordinary child failures
+  cannot trigger the new stop. Before intervention, recheck for a newer head
+  and changed local/server configuration. Read failures are visible, not a
+  reason to infer that the agent should be stopped.
+- If a terminal head is FAILURE/ERROR, all children finished SUCCESS, and
+  no structured failure evidence is exposed, emit fixed-category diagnostics
+  and stop the local paid-agent process group, including descendants. Do not
+  cancel any TeamCity build, edit targets, automatically retry, or grade
+  interrupted output. Report `verification-unexplained-head-failure` with no
+  fabricated grade or cost. A provider's missing final usage stays unknown;
+  this is a safety stop, not a dollar cap or a billing guarantee.
+- Safe results retain head/child IDs and states, problem-evidence availability,
+  measured problem counts only when actually present, checkpoint/read-failure
+  counts and whether the agent was stopped. Never publish scripts, status
+  text, problem descriptions, parameters, tokens or raw logs. State-change
+  messages and the report's fixed reason make the incident visible.
+- Post-agent observation also records the same head/child mismatch, covering
+  agents that exit before a live checkpoint. It preserves completed grades
+  and primary errors, adding a secondary diagnostic-gap category. Historical
+  results without these fields are not regraded or retroactively monitored.
+
+Validation: **247 workspace unit tests passed**, including **24 new synthetic
+monitor/intervention tests** and a real local subprocess-descendant stop test;
+all **22 case contracts** validate, and whitespace checks pass. No Claude or
+TeamCity build was started by these tests. Concurrent MCP isolation/runner
+YAML, cleanup, schema, skill-routing, proposal, test and PDF edits remain intact.
+Only narrow additions were made to the already-dirty runner; unrelated edits
+are not part of this feature.
+
+This implementation is **local, not committed/pushed or deployed to the
+server evaluator**. No paid eval, control, retry, report refresh, target edit,
+project deletion or recurring-monitor recreation was performed. Deploy this
+as a new harness revision before relying on it for a separately authorized
+future run; do not claim it protected the already completed pair. It prevents
+continued unattended spending on this specific unexplained-head pattern once
+observed, not every possible CI failure, and does not manufacture its cause.
+
+#### Monitoring publication authorization and isolated validation — 2026-10-02
+
+The user approved a separate commit and push of this monitoring change only,
+without starting another eval. The staged changeset contains the monitor,
+runner integration, safe evidence/collector additions, synthetic tests and
+this audit. The concurrent removal of strict MCP isolation was excluded from
+the staged runner; it remains untouched in the working copy, alongside every
+other unrelated local change.
+
+An export of the exact staged code, using the committed versions of all
+unrelated files, passes **229 unit tests**, including the **24 new monitor
+tests**, and validates **22 case contracts with zero errors**. This differs
+from the earlier 247-test working-copy result because the unrelated local
+test changes are not included. Staged whitespace checks also pass.
+
+Publication makes the monitor available to future explicitly authorized runs
+using this new harness revision. It does not activate monitoring for the
+completed pair or prove live-provider intervention. No new eval, retry,
+control, report refresh or recurring monitor was requested or started.

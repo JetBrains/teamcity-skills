@@ -7,6 +7,7 @@ VERIFICATION_ERROR_CATEGORIES = {
     "verification-no-pipeline", "verification-pipeline-ambiguous",
     "verification-chain-incomplete", "verification-observation-failed",
     "verification-invalid-script-steps",
+    "verification-unexplained-head-failure",
     "build-not-queued", "build-wait-timeout", "build-queue-stalled",
 }
 
@@ -136,6 +137,18 @@ def observe_chain(tc, project_id, build, required_jdk):
                                                        and not test["ignored"] for test in tests),
                             "artifactCount": len(published_artifacts)})
     _, _, jdk = jdk_evidence({}, required_jdk, jobs)
+    head = next(node for node in build["nodes"] if node["id"] == build["id"])
+    metadata = None
+    if head.get("status") in ("FAILURE", "ERROR"):
+        try:
+            metadata = tc.build(head["id"])
+        except (RuntimeError, OSError, ValueError):
+            # A diagnostics read failure is not evidence of zero problems.
+            pass
+        if metadata is not None and any(
+            metadata.get(key) != head[key] for key in ("id", "buildTypeId", "state", "status")
+        ):
+            raise EvidenceError("verification-chain-incomplete")
     return {
         "testCount": len(all_tests), "tests": all_tests, "jobResults": job_results,
         "artifacts": artifacts, "properties": {},
@@ -144,7 +157,69 @@ def observe_chain(tc, project_id, build, required_jdk):
         "headId": build["id"], "selection": build["selection"], "builds": diagnostics,
         "testCount": len(all_tests), "artifactCount": len(artifacts),
         "attempts": build["attempts"], "jdk": jdk,
+        "terminalChain": terminal_chain_diagnostics(build["nodes"], build["id"], metadata),
     }
+
+
+def terminal_chain_diagnostics(nodes, head_id, metadata=None):
+    """Preserve head/child disagreement without treating status text as a cause."""
+    head = next(node for node in nodes if node["id"] == head_id)
+    children = [node for node in nodes if node["id"] != head_id]
+    terminal = bool(children) and all(node["state"] == "finished" for node in nodes)
+    anomaly = (terminal and head.get("status") in ("FAILURE", "ERROR")
+               and all(node.get("status") == "SUCCESS" for node in children))
+    problems = (metadata or {}).get("problemOccurrences")
+    count = problems.get("count") if isinstance(problems, dict) else None
+    if type(count) is not int or count < 0:
+        count = None
+    recorded = bool(count) or (isinstance(problems, dict)
+                              and bool(problems.get("problemOccurrence")))
+    # These indicate available structured evidence, not a diagnosed root cause.
+    recorded = recorded or (metadata or {}).get("failedToStart") is True
+    recorded = recorded or bool((metadata or {}).get("canceledInfo"))
+    safe = {
+        "headId": head_id, "headState": head["state"], "headStatus": head.get("status"),
+        "childCount": len(children),
+        "successfulChildCount": sum(node.get("status") == "SUCCESS"
+                                    and node["state"] == "finished" for node in children),
+        "failurePattern": "head-failed-children-succeeded" if anomaly else "none",
+        "problemEvidence": "recorded" if recorded else "unavailable",
+        "requiresInvestigation": anomaly,
+        "children": children,
+    }
+    if count is not None:
+        safe["problemCount"] = count
+    return safe_terminal_chain_diagnostics(safe)
+
+
+def safe_terminal_chain_diagnostics(value):
+    if not isinstance(value, dict):
+        return {}
+    safe = {key: value[key] for key in (
+        "headId", "childCount", "successfulChildCount", "problemCount"
+    ) if type(value.get(key)) is int and value[key] >= 0}
+    for key, allowed in (
+        ("headState", ("queued", "running", "finished")),
+        ("headStatus", ("SUCCESS", "FAILURE", "ERROR", "UNKNOWN", "CANCELED")),
+        ("failurePattern", ("none", "head-failed-children-succeeded")),
+        ("problemEvidence", ("recorded", "unavailable")),
+    ):
+        if isinstance(value.get(key), str) and value[key] in allowed:
+            safe[key] = value[key]
+    if type(value.get("requiresInvestigation")) is bool:
+        safe["requiresInvestigation"] = value["requiresInvestigation"]
+    if isinstance(value.get("children"), list):
+        safe["children"] = []
+        for child in value["children"]:
+            if not isinstance(child, dict) or type(child.get("id")) is not int or child["id"] <= 0:
+                continue
+            item = {"id": child["id"]}
+            if child.get("state") in ("queued", "running", "finished"):
+                item["state"] = child["state"]
+            if child.get("status") in ("SUCCESS", "FAILURE", "ERROR", "UNKNOWN", "CANCELED"):
+                item["status"] = child["status"]
+            safe["children"].append(item)
+    return safe
 
 
 def safe_verification_diagnostics(value):
@@ -157,6 +232,9 @@ def safe_verification_diagnostics(value):
             safe[key] = value[key]
     if value.get("selection") in ("source-matched", "unique-pipeline"):
         safe["selection"] = value["selection"]
+    terminal = safe_terminal_chain_diagnostics(value.get("terminalChain"))
+    if terminal:
+        safe["terminalChain"] = terminal
     safe["builds"] = []
     for item in value.get("builds", []) if isinstance(value.get("builds"), list) else []:
         if not isinstance(item, dict) or type(item.get("id")) is not int:
