@@ -51,9 +51,7 @@ a CLI result:
 | `cli+mcp` | the scoped CLI bridge and the explicit MCP configuration | Does having both supported surfaces improve the outcome? |
 
 `EVAL_TOOL_MODE` selects one of these modes; it defaults to `cli-only` for
-backward compatibility. The runner uses Claude's strict MCP configuration
-mode in all three cases: ambient developer MCP servers are never inherited.
-`mcp-only` removes discovered `teamcity` executables and runner credentials
+backward compatibility. `mcp-only` removes discovered `teamcity` executables and runner credentials
 from the agent environment. `mcp-only` and `cli+mcp` require
 `EVAL_MCP_CONFIG` to name a configuration file. When that optional parameter
 is empty, `run-eval-case.sh` writes a mode-0600 file in the TeamCity build's

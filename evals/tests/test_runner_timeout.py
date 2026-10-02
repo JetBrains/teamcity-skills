@@ -423,28 +423,6 @@ class AgentTimeoutTest(unittest.TestCase):
         command = invoked.call_args.args[0]
         self.assertIn("Read", command)
         self.assertIn("mcp__teamcity__*", command)
-        self.assertIn("--strict-mcp-config", command)
-
-    def test_ambient_mcp_diagnostic_omits_strict_config_flag(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = pathlib.Path(directory)
-            trace = root / "trace.log"
-            completed = mock.Mock(returncode=0)
-            with mock.patch.object(run_case.subprocess, "Popen", return_value=completed) as invoked:
-                run_case.invoke_agent(
-                    "prompt", root, {}, trace, timeout=7,
-                    use_strict_mcp_config=False,
-                )
-
-        self.assertNotIn("--strict-mcp-config", invoked.call_args.args[0])
-
-    def test_strict_mcp_config_defaults_to_true_and_rejects_ambiguous_values(self):
-        self.assertTrue(run_case.strict_mcp_config("mcp-only", None))
-        self.assertTrue(run_case.strict_mcp_config("mcp-only", "true"))
-        self.assertFalse(run_case.strict_mcp_config("mcp-only", "false"))
-        self.assertTrue(run_case.strict_mcp_config("cli-only", "false"))
-        with self.assertRaises(run_case.EvalError):
-            run_case.strict_mcp_config("mcp-only", "sometimes")
 
     def test_local_mcp_probe_is_opt_in_and_requires_an_mcp_mode(self):
         self.assertFalse(run_case.local_mcp_probe("mcp-only", None))

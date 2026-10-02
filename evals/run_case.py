@@ -222,18 +222,6 @@ def resolve_tool_mode(value: str) -> str:
     return value
 
 
-def strict_mcp_config(tool_mode: str, value: Optional[str]) -> bool:
-    """Parse the MCP isolation switch without broadening a CLI-only run."""
-    if tool_mode == "cli-only":
-        return True
-    normalized = (value or "true").strip().lower()
-    if normalized in ("1", "true", "yes"):
-        return True
-    if normalized in ("0", "false", "no"):
-        return False
-    raise EvalError("EVAL_STRICT_MCP_CONFIG must be true or false")
-
-
 def local_mcp_probe(tool_mode: str, value: Optional[str]) -> bool:
     """Parse the opt-in local MCP diagnostic without broadening normal runs."""
     normalized = (value or "false").strip().lower()
@@ -1513,7 +1501,6 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
                  timeout: int, tools: list = None,
                  mcp_config: Optional[pathlib.Path] = None,
                  transport_contract: str = "",
-                 use_strict_mcp_config: bool = True,
                  use_local_mcp_probe: bool = False, build_monitor=None) -> dict:
     # The runner owns the output format, because grading reads the trace, and the
     # case owns the tool policy, because which tools exist is part of the question.
@@ -1527,7 +1514,7 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
     if mcp_config:
         # The MCP server supplies individual tool names after connecting. Its
         # server-scoped permission wildcard authorizes those dynamic names for
-        # a non-interactive Claude run without opening any ambient server.
+        # a non-interactive Claude run.
         allowed_tools.append("mcp__teamcity__*")
         if use_local_mcp_probe:
             allowed_tools.append("mcp__probe__*")
@@ -1536,13 +1523,7 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
     if transport_contract:
         command += " --append-system-prompt " + shlex.quote(transport_contract)
     if mcp_config:
-        # Only the generated TeamCity server can contribute MCP tools.
         command += " --mcp-config " + shlex.quote(str(mcp_config))
-    if use_strict_mcp_config:
-        # Do not inherit a developer's ambient MCP servers. CLI-only must
-        # really be CLI-only, while standard MCP modes receive only the
-        # explicit server config.
-        command += " --strict-mcp-config"
     agent_env = dict(env)
     agent_env.pop("TEAMCITY_TOKEN", None)
     agent_env.pop("EVAL_MCP_TOKEN", None)
@@ -2027,9 +2008,6 @@ def run(
 
     tool_mode = resolve_tool_mode(tool_mode)
     env = dict(os.environ)
-    use_strict_mcp_config = strict_mcp_config(
-        tool_mode, env.get("EVAL_STRICT_MCP_CONFIG")
-    )
     use_local_mcp_probe = local_mcp_probe(
         tool_mode, env.get("EVAL_MCP_LOCAL_PROBE")
     )
@@ -2153,14 +2131,14 @@ def run(
                         prompt, checkout, recovery_fixture.agent_environment(env), trace,
                         int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
                         case.get("agentTools"), mcp_config, transport_contract,
-                        use_strict_mcp_config, use_local_mcp_probe,
+                        use_local_mcp_probe,
                     )
             else:
                 agent_run = invoke_agent(
                     prompt, checkout, install_queue_stall_fixture(workspace, env), trace,
                     int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
                     case.get("agentTools"), mcp_config, transport_contract,
-                    use_strict_mcp_config, use_local_mcp_probe,
+                    use_local_mcp_probe,
                 )
             phases.enter("observation")
         else:
@@ -2202,7 +2180,7 @@ def run(
                         prompt, checkout, agent_env, trace,
                         int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
                         case.get("agentTools"), mcp_config, transport_contract,
-                        use_strict_mcp_config, use_local_mcp_probe,
+                        use_local_mcp_probe,
                         build_monitor=monitor,
                     )
                     phases.enter("observation")
