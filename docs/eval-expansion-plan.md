@@ -1790,3 +1790,36 @@ Gradle eval 9620081 remains RUNNING, report 9620080 waits on it. Monitor remains
 active; no new evaluation, retry, control, report refresh or cancellation was
 requested. Assess the terminal reports and remaining Gradle result before
 closing the monitor or claiming an overall outcome.
+
+#### Maven script-gate report assessed — 2026-10-02 12:32 UTC
+
+[Maven report 9620079](https://teamcity-nightly.labs.intellij.net/build/9620079)
+finished **SUCCESS** at 12:29:11 UTC (12:20:19 start; 532 seconds). Evaluator
+head 9620076 is terminal FAILURE. Only `publish/index.html`, `runs.json`, and
+`regressions.json` were downloaded to
+`/tmp/tc-script-gate-results.3vJGX7/report-9620079/publish/`. The report snapshot
+is **12:20:22.737966 UTC**, after Maven finished while Gradle was still running.
+Maven's `skill-output-failed` record matches its safe artifact: identity,
+revision, all checks, script/chain/JDK diagnostics, exit/timeout/error, limits,
+usage, tool counters and timings. Its profile fingerprint is the verified
+SHA256 `513e2798e28c0092a5a55875ed5a363a37443fed9328faaca0168a9b720f574e`;
+the raw result has no USD cap and the report normalizes that absence to null.
+
+All **216** evaluator records from verified report 9595993 remain unchanged,
+apart from the harmless addition of empty `configurationDiagnostics` to legacy
+results. The two new IDs bring history to **218 unique evaluator jobs**. All
+22 case IDs and every matrix row except the newly completed Maven row remain
+unchanged, preserving the ten restored rows and original grades/provenance.
+The HTML ledger contains exactly 50 rows and its 50-of-218 label. Assisted TDD
+is explicitly excluded with sample size zero; preflight remains not executable
+and unsupported modes remain excluded from the 116-slot denominator.
+
+There are zero collection warnings. Regression JSON reports no mature failures,
+with 33 insufficient-history and 33 insufficient-samples findings at minimum
+three samples; publication/regression SUCCESS does not change Maven's failed
+eval or establish a skill advantage. Report-wide measured usage is
+**$352.851604 across 95/218 jobs**, incomplete historical coverage, not this
+pair's cost. The Gradle record 9620081 is still a running snapshot with null
+result/revision and is not final evidence. At this checkpoint Gradle head/eval
+9620077/9620081 remain RUNNING, and report 9620080 waits for its dependency.
+No new run, refresh, cancellation, target edit or deletion was requested.
