@@ -178,7 +178,6 @@ Discover state only against the confirmed target server:
 - Project connections and inherited connections.
 - Project features that may affect checkout, commit status publishing, Docker,
   or credentials.
-- Recent failures and last successful baseline builds for related objects.
 - Available build agents, cloud images, compatible environments, and pipeline
   capabilities. Query those from the target server before choosing `runs-on`.
 - TeamCity version, Pipelines YAML schema/version, and support for pipeline
@@ -251,15 +250,10 @@ from ordinary build-start permission. Hand off the exact repair:
 3. Re-run the same personal command with `--local-changes=git --no-push` and
    confirm that TeamCity accepted a personal build.
 
-If the project owner instead wants a normal VCS-triggered run, obtain explicit
-approval to commit and push first. State which branch and triggers the push
-will affect; it is a different action from a patch-based personal build.
-
-If that build fails with a VCS access error, continue to step 6: reuse or create
-a target-project GitHub connection, then create a connection-backed VCS root.
-Report a blocker only if that cannot be completed or a later checkout still
-fails. Do not retry unchanged, create credentialless roots, or repoint to
-unrelated or cross-project roots.
+If TeamCity cannot collect changes for that build, use
+[`shared/build-diagnostics.md`](../shared/build-diagnostics.md) before changing
+the VCS configuration. Continue with step 6 only when its evidence identifies
+the VCS connection or root as the source of the problem.
 
 ### 6. Choose VCS Connection Strategy
 
@@ -393,38 +387,6 @@ Preserve the requested repository, branch and revision pin.
 Do not switch to `main`/`master` or broaden branch filters merely
 to suppress a branch-selection error.
 
-If TeamCity reports `invalid_branch_name` or substitutes default-branch
-revisions, treat the run as failed even if its jobs and tests pass.
-Inspect the branch mapping and correct the demonstrated mismatch.
-Retry only after a concrete correction and within the user's
-authorized run limits.
-
-#### Build-Time VCS Credential Stop Rule
-
-Stop and ask the user to fix repository access manually in TeamCity or GitHub
-when all of these are true:
-
-- A build or child build fails before checkout/change collection with a VCS
-  access error such as `Repository not found`, authentication failed, 401, or
-  404.
-- The VCS root properties do not show durable build-time credentials, for
-  example no stored username/password, SSH key, token, or usable app-backed
-  secret is attached.
-- A supported remote-run or uploaded-patch personal build either fails the same
-  way or would still require TeamCity to read the same private base repository.
-
-A VCS root connection test is not enough to continue if the actual build-time
-change collection fails. Treat that mismatch as evidence that the interactive
-user connection can test the repository but the build configuration lacks
-durable checkout credentials.
-
-The final report should name the exact failing build ID, VCS root ID, repository
-URL, and the manual prerequisite: install/authorize the TeamCity GitHub App for
-the repository, attach a project-scoped GitHub App/service connection that
-stores build-time credentials, or configure an approved service SSH key/token in
-the VCS root. Do not ask for or invent a PAT unless the user explicitly chooses
-that fallback.
-
 ### 7. Create Or Update The TeamCity Pipeline
 
 Create or update the selected TeamCity pipeline using the confirmed VCS root and
@@ -471,12 +433,11 @@ Prefer the smallest pipeline that can prove the repository. Preserve existing
 multi-job topology when the repository already defines it.
 
 Keep one primary verification pipeline identified throughout the task. A
-capability probe answers only its narrow diagnostic question; it does not
-replace the requested build/test jobs or prove their outputs. Reuse the primary
-pipeline for concrete corrections. If a separate probe is necessary, state the
-question it will settle, then apply the finding to the primary configuration
-or report the remaining blocker. Do not multiply probe pipelines to retry an
-unchanged failure or bypass an accepted queue wait.
+capability probe answers only its stated question; it does not replace the
+requested build/test jobs or prove their outputs. Reuse the primary pipeline
+for concrete corrections. If a separate probe is necessary, state the question
+it will settle, then apply the finding to the primary configuration or report
+the remaining blocker.
 
 #### Report Meaningful Build Status
 
@@ -536,11 +497,10 @@ missing.
 Retain the final configuration at the source path requested by the user. After
 server-side corrections, reconcile that file with the read-back configuration
 and validate it again before the verification run. Keep temporary validation
-copies and diagnostic files under `/tmp` (or the platform's temporary directory),
-not at the final configuration path or in other checkout files. A CI setup task
-must leave the checkout unchanged except for the explicitly requested
-configuration source path and changes the user authorized; an untracked probe
-file is still a source mutation.
+copies outside the checkout, not at the final configuration path or in other
+checkout files. A CI setup task must leave the checkout unchanged except for
+the explicitly requested configuration source path and changes the user
+authorized; an untracked probe file is still a source mutation.
 
 Also apply the **Script Parameter Gate** in `shared/build-step-selection.md`
 to every script step in the exact local and server-stored YAML. A schema-valid
@@ -551,9 +511,8 @@ generic queue reason does not establish a capacity shortage.
 
 ### 9. Validate Compatibility
 
-Before spending time debugging build failures, validate that the generated
-pipeline and jobs are compatible with at least one TeamCity build agent or
-build environment.
+Before queueing, validate that the generated pipeline and jobs are compatible
+with at least one TeamCity build agent or build environment.
 
 For configuration-only work, this phase is a bounded completion gate. After
 the saved-YAML audit, make at most one inventory query and one targeted
@@ -563,16 +522,16 @@ or continue general discovery. When the check succeeds, return the final result
 immediately; do not spend the remaining agent budget refining an already valid
 configuration.
 
-### 9a. Resolve Pipeline Parameters Before Agent Diagnosis
+### 9a. Resolve Pipeline Parameters Before Compatibility Checks
 
 Server-backed YAML validation checks Pipeline shape but does not prove that all
 `%name%` substitutions resolve. After saving a Pipeline, pull back the exact
-server-stored YAML and inspect substitutions in script content before calling a
-queued job an agent problem:
+server-stored YAML and inspect substitutions in script content before the
+compatibility check or queueing:
 
 ```bash
-TEAMCITY_URL=<server> teamcity pipeline pull <pipeline-id> --output /tmp/pipeline.yml
-rg -n '%[^%]+%' /tmp/pipeline.yml
+TEAMCITY_URL=<server> teamcity pipeline pull <pipeline-id> --output <temporary-pipeline.yml>
+rg -n '%[^%]+%' <temporary-pipeline.yml>
 ```
 
 For each match, verify that it is a declared pipeline/job parameter or a known
@@ -582,13 +541,6 @@ branch: TeamCity resolves it as a configuration parameter before the script is
 sent to any agent. Use an equivalent command with no `%...%` substitution
 instead; for example, `exit /b` preserves the previous batch command's exit
 code without referencing `%ERRORLEVEL%`.
-
-When a queued job reports a generic `waitReason`, use the detailed queue or
-compatibility diagnostics exposed by the selected CLI or MCP surface too. If
-that surface only returns the generic reason, the saved-YAML substitution check
-above is mandatory; do not report a capacity blocker while TeamCity reports
-**Unresolved parameters**. Report the exact parameter name and script line,
-then fix or declare the parameter and validate again.
 
 Check:
 
@@ -617,12 +569,11 @@ Check:
   ```
 
   A `permission_denied` response does not establish either compatibility or
-  incompatibility. Mark the check unverified; never replace it with a generic
-  queue `waitReason` or the mere presence of similarly named agents. Use a
-  permitted machine-readable TeamCity compatibility operation when available.
-  If none is available, stop and report the missing permission; do not retry
-  until programmatic compatibility access is granted. A manual UI confirmation
-  is not valid compatibility evidence for this workflow.
+  incompatibility. Mark the check unverified and use a permitted
+  machine-readable TeamCity compatibility operation when available. If none is
+  available, stop and report the missing permission; do not retry until
+  programmatic compatibility access is granted. A manual UI confirmation is
+  not valid compatibility evidence for this workflow.
 
   Use matching MCP agent/compatibility tools when they are exposed. If MCP does
   not expose them, use the CLI; an MCP connection that can only read builds and
@@ -736,67 +687,22 @@ example:
 - 20 seconds
 - 30 seconds
 
-Treat 60--120 seconds in the queue as a diagnostic deadline, not another
-reason to extend the watch. No later than the second observation that the run
-is still queued, pause all waiting and perform this compatibility checkpoint:
+If the run remains queued after two observations or 60--120 seconds, record
+its ID and queue state, then use
+[`shared/build-diagnostics.md`](../shared/build-diagnostics.md). Do not queue a
+duplicate or change the configuration speculatively. Resume this workflow only
+with the concrete correction or blocker returned by that guide.
 
-1. Read the run and queue details, including the specific wait reason.
-2. List enabled, authorized agents and any applicable cloud images or hosted
-   selectors.
-3. Query the job against candidate agents with incompatible-job diagnostics so
-   TeamCity reports unmet requirements, missing versions, pool restrictions,
-   or unresolved parameters.
-4. Pull the server-stored Pipeline YAML and verify every `%name%` substitution
-   is declared or inherited.
-
-If the wait reason already says **no compatible agents** or **unresolved
-parameters**, perform the checkpoint immediately; do not spend the full minute
-first. Treat **no idle compatible agents** as ambiguous until the job's
-incompatible-agent diagnostics distinguish busy capacity from zero compatible
-agents. If the diagnostics show an unmet `os-family
-teamcity.agent.jvm.os.family equals Linux` requirement and the candidate
-agent lacks that parameter, replace the key with an observed parameter; do
-not just change the value's case. If the checkpoint confirms zero compatible
-agents or images, stop polling. Do not queue a duplicate, restart the same run,
-change an agent selector speculatively, or keep waiting for capacity: capacity
-cannot make an incompatible job compatible. Apply at most one correction that
-follows directly from the diagnostics, validate the updated configuration, and
-requeue once only after the compatibility result changes. If diagnostics do
-not prove incompatibility or unresolved parameters, continue monitoring the
-accepted build at a maximum 60-second interval for at least 10 minutes from
-queueing. Inspect both the job queue reason and agent availability, and give
-the user a short progress update at least once a minute.
-
-Stop polling early if:
-
-- The build reaches a terminal state.
-- A documented queue grace period has elapsed and the queue or build reason
-  proves a stable blocker.
-- The same failure repeats twice with no new signal.
-
-### 11. Investigate The First Failure
+### 11. Hand Off An Unsuccessful Verification Run
 
 This step applies to a queued first-green build. For configuration-only work,
-diagnose validation or stored-configuration mismatches in steps 7--9 instead.
+handle validation or stored-configuration mismatches in steps 7--9 instead.
 
-If the build fails, diagnose one real blocker at a time:
-
-- Read targeted build metadata: status, status text, branch, build type,
-  trigger, agent, and failed-to-start state.
-- Use build problems, especially `problemOccurrences`, for failure type,
-  details, and log anchors.
-- Read failed tests with details, new-failure status, and log anchors.
-- Read focused or filtered build logs rather than full logs first.
-- Check changes and compare with a last successful baseline when useful.
-
-Apply the smallest safe fix. Decide whether the fix belongs in repository code,
-pipeline YAML, TeamCity parameters, credentials, VCS connection, runner
-selection, or build-agent requirements.
-
-If the smallest safe fix is missing durable VCS credentials for a private
-repository, stop after one confirming failure or, at most, one remote-run
-fallback that fails the same way. Report the manual credential repair instead
-of trying speculative VCS-root rewrites.
+If the verification build is unsuccessful, record its ID and terminal status,
+then use
+[`shared/build-diagnostics.md`](../shared/build-diagnostics.md). Apply only the
+concrete correction or manual blocker it returns, then resume at step 13. Do
+not fold a general build-repair playbook into this first-green workflow.
 
 ### 12. Hand Off Every Manual Prerequisite
 
@@ -829,10 +735,10 @@ connection in a named child project; do not ask for unrestricted REST writes.
 Re-run after each concrete fix. Continue only while each rerun has new evidence
 or a plausible fix.
 
-After a diagnostic probe, confirm the primary pipeline's complete dependency
+After a concrete correction, confirm the primary pipeline's complete dependency
 chain, required tests, and job-local outputs. A successful probe or child does
 not override a failed primary head. The final report must identify that primary
-pipeline and its verification run, distinct from diagnostic runs.
+pipeline and its verification run.
 
 The task is complete only when one of these is true:
 
@@ -858,5 +764,4 @@ A successful report includes:
 - VCS root and connection strategy used.
 - Configuration format, validation method, and validation result.
 - Build IDs for failed and successful verification runs, when observed.
-- Root cause and fix for each investigated failure.
 - A concrete manual completion checklist for every remaining prerequisite.

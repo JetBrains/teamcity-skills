@@ -124,7 +124,7 @@ give the user this manual handoff rather than stopping at the limitation:
    descriptive name and select the existing inherited GitHub App connection in
    the token dialog. Keep the project scope limited to the target child project
    and its subprojects. For a GitHub App, restrict repository scope to the
-   required repository (for example, enter `teamcity-skills`, without the
+   required repository (for example, enter `<repository-name>`, without the
    organization name); do not request global repository access.
 4. Save the token, select it for the VCS root, run TeamCity's connection test,
    and save the root only after the test succeeds.
@@ -170,45 +170,6 @@ neither surface exposes one, give the manual attachment checklist.
 
 Do not ask the user to attach a root that the selected surface can attach safely.
 
-### Explicit PAT Diagnostic Fallback
-
-Use this only when the user explicitly chooses to test a GitHub PAT rather than
-the preferred App-backed token. In the existing target-project VCS root:
-
-1. Select **Password / personal access token**, not **Refreshable access
-   token**.
-2. Use the username `x-access-token` and enter the PAT only in the protected
-   password field; never in a repository URL, command line, or chat.
-3. For a fine-grained GitHub PAT, select the `JetBrains/teamcity-skills`
-   repository and grant **Contents: Read-only**. For a classic PAT, grant its
-   repository read scope. Complete any organization SSO authorization required
-   by GitHub.
-4. Run the root's connection test. `git ls-remote` needs only read access; a
-   GitHub 403 saying "Write access ... not granted" still means the presented
-   credential cannot read that repository.
-
-This is a diagnostic or explicitly accepted personal-credential fallback. Once
-it works, replace it with a least-privilege GitHub App/service token where one
-is available.
-
-If TeamCity reports that a root "failed to authorize using the specified token"
-or Git reports invalid credentials, do not diagnose an agent, YAML, or network
-failure. The selected refreshable-token reference is unusable for that root.
-Leave the root in the target project and perform this recovery:
-
-1. A project administrator opens **Project Settings → VCS Auth Tokens** in the
-   scope that owns the token, finds the token by its ID, and verifies that its
-   connection, project scope, and GitHub App repository scope include the
-   target project, its pipeline-created subprojects, and the repository.
-2. If the token is absent, out of scope, or cannot resolve the repository, the
-   connection owner issues a replacement token with those least-privilege
-   scopes. Do not create or paste a static PAT.
-3. A target-project administrator replaces the token reference on the existing
-   VCS root, runs its connection test, and saves only after it succeeds.
-4. The user returns the VCS root ID and successful test result. The agent then
-   requeues a personal build; it does not rerun against the known-invalid
-   credential.
-
 ## Pipelines, Builds, And MCP
 
 After a usable root is known, use the CLI rather than a browser for the normal
@@ -222,11 +183,9 @@ TEAMCITY_URL=<server> teamcity pipeline push <pipeline-id> <pipeline.yml>
 TEAMCITY_URL=<server> teamcity run start <job-id> --branch <branch> --personal
 ```
 
-Use a matching MCP connection for build logs, build metadata, tests, problems,
-and artifacts. If its write capability is restricted to the build queue, use it
-to start a personal build on the explicit branch, then use its read tools to
-monitor and analyse that build. Use CLI for pipeline and VCS-root writes unless
-the matching MCP exposes a dedicated equivalent operation.
+If its write capability is restricted to the build queue, use it to start a
+personal build on the explicit branch. Use CLI for pipeline and VCS-root writes
+unless the matching MCP exposes a dedicated equivalent operation.
 
 Do not invent pipeline-YAML syntax for a TeamCity build feature. When a plugin
 can only be configured in the UI and neither CLI nor the matching MCP exposes a

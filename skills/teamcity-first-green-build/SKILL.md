@@ -1,6 +1,6 @@
 ---
 name: teamcity-first-green-build
-description: Use when creating, validating, updating, or repairing TeamCity CI for a repository, diagnosing a queued or incompatible TeamCity build, or driving a configuration through its first successful build.
+description: Use when creating, validating, or updating TeamCity CI for a repository and driving a configuration through its first successful build.
 ---
 
 # TeamCity First Green Build
@@ -18,7 +18,7 @@ stop without queueing a build:
 
 - Follow repository inspection, TeamCity discovery, VCS setup, pipeline
   creation, server validation, and compatibility discovery. Skip Remote Run,
-  build queueing, build polling, and first-build debugging.
+  build queueing and build polling.
 - Preserve every requested or repository-defined independent job. Before
   finishing, read back the server-stored YAML and audit job topology, dedicated
   runner types and task/goal properties, `runs-on`, and artifact publication
@@ -58,15 +58,16 @@ Read shared guidance only when relevant:
 - `shared/kmp-mobile.md` for Kotlin Multiplatform, Compose Multiplatform, or
   Android/iOS build and test setup.
 - `shared/token-safety.md` when credentials are involved.
-- `shared/build-log-debugging.md` when diagnosing failed builds.
 - `shared/vcs-connections-and-auth.md` when TeamCity CLI or MCP is available
   for VCS connection discovery, authentication, or VCS-root setup.
+- [`shared/build-diagnostics.md`](shared/build-diagnostics.md) for an
+  unsuccessful, failed-to-start, or unexpectedly queued verification run.
 
 ## Non-Negotiable TeamCity Transport Rule
 
 Never invoke `teamcity api`, address a TeamCity REST endpoint from a shell, or
 use `curl`, `wget`, or another shell HTTP client for a TeamCity operation. This
-applies to reads, diagnostics, and writes, including when the first-class CLI
+applies to reads and writes, including when the first-class CLI
 does not expose a required field.
 
 Use the matching first-class `teamcity` command first. If it lacks the required
@@ -156,26 +157,9 @@ different servers, stop. Do not substitute another server.
   capability and select it explicitly for the job. Never reuse a JDK parameter
   name learned on another server or accept an older agent default merely
   because the build command succeeds.
-- Before calling a queued Pipeline job an agent-capacity problem, inspect its
-  unresolved-parameter diagnostics and the saved YAML. TeamCity expands
-  `%name%` in Pipeline script content before choosing an agent, including in a
-  platform-specific branch; a Windows runtime expression such as
-  `%ERRORLEVEL%` is therefore an unresolved TeamCity parameter unless it was
-  deliberately declared.
-- A build that remains queued for 60--120 seconds has reached a mandatory
-  compatibility checkpoint. After no more than two queued-status observations,
-  inspect the enabled/authorized agent inventory, the job's incompatible-agent
-  reasons, and unresolved `%name%` substitutions in the server-stored YAML
-  before waiting again. If those checks prove that no compatible agent or cloud
-  image exists, stop polling and do not start or restart another build. Make at
-  most one evidence-based configuration correction, validate it, read the saved
-  selector back, and retry only when the compatibility evidence changed.
-- If the agent/job compatibility command returns `permission_denied`, record
-  compatibility as **unverified**. Do not infer compatibility from a generic
-  wait reason or agent inventory alone. Use another permitted machine-readable
-  TeamCity surface. If none is available, stop with the missing permission as
-  the blocker and do not retry until programmatic compatibility access is
-  granted. Never substitute a manual UI confirmation for this check.
+- If a verification run is unsuccessful or remains queued unexpectedly, use
+  [`shared/build-diagnostics.md`](shared/build-diagnostics.md) and resume this
+  workflow only with its concrete correction or blocker.
 - Prefer personal builds for validation.
 - Iterate only while each rerun has new evidence or a concrete fix.
 - Stop on proven blockers such as missing VCS authorization, missing TeamCity
@@ -200,7 +184,7 @@ Report only facts that were checked:
 - Existing, created, updated, or selected TeamCity object.
 - Important TeamCity operations performed.
 - Configuration format, validation method, and validation result.
-- First failed build ID and root cause, if one was observed.
+- Verification-run IDs and terminal states, when runs were queued.
 - First successful build ID, if one was observed.
 - A concrete manual completion checklist for every remaining prerequisite or
   blocker: who performs it, where, what values are known, how to verify it,

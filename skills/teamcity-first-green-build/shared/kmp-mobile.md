@@ -85,9 +85,8 @@ repository's detected iOS app directory:
 The skill includes reusable templates at `assets/kmp-ios/Gemfile` and
 `assets/kmp-ios/build.Fastfile`. They are source templates, not a substitute
 for checked-in build configuration. Copy them into the repository only when
-the user has authorized a durable repository change; then show the generated
-files and ensure they are committed with a VCS-backed pipeline. Do not
-overwrite an existing Gemfile or Fastfile without explicit authorization.
+the user has authorized a durable repository change. Do not overwrite an
+existing Gemfile or Fastfile without explicit authorization.
 
 For a server-stored, VCS-less Remote Run, prefer a short generated
 `xcodebuild` script in the pipeline rather than creating untracked Fastlane
