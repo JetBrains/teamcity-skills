@@ -1,0 +1,82 @@
+# Configure and validate CI
+
+Read [Discover and connect](discover-and-connect.md) first. This workflow
+creates or updates the pipeline and proves its saved configuration before a
+verification build.
+
+## Configure the pipeline
+
+Use the confirmed VCS root and repository commands. Read
+[Build-step selection](../shared/build-step-selection.md) for Maven or Gradle,
+and [KMP and mobile](../shared/kmp-mobile.md) for mobile targets.
+
+Include checkout, build and test jobs, the required runtime, test and artifact
+publication, and repository-required container work. Reference TeamCity
+credentials and connections; never hardcode secrets.
+
+For an exact host JDK, discover the matching agent parameter, such as
+`env.JDK_21_0`. Configure:
+
+- agent requirement `<agent-jdk-parameter> exists`; and
+- job parameter `env.JAVA_HOME = %<agent-jdk-parameter>%`.
+
+TeamCity evaluates the agent requirement before dispatch. A build step has not
+started yet, so it cannot install the required JDK. A Linux container-safe job
+without a matching host JDK needs Docker capability and a pinned JDK image.
+macOS and iOS work needs a native compatible runtime.
+
+Keep independent jobs from the repository. Keep mobile work in a KMP pipeline.
+Use meaningful TeamCity status messages.
+
+## Validate the saved configuration
+
+Validate the source file that will become the source of truth:
+
+```bash
+teamcity project settings validate path/to/.teamcity
+teamcity pipeline validate path/to/pipeline.yml
+```
+
+An exposed MCP validator also works. A local YAML parser proves syntax only.
+Report a missing semantic validator before queueing.
+
+After a server-side correction, reconcile the source file with the stored
+configuration and validate again. Keep temporary validation copies outside the
+checkout. Apply the Script Parameter Gate from
+[Build-step selection](../shared/build-step-selection.md) to local and stored
+Pipeline YAML.
+
+## Check compatibility before queueing
+
+Inspect the live schema, enabled and authorized agents, cloud images, runtime
+availability, runner types, Docker, parameters, credentials, and VCS change
+collection. Pull saved Pipeline YAML and verify that each `%name%` substitution
+is declared or inherited.
+
+For a Pipeline job, use TeamCity's compatibility result. With the CLI:
+
+```bash
+TEAMCITY_URL=<server> teamcity pipeline schema --refresh
+TEAMCITY_URL=<server> teamcity agent list --connected --enabled --authorized \
+  --limit 0 --json=id,name,typeId,pool.id,pool.name
+TEAMCITY_URL=<server> teamcity agent jobs <agent-id> --incompatible --json
+```
+
+When compatibility access is denied, record it as unverified. Use another
+permitted machine-readable operation. If none exists, use
+[Manual prerequisites](../shared/manual-prerequisites.md).
+
+Choose `runs-on` from target-server evidence. Use an observed stable
+self-hosted capability or a server-provided hosted selector. Never use a
+transient VM name or a selector copied from another server. Confirm the final
+JDK through the build's `JAVA_HOME` and Java version.
+
+Check each host-JDK requirement against compatible agents. An unresolved JDK
+parameter is a pre-dispatch blocker. For a Linux container-safe job, replace
+the host-JDK requirement with Docker capability and run the job in the pinned
+JDK image. For native work, the infrastructure owner must provide the required
+JDK, image, or agent capability and return its selector and compatibility
+evidence.
+
+For configuration-only work, stop after the saved-YAML audit, one inventory
+query, and one compatibility query. A missing or denied query is a blocker.

@@ -91,6 +91,12 @@ If an unmet `os-family teamcity.agent.jvm.os.family equals Linux` requirement
 uses a key absent from the candidate agent, replace it with an observed,
 relevant parameter; changing the value's case cannot make the key exist.
 
+For an unresolved host-JDK parameter such as `env.JDK_25`, report a
+pre-dispatch blocker. A build step cannot download JDK 25 because it has not
+started. For a Linux container-safe job, replace the host-JDK requirement with
+Docker capability and run the job in a pinned JDK 25 image. Native work needs
+an agent or image that already provides JDK 25.
+
 If the evidence proves zero compatible agents or images, stop polling. Do not
 queue a duplicate or retry unchanged. Make at most one correction directly
 supported by the evidence, validate it, and retry only after the compatibility
