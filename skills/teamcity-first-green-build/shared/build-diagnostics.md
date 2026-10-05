@@ -74,6 +74,8 @@ successfully on the intended sources.
 
 For a run that stays queued after two observations or 60--120 seconds, stop
 waiting and read the run and queue details, including the specific wait reason.
+If the request already reports that duration, treat the threshold as reached:
+run these checks before another status poll.
 Then:
 
 1. List enabled, authorized agents and applicable cloud images or hosted

@@ -50,6 +50,13 @@ environment variable, command history, tool configuration, or repository files.
 - `shared/build-diagnostics.md` — a failed, stalled, or queued verification
   build.
 
+## Diagnose an existing run first
+
+When the request identifies a failed build or a build already queued for
+60--120 seconds, read `shared/build-diagnostics.md` before retrying, changing
+configuration, or making another status observation. A duration reported in the
+request counts toward this threshold; do not restart the observation window.
+
 ## Report
 
 Report checked facts only:
