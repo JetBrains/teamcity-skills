@@ -19,8 +19,6 @@
     "family": "kotlin-multiplatform",
     "buildTool": "gradle",
     "gradle": "9.6.1",
-    "jdk": "17",
-    "declaredJdk": "11",
     "kotlin": "2.4.10"
   },
   "requestedConfiguration": {

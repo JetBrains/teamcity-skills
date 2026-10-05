@@ -329,7 +329,7 @@
     "stack": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["family", "buildTool", "jdk"],
+      "required": ["family", "buildTool"],
       "properties": {
         "family": {
           "type": "string"
@@ -341,12 +341,6 @@
           "type": "string"
         },
         "maven": {
-          "type": "string"
-        },
-        "jdk": {
-          "type": "string"
-        },
-        "declaredJdk": {
           "type": "string"
         },
         "kotlin": {

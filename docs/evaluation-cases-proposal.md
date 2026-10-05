@@ -190,18 +190,10 @@ requires all of the following:
   test reports, minimum counts, and named tests;
 - every declared artifact path present in the build artifacts.
 
-`stack.declaredJdk` exists for a repository whose declared JDK differs from
-the one a run is known to work on. The Spring Boot/Gradle case used it while
-its recorded baseline was JDK 21 against a declared 25. The first executed run
-settled the question: the agent pointed `JAVA_HOME` at the agent's JDK 25 and
-reached a green build with a passing test, so the case now expects 25 and the
-field is gone. A case should carry `declaredJdk` only while a real discrepancy
-is still unresolved.
-
-`expected.toolchain.jdk` is checked against the properties the build actually
-ran with, matching the version against every JDK- or Java-named property. A
-build that evidences no JDK at all fails the check and reports what was
-searched, so a probe that stops working shows up instead of quietly passing.
+`expected.toolchain.jdk` is the case's single JDK requirement. The grader
+checks it against the selected JDK home, JDK container image, and, when
+TeamCity exposes it, the build's effective Java version. A build that
+evidences a conflicting Java version fails the check.
 
 ### Target-Level Expectations And Observed Baseline
 
@@ -239,11 +231,10 @@ rules, agent requirements - in minutes, without a build agent, and without the
 failure modes of a real build. A green-build case costs tens of minutes and
 cloud-agent provisioning, so it cannot cover many repositories; this one can.
 
-`stack.jdk` remains useful input metadata for a configuration-only case. A
-configuration contract can additionally require an explicit JDK image or
-environment declaration, but only a first-green case checks TeamCity's
-resulting build properties and can prove that the requested JDK actually
-executed the build.
+For a configuration-only case, `expected.toolchain.jdk` requires an explicit
+JDK image or environment declaration. A first-green case additionally observes
+TeamCity's resulting build properties when they are available, so it can check
+the Java that executed the build.
 
 The runner reads the build configurations the agent created, skipping the
 composite pipeline heads a pipeline materialises per chain, and checks:

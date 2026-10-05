@@ -18,8 +18,7 @@
   "stack": {
     "family": "compose-multiplatform",
     "buildTool": "gradle",
-    "gradle": "9.7.0",
-    "jdk": "17"
+    "gradle": "9.7.0"
   },
   "requestedConfiguration": {
     "format": "yaml",

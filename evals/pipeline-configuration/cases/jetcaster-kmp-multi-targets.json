@@ -19,7 +19,6 @@
     "family": "compose-multiplatform",
     "buildTool": "gradle",
     "gradle": "9.6.1",
-    "jdk": "17",
     "kotlin": "2.4.10"
   },
   "requestedConfiguration": {

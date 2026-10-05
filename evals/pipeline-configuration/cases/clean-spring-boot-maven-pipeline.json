@@ -19,7 +19,6 @@
     "family": "spring-boot",
     "buildTool": "maven",
     "maven": "3.x",
-    "jdk": "21",
     "springBoot": "3.2.5"
   },
   "requestedConfiguration": {

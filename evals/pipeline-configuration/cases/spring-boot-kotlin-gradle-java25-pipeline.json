@@ -19,7 +19,6 @@
     "family": "spring-boot",
     "buildTool": "gradle",
     "gradle": "9.2.1",
-    "jdk": "25",
     "kotlin": "2.3.0-RC",
     "springBoot": "4.0.0"
   },
