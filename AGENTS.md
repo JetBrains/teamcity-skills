@@ -30,7 +30,7 @@ In your pull request:
 
 1. Bump `version:` of every skill you changed. Use semantic versioning. A correction is a patch. New guidance is a
    minor. A new file layout is a major.
-2. Bump `metadata.version` in `.claude-plugin/marketplace.json`.
+2. Bump `metadata.version` in `.claude-plugin/marketplace.json` if you touched any of the plugin contents.
 
 After the merge:
 
