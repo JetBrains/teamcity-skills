@@ -5,9 +5,13 @@ Read this guide after discovery, validation, and compatibility checks in
 
 ## Queue the verification build
 
-Skip this guide for configuration-only work. Queue a personal or isolated build
-when supported. Poll the pipeline head and jobs with bounded backoff: 5, 10, 20,
-then 30 seconds.
+Skip this guide only when the user explicitly requests configuration only or
+prohibits a build. Before queueing, inspect the pipeline for deploy, publish,
+data migration, cleanup, external mutation, and material cost. Ask the user for
+approval when any of these effects are possible or unclear.
+
+Queue a personal or isolated build when supported. Poll the pipeline head and
+jobs with bounded backoff: 5, 10, 20, then 30 seconds.
 
 After two observations or 60–120 seconds in the queue, record the ID and queue
 state. Read [Build diagnostics](../shared/build-diagnostics.md). Queue the next

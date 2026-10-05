@@ -10,7 +10,7 @@ blocker.
 
 ## Choose the outcome
 
-For a configuration-only request:
+For an explicit configuration-only or no-build request:
 
 - create or update the pipeline;
 - validate and read back its saved configuration; and
@@ -19,8 +19,10 @@ For a configuration-only request:
 Stop after these checks. A required query that is unavailable or denied is a
 blocker.
 
-For a first-green request, continue until the verification build is green or an
-external blocker is proven.
+For every other request, continue until the verification build is green or an
+external blocker is proven. Before queueing, inspect the build's side effects.
+Ask for approval when deploy, publish, migration, cleanup, external mutation,
+or material cost is possible or unclear.
 
 ## Start
 

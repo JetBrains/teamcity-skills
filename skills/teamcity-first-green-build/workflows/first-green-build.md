@@ -13,11 +13,12 @@ Read these guides in order:
 They establish the target, inspect the repository, prepare VCS access, save and
 validate the configuration, and check compatibility.
 
-## Configuration only
+## Explicit configuration-only request
 
-Stop after common work. Completion needs a saved pipeline, its intended VCS
-root, server validation, and a read-back audit of jobs, runners, selectors, and
-artifact rules. Do not queue a build.
+Stop after common work only when the user explicitly requests configuration only
+or prohibits a build. Completion needs a saved pipeline, its intended VCS root,
+server validation, and a read-back audit of jobs, runners, selectors, and
+artifact rules.
 
 ## First green
 
