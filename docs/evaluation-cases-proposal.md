@@ -112,12 +112,6 @@ and is not covered by this contract.
 
 ### Current Evaluation Cases
 
-The suite currently contains 17 contracts over 8 unique repositories: 5
-first-green builds, 9 configuration-only evaluations, 2 deterministic queue
-stall diagnoses, and 1 TeamCity access preflight. Configuration-only and queue
-diagnosis cases are the default expansion path because they exercise Claude
-without compiling the target project.
-
 | Case | What it verifies |
 | --- | --- |
 | `spring-petclinic-maven-yaml` | A Java 17 Spring Boot/Maven repository can receive a valid TeamCity YAML pipeline, execute Maven verification, import JUnit XML, publish its JAR, and finish its first verification build successfully. |
