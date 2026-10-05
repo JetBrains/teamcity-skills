@@ -103,8 +103,9 @@ start another build or continue discovery to polish an already complete result.
 
 ## Meaningful Build Status
 
-Every generated pipeline must report a live, meaningful status; a generic
-"Running" in the builds overview is incomplete.
+Every generated or modified pipeline, build step, and build script must report
+a live, meaningful status; a generic "Running" in the builds overview is
+incomplete.
 
 - Give every dedicated runner step an explicit, human-readable `name` —
   TeamCity shows the running step in the overview.
