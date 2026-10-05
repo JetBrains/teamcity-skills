@@ -186,7 +186,8 @@ requires all of the following:
 
 - server-side validation of the generated pipeline YAML;
 - a successful verification build;
-- at least one reported test when the case expects tests;
+- every test expectation declared by the case is satisfied, including required
+  test reports, minimum counts, and named tests;
 - every declared artifact path present in the build artifacts.
 
 `stack.declaredJdk` exists for a repository whose declared JDK differs from
