@@ -14,6 +14,11 @@ Include checkout, build and test jobs, the required runtime, test and artifact
 publication, and repository-required container work. Reference TeamCity
 credentials and connections; never hardcode secrets.
 
+Use schema, agent, compatibility, and validation reads to diagnose the target
+environment. Do not create a separate server-stored diagnostic pipeline or
+"retired" diagnostic job unless the user explicitly requests one. Create only
+the requested deliverable pipeline and its required jobs.
+
 For an exact host JDK, discover the matching agent parameter, such as
 `env.JDK_21_0`. Configure:
 
