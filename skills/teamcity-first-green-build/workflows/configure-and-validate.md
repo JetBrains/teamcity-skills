@@ -19,23 +19,33 @@ environment. Do not create a separate server-stored diagnostic pipeline or
 "retired" diagnostic job unless the user explicitly requests one. Create only
 the requested deliverable pipeline and its required jobs.
 
-For an exact host JDK, discover the matching agent parameter, such as
-`env.JDK_21_0`. Configure:
+For an exact host JDK, inspect parameters reported by compatible agents or
+images on this server. A key such as `env.JDK_21_0` advertises an installed JDK
+path; its name is an example, not a TeamCity constant. Use the actual key from
+the agent's Parameters view or an available TeamCity tool. The CLI's
+`teamcity agent jobs <agent-id> --incompatible --json` can confirm an unmet
+requirement but does not list the agent's parameters. Treat a conventional key
+inferred from the requested Java version as a candidate until agent parameters
+or job compatibility confirm it.
 
-- agent requirement `<agent-jdk-parameter> exists`; and
-- job parameter `env.JAVA_HOME = %<agent-jdk-parameter>%`.
+The two settings have different jobs:
 
-TeamCity evaluates the agent requirement before dispatch. A build step has not
-started yet, so it cannot install the required JDK. A Linux container-safe job
-without a matching host JDK needs Docker capability and a pinned JDK image.
-macOS and iOS work needs a native compatible runtime.
+- An agent requirement that the observed JDK key exists limits scheduling to
+  agents that advertise it. Check the job's compatibility result. A reference
+  to `%env.JDK_21_0%` may already provide that requirement implicitly; add an
+  explicit `exists` requirement when it does not.
+- Set the job's `parameters.env.JAVA_HOME` to the observed key, for example
+  `%env.JDK_21_0%`. This selects that installation for Maven or Gradle; the
+  requirement alone does not change the Java used by the build.
 
-For a required JDK version, encode the selection in the saved job: a matching
-`env.JAVA_HOME` or `env.JDK_HOME` parameter and compatible agent requirement,
-or a pinned JDK image for the build step. A preceding script that searches the
-host and calls `setParameter` selects Java only after dispatch; it does not
-make the job compatible with the required JDK. Pull the final Pipeline YAML
-and check this selection on every affected job before queueing.
+TeamCity checks agent compatibility before dispatch. A script that searches
+host paths and calls `setParameter` runs too late to select an agent. Pull the
+saved Pipeline YAML and check both scheduling and JDK selection on every
+affected job before queueing; confirm the runtime with
+`"$JAVA_HOME/bin/java" -version` in the build. A Linux container-safe job
+without a matching host JDK needs Docker capability and a pinned JDK image,
+not a host-JDK requirement. macOS and iOS work needs a native compatible
+runtime.
 
 Keep independent jobs from the repository. Keep mobile work in a KMP pipeline.
 Use meaningful TeamCity status messages.

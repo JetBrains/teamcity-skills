@@ -21,13 +21,16 @@ build only after a documented correction or blocker.
 
 Record the build ID and terminal state. Read
 [Build diagnostics](../shared/build-diagnostics.md). Apply its correction or
-manual blocker, then queue the next verification build.
+manual blocker. Before retrying, compare the source YAML with the server-stored
+Pipeline YAML, reconcile any difference, and validate the result. Then queue
+the next verification build.
 
 ## Confirm the result
 
 Continue only when new evidence supports a correction. Confirm the primary
-pipeline's dependency chain, required tests, and outputs. A successful probe or
-child does not make a failed primary head green.
+pipeline's dependency chain, required tests, outputs, and final source/stored
+YAML match. A successful probe or child does not make a failed primary head
+green.
 
 Finish when the first verification build is green or an external blocker is
 proven. Report the server, parent project ID, TeamCity object, repository and
