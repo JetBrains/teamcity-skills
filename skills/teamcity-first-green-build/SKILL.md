@@ -1,80 +1,77 @@
 ---
-name: "teamcity-first-green-build"
-description: "Use when setting up, updating, or repairing TeamCity CI for a repository, then iterating through builds until the first successful build or a proven blocker."
+name: teamcity-first-green-build
+version: 1.2.0
+description: Use when creating, validating, or updating TeamCity CI for a repository and driving it through its first successful build.
 ---
 
 # TeamCity First Green Build
 
-Use this skill to set up TeamCity CI for a repository and drive it to the first
-successful build.
+Set up TeamCity CI. Finish with a green verification build or a proven external
+blocker.
 
-## Load First
+## Choose the outcome
 
-Read and follow the canonical workflow:
+For an explicit configuration-only or no-build request:
 
-- `workflows/first-green-build.md`
+- create or update the pipeline;
+- validate and read back its saved configuration; and
+- query agent inventory and job compatibility once.
 
-Read shared guidance only when relevant:
+Stop after these checks. A required query that is unavailable or denied is a
+blocker.
 
-- `shared/project-inspection.md` for local repository inspection.
-- `shared/build-step-selection.md` for choosing TeamCity build steps and the
-  required build status service messages.
-- `shared/token-safety.md` when credentials are involved.
-- `shared/build-log-debugging.md` when diagnosing failed builds.
+For every other request, continue until the verification build is green or an
+external blocker is proven. Before queueing, inspect the build's side effects.
+Ask for approval when deploy, publish, migration, cleanup, external mutation,
+or material cost is possible or unclear.
 
-## Mandatory First Response
+## Start
 
-Before inspecting files, querying TeamCity, using local environment context, or
-making any write, the assistant must visibly ask the user to confirm:
+Read [the workflow router](workflows/first-green-build.md). It selects the
+guides needed for the task.
 
-- The exact TeamCity server name or URL.
-- The target parent project name or ID. `_Root` is valid.
+## Resolve the target
 
-Do not infer these values from prior runs, environment variables, command
-history, tool names, cached context, or repository files. If both values are not
-present in the user's current request, stop and ask for them in the next
-assistant message.
+Before any TeamCity query or write, resolve the server from the user's request
+and a named target parent project. The parent cannot be `_Root`.
 
-## Prerequisites
+Use a supplied non-`_Root` parent. If none is supplied, create a unique
+`<repository>-CI` child project under `_Root` and use its returned ID. Report a
+failed creation as a blocker. Never take the server from a prior task, an
+environment variable, command history, tool configuration, or repository files.
 
-At the start of every task, before repository inspection, TeamCity discovery, or
-writes, ask for or confirm:
+## Read shared guides only when needed
 
-- The exact TeamCity server name or URL being targeted.
-- The target parent project name or ID. `_Root` is valid.
+- `shared/project-inspection.md` — local repository inspection.
+- `shared/build-step-selection.md` — build steps, JVM verification, outputs,
+  and status messages.
+- `shared/kmp-mobile.md` — Kotlin Multiplatform, Android, Compose, or iOS.
+- `shared/token-safety.md` — credentials.
+- `shared/vcs-connections-and-auth.md` — VCS connections, auth, and roots.
+- `shared/build-diagnostics.md` — a failed, stalled, or queued verification
+  build.
 
-Before any TeamCity write, also make sure the following facts are known:
+## Diagnose an existing run first
 
-- Authenticated TeamCity access for that same server.
-- The local repository URL and build root.
-- A safe way to keep tokens and VCS credentials out of commands, logs, saved
-  prompts, generated files, and final reports.
+When the request identifies a failed build or a build already queued for
+60--120 seconds, read `shared/build-diagnostics.md` before retrying, changing
+configuration, or making another status observation. A duration reported in the
+request counts toward this threshold; do not restart the observation window.
 
-If the configured TeamCity server and the authenticated access point to
-different servers, stop. Do not substitute another server.
+## Report
 
-## Default Behavior
-
-- Prefer TeamCity Pipelines or YAML over Kotlin DSL unless the repository
-  already uses Kotlin DSL successfully or the user explicitly asks for Kotlin
-  DSL.
-- Inspect existing TeamCity objects before creating new ones.
-- Preserve checked-in TeamCity YAML topology unless the user asks for a reduced
-  first pass.
-- Prefer personal builds for validation.
-- Iterate only while each rerun has new evidence or a concrete fix.
-- Stop on proven blockers such as missing VCS authorization, missing TeamCity
-  permissions, incompatible build environments, or unavailable external
-  services.
-
-## Final Report
-
-Report only facts that were checked:
+Report checked facts only:
 
 - TeamCity server and parent project ID.
 - Repository URL and project root.
-- Existing, created, updated, or selected TeamCity object.
-- Important TeamCity operations performed.
-- First failed build ID and root cause, if one was observed.
-- First successful build ID, if one was observed.
-- Remaining manual prerequisites or blockers.
+- TeamCity object and operations.
+- A server-confirmed native Pipeline URL when available. The CLI's
+  `teamcity pipeline view <pipeline-id> --web` can open the page; use only its
+  observed address. Label a `/buildConfiguration/...` URL as a build
+  configuration link. If no native URL is available, report the Pipeline ID;
+  do not construct a `/pipeline/...` URL from an unverified numeric ID.
+- Configuration format and validation result.
+- Verification build IDs and final states.
+- First green build ID, when observed.
+- Each manual prerequisite: owner, scope, action, known values, proof, and
+  resume signal.

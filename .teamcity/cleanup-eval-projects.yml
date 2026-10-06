@@ -1,0 +1,28 @@
+name: Cleanup eval projects
+# Server-stored maintenance pipeline. It is dry-run by default and must not get
+# a VCS trigger. Archive/delete require explicit custom parameters at launch.
+parameters:
+  env.CLEANUP_MODE: dry-run
+  env.CLEANUP_TTL_HOURS: "6"
+  env.CLEANUP_DELETE_GRACE_HOURS: "24"
+  env.CLEANUP_APPLY: "false"
+  env.CLEANUP_CONFIRM_PARENT: ""
+jobs:
+  cleanup:
+    name: Cleanup eval projects
+    runs-on: self-hosted
+    files-publication:
+      - path: cleanup-report.json
+        publish-artifact: true
+        share-with-jobs: false
+    steps:
+      - type: script
+        name: Discover or clean expired eval projects
+        script-content: |-
+          :; exec bash evals/run-cleanup-teamcity-projects.sh
+          @goto :windows
+          :windows
+          @echo off
+          "C:\Program Files\Git\bin\bash.exe" evals/run-cleanup-teamcity-projects.sh
+          @if errorlevel 1 exit /b 1
+          @exit /b 0

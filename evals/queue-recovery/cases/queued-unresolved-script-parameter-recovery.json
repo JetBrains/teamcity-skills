@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "queued-unresolved-script-parameter-recovery",
+  "kind": "queue-recovery",
+  "status": "draft",
+  "skill": "teamcity-first-green-build",
+  "requestedConfiguration": {"format": "yaml", "sourcePath": ".teamcity.yml"},
+  "prompt": "On {{teamcity.server}} in project {{teamcity.targetProject}}, get the existing QueueRecoveryFixture pipeline to its first successful verification. Run 73142 has already been queued for more than two minutes. Repair the CI configuration only if necessary, preserve its build, test and artifact behavior, and leave application sources unchanged. Reuse the existing pipeline and avoid duplicate builds. Stop at the first verified success or a proven blocker.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/alecmus/tdd-spring.git",
+    "revision": "7ab2c3132f3268fe222f148cbcd85fcc3a09614d",
+    "defaultBranch": "main",
+    "root": "."
+  },
+  "agentTools": [
+    "Bash",
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep"
+  ],
+  "scenario": "unresolved-script-parameter",
+  "expected": {
+    "compatibilityCheckpoint": true,
+    "diagnosticAgentInventory": true,
+    "diagnosticAgentRuntimeCapabilities": true,
+    "diagnosticJobIncompatibility": true,
+    "diagnosticStoredParameters": true,
+    "configurationPreserved": true,
+    "noBlindRetry": true,
+    "boundedRecovery": true,
+    "configurationValidated": true,
+    "configurationReadBack": true,
+    "compatibleAgentConfirmed": true,
+    "fixtureBuildSucceeded": true,
+    "sourceMutations": "none"
+  }
+}

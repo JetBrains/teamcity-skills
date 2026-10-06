@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 1,
+  "id": "spring-boot-demo-gradle-testcontainers",
+  "kind": "first-green-build",
+  "status": "draft",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} and get a green verification chain for this Kotlin/Gradle Java 21 repository. Inspect its generated-source and integration-test requirements. Use native Gradle runners for generation, packaging, and tests, with script steps for Docker preflight. Keep build/package work and Testcontainers tests in exactly two separate jobs; packaging must not execute tests. Prepare the generation prerequisites in each isolated job. Declare a durable Docker-capable agent requirement and run docker info in every job that requires Docker. Import the repository's JUnit XML into TeamCity, publish the application JAR from the package job, and publish raw JUnit XML as downloadable artifacts from the test job. Keep repository sources unchanged. Java 21 may be selected on the agent or through a suitable build container.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/usmanzaheer1995/spring-boot-demo.git",
+    "revision": "940cdb0b4d15c178ca1624095e24b69914b2c9cd",
+    "defaultBranch": "main",
+    "root": "."
+  },
+  "stack": {
+    "family": "spring-boot",
+    "buildTool": "gradle",
+    "gradle": "8.5",
+    "kotlin": "1.9.21",
+    "springBoot": "3.2.1"
+  },
+  "requestedConfiguration": {
+    "format": "yaml",
+    "sourcePath": ".teamcity.yml"
+  },
+  "agentTools": [
+    "Bash",
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep"
+  ],
+  "verification": {
+    "command": "DEMO_ENV=local ./gradlew --no-daemon generateJooq openApiGenerate && DEMO_ENV=local ./gradlew --no-daemon test bootJar",
+    "testReportPaths": [
+      "build/test-results/test/*.xml"
+    ],
+    "artifactPaths": [
+      "build/libs/*.jar"
+    ]
+  },
+  "expected": {
+    "configurationValidated": true,
+    "testsExecutedAndReported": true,
+    "artifactsPublished": true,
+    "sourceMutations": "none",
+    "toolchain": {
+      "jdk": "21"
+    },
+    "firstBuild": "SUCCESS",
+    "configuration": {
+      "configurationValidated": true,
+      "sourceMutations": "none",
+      "minimumJobs": 2,
+      "expectedJobCount": 2,
+      "requiredStepTypes": [
+        "gradle",
+        "script"
+      ],
+      "requiredStepProperties": [
+        {
+          "stepType": "gradle",
+          "property": "tasks",
+          "matches": "(?i)generateJooq"
+        },
+        {
+          "stepType": "gradle",
+          "property": "tasks",
+          "matches": "(?i)openApiGenerate"
+        },
+        {
+          "stepType": "gradle",
+          "property": "tasks",
+          "matches": "(?i)(?:bootJar|assemble|build)"
+        },
+        {
+          "stepType": "gradle",
+          "property": "tasks",
+          "matches": "(?i)(^|\\s)test(\\s|$)"
+        },
+        {
+          "stepType": "script",
+          "property": "script-content",
+          "matches": "(?i)docker\\s+info"
+        }
+      ],
+      "requiredArtifactRules": [
+        "(?i)\\.jar",
+        "(?i)(?:test-results|TEST-).*\\.xml"
+      ],
+      "requiredAgentRequirements": [
+        "(?i)docker|container\\.engine"
+      ],
+      "requiredJobs": [
+        {
+          "jobMatches": "(?i)(?:build|package)",
+          "requiredStepTypes": [
+            "gradle",
+            "script"
+          ],
+          "requiredStepProperties": [
+            {
+              "stepType": "gradle",
+              "property": "tasks",
+              "matches": "(?i)generateJooq"
+            },
+            {
+              "stepType": "gradle",
+              "property": "tasks",
+              "matches": "(?i)openApiGenerate"
+            },
+            {
+              "stepType": "gradle",
+              "property": "tasks",
+              "matches": "(?i)(^|\\s)(bootJar|assemble)(\\s|$)"
+            },
+            {
+              "stepType": "script",
+              "property": "script-content",
+              "matches": "(?m)^\\s*docker\\s+info(?:\\s|$)"
+            }
+          ],
+          "forbiddenStepProperties": [
+            {
+              "stepType": "gradle",
+              "property": "tasks",
+              "matches": "(?i)(^|\\s)(test|check|build)(\\s|$)"
+            }
+          ],
+          "requiredArtifactRules": [
+            "(?i)\\.jar"
+          ],
+          "requiredAgentRequirements": [
+            "(?i)docker|container\\.engine"
+          ]
+        },
+        {
+          "jobMatches": "(?i)(?:test|integration)",
+          "requiredStepTypes": [
+            "gradle",
+            "script"
+          ],
+          "requiredStepProperties": [
+            {
+              "stepType": "gradle",
+              "property": "tasks",
+              "matches": "(?i)generateJooq"
+            },
+            {
+              "stepType": "gradle",
+              "property": "tasks",
+              "matches": "(?i)openApiGenerate"
+            },
+            {
+              "stepType": "gradle",
+              "property": "tasks",
+              "matches": "(?i)(^|\\s)test(\\s|$)"
+            },
+            {
+              "stepType": "script",
+              "property": "script-content",
+              "matches": "(?m)^\\s*docker\\s+info(?:\\s|$)"
+            }
+          ],
+          "requiredArtifactRules": [
+            "(?i)(?:test-results|TEST-).*\\.xml"
+          ],
+          "requiredAgentRequirements": [
+            "(?i)docker|container\\.engine"
+          ],
+          "forbiddenStepProperties": [
+            {
+              "stepType": "gradle",
+              "property": "tasks",
+              "matches": "(?i)(?:-x\\s+|--exclude-task(?:=|\\s+))(?::)?test(?=\\s|$)"
+            }
+          ]
+        }
+      ],
+      "toolchain": {
+        "jdk": "21"
+      }
+    },
+    "jobResults": [
+      {
+        "jobMatches": "(?i)(?:build|package)",
+        "maximumTestCount": 0,
+        "artifactPaths": [
+          "build/libs/*.jar"
+        ]
+      },
+      {
+        "jobMatches": "(?i)(?:test|integration)",
+        "minimumTestCount": 1,
+        "requiredTestNames": [
+          "^org\\.usmanzaheer1995\\.springbootdemo\\.SpringBootDemoApplicationTests\\.contextLoads(?:\\(\\))?$"
+        ],
+        "artifactPaths": [
+          "build/test-results/test/*.xml"
+        ]
+      }
+    ]
+  }
+}

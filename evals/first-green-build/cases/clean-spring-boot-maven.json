@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "clean-spring-boot-maven",
+  "kind": "first-green-build",
+  "status": "active",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} and get a green Maven verification build on Java 21. Inspect the repository's Maven and test setup; use a native Maven runner with verify and do not skip tests. Keep repository sources unchanged, import its JUnit XML into TeamCity, and publish both the application JAR and raw JUnit XML as downloadable build artifacts. Select Java 21 on the agent or through a suitable build container.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/kawser2133/clean-spring-boot-project.git",
+    "revision": "315ca51dcb0ec25f2cce8f99fa239ec23717f3f6",
+    "defaultBranch": "development",
+    "root": "."
+  },
+  "stack": {
+    "family": "spring-boot",
+    "buildTool": "maven",
+    "maven": "3.x",
+    "springBoot": "3.2.5"
+  },
+  "requestedConfiguration": {
+    "format": "yaml",
+    "sourcePath": ".teamcity.yml"
+  },
+  "agentTools": [
+    "Bash",
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep"
+  ],
+  "verification": {
+    "command": "mvn -B -ntp clean verify",
+    "testReportPaths": [
+      "target/surefire-reports/*.xml"
+    ],
+    "artifactPaths": [
+      "target/*.jar"
+    ]
+  },
+  "expected": {
+    "configurationValidated": true,
+    "testsExecutedAndReported": true,
+    "artifactsPublished": true,
+    "sourceMutations": "none",
+    "toolchain": {
+      "jdk": "21"
+    },
+    "firstBuild": "SUCCESS",
+    "configuration": {
+      "configurationValidated": true,
+      "sourceMutations": "none",
+      "minimumJobs": 1,
+      "toolchain": {
+        "jdk": "21"
+      },
+      "requiredStepTypes": [
+        "maven"
+      ],
+      "requiredStepProperties": [
+        {
+          "stepType": "maven",
+          "property": "goals",
+          "matches": "(?i)(^|\\s)verify(\\s|$)"
+        }
+      ],
+      "forbiddenStepProperties": [
+        {
+          "stepType": "maven",
+          "property": "goals",
+          "matches": "(?i)-D(?:skipTests|maven\\.test\\.skip)(?:=true)?(?=\\s|$)"
+        }
+      ],
+      "requiredArtifactRules": [
+        "(?i)\\.jar",
+        "(?i)(surefire-reports|TEST-).*\\.xml"
+      ]
+    },
+    "minimumTestCount": 39,
+    "requiredTestNames": [
+      "\\.ProductServiceTest\\.",
+      "\\.ProductControllerTest\\.",
+      "\\.AuthenticationServiceTest\\.",
+      "\\.AuthenticationControllerTest\\.",
+      "\\.UserRepositoryTest\\.",
+      "\\.CleanSpringBootProjectApplicationTests\\."
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "java25-agent-requirement-blocks-provisioning",
+  "kind": "queue-stall-diagnosis",
+  "status": "draft",
+  "skill": "teamcity-first-green-build",
+  "prompt": "Diagnose TeamCity run 73142 on {{teamcity.server}} in project {{teamcity.targetProject}}. It has already remained queued for more than two minutes. The repository requires Java 25. Inspect the available agents, their Java and Docker capabilities, the concrete job incompatibility reasons, and the stored pipeline. Explain whether a build-step JDK 25 download can run while the job requires env.JDK_25 before dispatch, and identify a viable correction that preserves Java 25. Do not create, modify, restart, or queue a build.",
+  "teamcity": {
+    "server": "runner-configured",
+    "targetProject": "runner-configured"
+  },
+  "repository": {
+    "url": "https://github.com/phoenigm/spring-boot-kotlin-gradle-template.git",
+    "revision": "247663dee82c9182215112cc5cdd5255d58eddea",
+    "defaultBranch": "master",
+    "root": "."
+  },
+  "agentTools": ["Bash", "Read", "Glob", "Grep"],
+  "expected": {
+    "maximumStatusChecks": 2,
+    "maximumWaitCalls": 1,
+    "requiredDiagnostics": [
+      "agent-inventory",
+      "agent-runtime-capabilities",
+      "job-incompatibility-reasons",
+      "stored-configuration-parameters"
+    ],
+    "forbiddenActions": [
+      "queue-duplicate",
+      "restart-run",
+      "unbounded-watch"
+    ],
+    "requiredConclusions": [
+      "no-compatible-agent",
+      "unresolved-parameter",
+      "no-container-runtime",
+      "jdk25-provision-after-dispatch"
+    ],
+    "sourceMutations": "none"
+  }
+}

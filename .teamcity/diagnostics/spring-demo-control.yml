@@ -1,0 +1,77 @@
+# Reference executability check only. Never collect this as an agent eval.
+# Source: main at 940cdb0b4d15c178ca1624095e24b69914b2c9cd.
+# This control root monitors only its default branch. Verify its remote HEAD,
+# use default-branch dispatch, then verify the exact run revision via CLI listing.
+# This CLI/server pair uses <unspecified> with --revision alone and rejects the
+# logical branch "main" on a default-only root (even if its children check out).
+name: Spring demo reference - not an eval
+parameters:
+  env.DEMO_ENV: local
+  env.JAVA_HOME: "%env.JDK_21_0%"
+jobs:
+  package:
+    name: Reference package
+    runs-on:
+      self-hosted:
+        - requirement: equals
+          name: Linux container engine
+          parameter: container.engine.osType
+          value: linux
+        - requirement: exists
+          name: JDK 21 available
+          parameter: env.JDK_21_0
+    execution-timeout-minutes: 30
+    allow-reuse: false
+    steps:
+      - type: script
+        name: Check Docker and selected Java
+        script-content: |-
+          set -eu
+          docker info >/dev/null
+          "$JAVA_HOME/bin/java" -version
+      - type: gradle
+        name: Generate JOOQ and OpenAPI sources
+        tasks: generateJooq openApiGenerate
+        use-gradle-wrapper: true
+      # The pinned upstream build lacks generator -> compileKotlin dependencies.
+      # Separate invocations consume generated files without editing that source.
+      - type: gradle
+        name: Package without tests
+        tasks: bootJar
+        use-gradle-wrapper: true
+    files-publication:
+      - path: build/libs/*.jar
+        publish-artifact: true
+        share-with-jobs: false
+  test:
+    name: Reference Testcontainers tests
+    runs-on:
+      self-hosted:
+        - requirement: equals
+          name: Linux container engine
+          parameter: container.engine.osType
+          value: linux
+        - requirement: exists
+          name: JDK 21 available
+          parameter: env.JDK_21_0
+    execution-timeout-minutes: 30
+    allow-reuse: false
+    steps:
+      - type: script
+        name: Check Docker and selected Java
+        script-content: |-
+          set -eu
+          docker info >/dev/null
+          "$JAVA_HOME/bin/java" -version
+      - type: gradle
+        name: Generate JOOQ and OpenAPI sources
+        tasks: generateJooq openApiGenerate
+        use-gradle-wrapper: true
+      - type: gradle
+        name: Run Testcontainers tests
+        tasks: test
+        use-gradle-wrapper: true
+    files-publication:
+      - path: build/test-results/test/*.xml
+        publish-artifact: true
+        share-with-jobs: false
