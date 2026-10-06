@@ -27,7 +27,8 @@ with a green verification build or a proven external blocker.
 
 ## Extra guides
 
-- [Project inspection](../shared/project-inspection.md) — repository structure
+- [Project inspection](../shared/project-inspection.md) — repository structure,
+  technology, and GitHub Actions workflows.
   and technology.
 - [Build-step selection](../shared/build-step-selection.md) — runner choice,
   scripts, JVMs, outputs, and status messages.
