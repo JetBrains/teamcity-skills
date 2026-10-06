@@ -28,6 +28,10 @@ Find the smallest build and test commands that prove the project works. Record:
 - required services, caches, environment variables, and credentials; and
 - checked-in CI, TeamCity YAML, or Kotlin DSL.
 
+When the repository has `.github/workflows/`, read
+[Project inspection](../shared/project-inspection.md) to choose one workflow
+and translate its jobs, commands, and artifacts into the pipeline.
+
 Read [KMP and mobile](../shared/kmp-mobile.md) for Kotlin Multiplatform,
 Compose, Android, or iOS. Treat `./gradlew --no-daemon clean test build` only
 as a candidate command; verify it against the repository.
