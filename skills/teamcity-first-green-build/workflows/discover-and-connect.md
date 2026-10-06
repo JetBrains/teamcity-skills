@@ -47,10 +47,6 @@ can omit inherited connections. Record each connection ID and owner project.
 For an existing pipeline, inspect its VCS-root attachment. A visible project
 root does not prove that the pipeline uses it.
 
-When GitHub Actions exist without matching TeamCity CI, run
-`teamcity migrate --from github-actions`, then review its output and manual
-setup before using it.
-
 ## Use Remote Run only as a VCS fallback
 
 For an IDE-led KMP flow with a local clone, use Remote Run when available. It
