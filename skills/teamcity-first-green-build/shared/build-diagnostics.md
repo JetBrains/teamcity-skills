@@ -121,6 +121,13 @@ branch to TeamCity's logical branch. Do not switch to `main`/`master` or widen
 branch filters merely to suppress the error. Retry only after correcting a
 demonstrated mismatch.
 
+If TeamCity reports `Build was detected as untrusted` because the pull request
+feature was not set, inspect the Pipeline's **Repository → Pull requests**
+setting. A branch specification or **On New Changes → Pull requests** trigger
+is not a substitute.
+Configure the repository's PR handling through a supported operation or the
+Pipeline UI, verify the saved setting, then retry the PR build.
+
 For a private repository, treat build-time change collection as a separate
 test from a VCS-root connection test. Stop with a VCS credential blocker when
 all of the following are true:

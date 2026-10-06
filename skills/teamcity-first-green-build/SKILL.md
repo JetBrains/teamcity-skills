@@ -1,6 +1,6 @@
 ---
 name: teamcity-first-green-build
-version: 1.0.3
+version: 1.1.0
 description: Use when creating, validating, or updating TeamCity CI for a repository and driving it through its first successful build.
 ---
 
@@ -65,6 +65,11 @@ Report checked facts only:
 - TeamCity server and parent project ID.
 - Repository URL and project root.
 - TeamCity object and operations.
+- A server-confirmed native Pipeline URL when available. The CLI's
+  `teamcity pipeline view <pipeline-id> --web` can open the page; use only its
+  observed address. Label a `/buildConfiguration/...` URL as a build
+  configuration link. If no native URL is available, report the Pipeline ID;
+  do not construct a `/pipeline/...` URL from an unverified numeric ID.
 - Configuration format and validation result.
 - Verification build IDs and final states.
 - First green build ID, when observed.

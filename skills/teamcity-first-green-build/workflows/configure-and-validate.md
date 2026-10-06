@@ -14,6 +14,17 @@ Include checkout, build and test jobs, the required runtime, test and artifact
 publication, and repository-required container work. Reference TeamCity
 credentials and connections; never hardcode secrets.
 
+If the requested CI must build pull requests, or the planned verification uses
+a PR ref, verify **Repository → Pull requests** on the selected Pipeline before
+queueing that branch. Configure it through a supported TeamCity operation or
+the Pipeline settings UI. **On New Changes → Pull requests** controls automatic
+queueing; a trigger or branch specification alone does not enable PR handling.
+If the available CLI or MCP cannot configure this setting, give the exact
+[manual prerequisite](../shared/manual-prerequisites.md) and verify the saved
+setting before claiming PR CI works. A successful ordinary-branch build is not
+proof that a `refs/pull/...` build is trusted.
+For a branch-only pipeline, do not enable PR triggers as incidental setup.
+
 Use schema, agent, compatibility, and validation reads to diagnose the target
 environment. Do not create a separate server-stored diagnostic pipeline or
 "retired" diagnostic job unless the user explicitly requests one. Create only
