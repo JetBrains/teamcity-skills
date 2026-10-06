@@ -39,6 +39,10 @@ requirement but does not list the agent's parameters. Treat a conventional key
 inferred from the requested Java version as a candidate until agent parameters
 or job compatibility confirm it.
 
+For the full host-JDK and container decision, read the companion
+[TeamCity JDK Selection](../../teamcity-jdk-selection/SKILL.md) skill when it is
+installed. The checks below remain usable when this skill is installed alone.
+
 The two settings have different jobs:
 
 - An agent requirement that the observed JDK key exists limits scheduling to
