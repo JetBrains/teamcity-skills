@@ -1,6 +1,6 @@
 ---
 name: teamcity-first-green-build
-version: 1.0.2
+version: 1.0.3
 description: Use when creating, validating, or updating TeamCity CI for a repository and driving it through its first successful build.
 ---
 

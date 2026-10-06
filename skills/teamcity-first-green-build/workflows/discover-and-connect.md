@@ -76,9 +76,8 @@ Read [VCS connections and authentication](../shared/vcs-connections-and-auth.md)
 - Attach the selected root before pushing configuration or queueing a run.
 
 Before queueing, inspect the attached roots' default branches and branch
-specifications. Map the requested Git branch to the accepted TeamCity value.
-The root's default ref and a build's branch selector are not interchangeable:
-for the default ref, omit `--branch` unless the branch specification exposes
-that name. An explicit name that the root does not monitor fails the pipeline
-head even when a child job succeeds.
+specifications. Choose a branch selector accepted by the attached roots. The
+default Git ref is not necessarily selectable by its literal name. Omitting
+`--branch` while pinning a revision can instead resolve to `<unspecified>` and
+fail checkout. Read back the queued build's branch and revision before waiting.
 Do not switch to `main`/`master` or widen a branch filter only to hide an error.

@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "TeamCity agent skills for Claude Code",
-    "version": "1.0.2"
+    "version": "1.0.3"
   },
   "plugins": [
     {
