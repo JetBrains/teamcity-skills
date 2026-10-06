@@ -30,6 +30,13 @@ started yet, so it cannot install the required JDK. A Linux container-safe job
 without a matching host JDK needs Docker capability and a pinned JDK image.
 macOS and iOS work needs a native compatible runtime.
 
+For a required JDK version, encode the selection in the saved job: a matching
+`env.JAVA_HOME` or `env.JDK_HOME` parameter and compatible agent requirement,
+or a pinned JDK image for the build step. A preceding script that searches the
+host and calls `setParameter` selects Java only after dispatch; it does not
+make the job compatible with the required JDK. Pull the final Pipeline YAML
+and check this selection on every affected job before queueing.
+
 Keep independent jobs from the repository. Keep mobile work in a KMP pipeline.
 Use meaningful TeamCity status messages.
 
