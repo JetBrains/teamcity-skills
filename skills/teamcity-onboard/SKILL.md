@@ -49,7 +49,34 @@ From the chosen workflow keep only the jobs that build and test. Drop publish,
 release, deploy, scan, and bot jobs, and list them in the report as not
 migrated. Keep one matrix combination, Linux first.
 
-## 2. Write the pipeline
+## 2. Choose where it runs
+
+A wrong `runs-on` is the most common way an onboarding freezes: the build
+stays queued forever because no agent satisfies the requirement. Decide the
+selector from this server's evidence before writing any YAML:
+
+```bash
+TEAMCITY_URL=<server> teamcity pipeline schema --refresh
+TEAMCITY_URL=<server> teamcity agent list --connected --enabled --authorized \
+  --limit 0 --json=id,name,typeId,pool.id,pool.name
+```
+
+- Use a hosted selector that the schema's `runs-on` enum lists, or a
+  self-hosted capability observed on a connected agent. Never copy a selector
+  from another server, a GitHub `ubuntu-latest` label, or a transient VM name.
+- Do not add OS, JDK, Docker, or parameter requirements the workflow did not
+  need. Each one shrinks the compatible agent set. `os-family` and similar
+  keys must exist on an observed agent; changing a value's case cannot make a
+  key exist.
+- An exact JDK is a `parameters.env.JAVA_HOME` value taken from an observed
+  agent key such as `%env.JDK_21_0%`, never a guessed key. A referenced key
+  that no agent advertises is an unmet requirement before dispatch, and no
+  build step can download the JDK because the build never starts. On Linux,
+  prefer a pinned JDK image through `docker-image` on the step when the
+  server has Docker-capable agents.
+- Keep one Linux job unless the repository needs macOS or Windows.
+
+## 3. Write the pipeline
 
 Read [Build-step selection](references/build-step-selection.md) for runner
 choice, the Script Parameter Gate, and status messages.
@@ -71,7 +98,7 @@ Add these to every pipeline, whether or not the workflow had them:
 jobs:
   test:
     name: Build and test
-    runs-on: <selector observed on this server>
+    runs-on: <a value from the schema enum, for example Linux-Medium>
     enable-dependency-cache: true
     parallelism: 3
     steps:
@@ -82,9 +109,17 @@ jobs:
 
 Then read
 [Validate and check compatibility](references/validate-and-check-compatibility.md)
-for JDK selection, validation, `runs-on`, and the compatibility check.
+and run its checks. Before queueing anything, pull the stored YAML and ask
+TeamCity which agents reject the job:
 
-## 3. Attach it to the repository
+```bash
+TEAMCITY_URL=<server> teamcity agent jobs <agent-id> --incompatible --json
+```
+
+Zero compatible agents is a configuration defect to fix now, not something to
+wait out.
+
+## 4. Attach it to the repository
 
 Use the VCS root from the hand-over context. Without one, list the roots in the
 parent project and its ancestors and reuse the one that matches the repository
@@ -111,11 +146,26 @@ TEAMCITY_URL=<server> teamcity run start <job-id> --branch <branch> \
   --local-changes=git --no-push --personal
 ```
 
-## 4. Run it until green, then show the speedup
+## 5. Run it until green, then show the speedup
 
 Read [Verify a build](references/verify-build.md) to queue, watch, and correct
 the first run. Keep going until the pipeline head and every job are green or a
 blocker is proven.
+
+A run still queued after two observations or 60–120 seconds is blocked, not
+slow. Stop polling and read the wait reason:
+
+```bash
+TEAMCITY_URL=<server> teamcity queue list --job <job-id> --json=id,waitReason,queuedDate
+```
+
+For **no compatible agents** or **unresolved parameters**, follow "Diagnose A
+Build That Remains Queued" in [Build diagnostics](references/build-diagnostics.md):
+list agents, query the job's incompatibility reasons, pull the stored YAML, make
+one correction the evidence supports, validate, and only then queue again. Do
+not requeue unchanged, do not add another requirement, and do not switch
+branches to hide the error. Treat **no idle compatible agents** as busy capacity
+only after the incompatibility query confirms at least one compatible agent.
 
 Then run the pipeline two more times on the same revision. The first green run
 gives TeamCity the test history; the later runs split the tests into
