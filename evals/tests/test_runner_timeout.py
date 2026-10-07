@@ -23,6 +23,14 @@ collector = load_module("collect_timeout_test", "collect_teamcity_eval_runs.py")
 
 
 class AgentTimeoutTest(unittest.TestCase):
+    def test_first_green_agent_has_no_default_deadline(self):
+        self.assertIsNone(run_case.agent_timeout_seconds(None, "first-green-build"))
+        self.assertEqual(3600, run_case.agent_timeout_seconds(None, "pipeline-configuration"))
+        self.assertEqual(7200, run_case.agent_timeout_seconds("7200", "first-green-build"))
+        self.assertIsNone(run_case.agent_timeout_seconds("0", "pipeline-configuration"))
+        with self.assertRaises(run_case.EvalError):
+            run_case.agent_timeout_seconds("-1", "first-green-build")
+
     def test_phase_monitor_records_fixed_durations_and_safe_events(self):
         ticks = iter((0, 1, 3, 8, 10))
         output = io.StringIO()
@@ -189,8 +197,8 @@ class AgentTimeoutTest(unittest.TestCase):
                     mock.patch.object(run_case, "TeamCityCliBridge", return_value=bridge), \
                     mock.patch.object(run_case, "checkout_repository"), \
                     mock.patch.object(run_case, "invoke_agent", return_value={
-                        "exitCode": 0, "timedOut": False, "timeoutSeconds": 7,
-                    }), \
+                        "exitCode": 0, "timedOut": False, "timeoutSeconds": None,
+                    }) as invoked, \
                     mock.patch.object(run_case, "agent_usage", return_value={}), \
                     mock.patch.object(run_case, "trace_error_category", return_value=None), \
                     mock.patch.object(run_case, "permission_failure_surface", return_value=None), \
@@ -205,8 +213,26 @@ class AgentTimeoutTest(unittest.TestCase):
         self.assertEqual(3, published["phaseTimings"]["bootstrapSeconds"])
         self.assertIn("agentSeconds", published["phaseTimings"])
         self.assertIn("buildWaitSeconds", published["phaseTimings"])
+        self.assertIsNone(invoked.call_args.args[4])
+        self.assertNotIn("agentTimeoutSeconds", published)
         self.assertNotIn("private-project", json.dumps(published))
         self.assertNotIn("private-token", json.dumps(published))
+
+    def test_invoke_agent_without_limit_waits_for_completion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trace = pathlib.Path(directory) / "trace.log"
+            process = mock.Mock(returncode=0)
+            with mock.patch.object(run_case.subprocess, "Popen", return_value=process), \
+                    mock.patch.object(run_case, "stop_agent_processes") as stop:
+                outcome = run_case.invoke_agent(
+                    "prompt", pathlib.Path(directory), {}, trace, timeout=None,
+                )
+
+            self.assertEqual(0, outcome["exitCode"])
+            self.assertFalse(outcome["timedOut"])
+            self.assertIsNone(outcome["timeoutSeconds"])
+            process.communicate.assert_called_once_with(input="prompt", timeout=None)
+            stop.assert_not_called()
 
     def test_invoke_agent_turns_timeout_into_structured_outcome(self):
         with tempfile.TemporaryDirectory() as directory:

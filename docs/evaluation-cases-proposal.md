@@ -484,10 +484,11 @@ environment from outside the case:
 | `EVAL_PARENT_PROJECT` | parent project that holds temporary eval projects |
 | `EVAL_PIPELINES` | comma-separated head build configuration IDs collected by the report job |
 | `EVAL_AGENT_CMD` | optional base command for the agent; by default `claude -p`, with `--output-format stream-json --verbose` added by the runner and the prompt arriving on stdin in the checkout |
-| `EVAL_BUILD_TIMEOUT`, `EVAL_AGENT_TIMEOUT` | seconds, both default to 3600 |
+| `EVAL_BUILD_TIMEOUT` | build wait in seconds; defaults to 3600 |
+| `EVAL_AGENT_TIMEOUT` | optional agent limit in seconds; no default limit for first-green-build cases, 3600 for other cases; `0` disables it |
 
-`EVAL_AGENT_TIMEOUT` limits the `claude -p` process, not the TeamCity build
-that Claude creates. If Claude exceeds that budget, the runner stops it,
+When set, `EVAL_AGENT_TIMEOUT` limits the `claude -p` process, not the TeamCity
+build that Claude creates. If Claude exceeds that budget, the runner stops it,
 records `agent-timeout`, uses `EVAL_FAILED_AGENT_GRACE` to inspect any build
 already queued in TeamCity, and publishes the resulting checks. A timeout is
 still an evaluation failure even when those checks pass: the output remains

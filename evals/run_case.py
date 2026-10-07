@@ -26,7 +26,8 @@ Configuration comes from the environment, never from the case:
     EVAL_BUILD_TIMEOUT     seconds to wait for the build (default 3600)
     EVAL_QUEUE_CHECK_AFTER seconds before checking a queued build (default 120)
     EVAL_QUEUE_STALL_TIMEOUT seconds to allow a queued build (default 600)
-    EVAL_AGENT_TIMEOUT     seconds to wait for the agent (default 3600)
+    EVAL_AGENT_TIMEOUT     optional agent limit in seconds; first-green-build
+                           has no default limit (0 disables an explicit limit)
     EVAL_AGENT_MAX_BUDGET_USD optional positive Claude API spending limit
     EVAL_KEEP              set to 1 to leave the temporary project and checkout
                            in place, the same as --keep
@@ -1476,6 +1477,15 @@ def agent_budget(value: Optional[str]) -> Optional[float]:
     return float(value)
 
 
+def agent_timeout_seconds(value: Optional[str], case_kind: str) -> Optional[int]:
+    """Leave first-green agents unbounded unless a limit is explicitly set."""
+    if value is None or value == "":
+        return None if case_kind == "first-green-build" else 3600
+    if not re.fullmatch(r"[0-9]{1,9}", value):
+        raise EvalError("EVAL_AGENT_TIMEOUT must be a non-negative integer")
+    return int(value) or None
+
+
 def agent_result_category(trace: pathlib.Path) -> Optional[str]:
     """Inspect only the provider's fixed completion flags, not its prose."""
     category = None
@@ -1518,7 +1528,7 @@ def stop_agent_processes(process) -> None:
 
 
 def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.Path,
-                 timeout: int, tools: list = None,
+                 timeout: Optional[int], tools: list = None,
                  mcp_config: Optional[pathlib.Path] = None,
                  transport_contract: str = "",
                  use_local_mcp_probe: bool = False, build_monitor=None) -> dict:
@@ -1565,7 +1575,8 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
             if build_monitor is None:
                 process.communicate(input=prompt, timeout=timeout)
             else:
-                deadline = time.monotonic() + timeout
+                deadline = (time.monotonic() + timeout
+                            if timeout is not None else float("inf"))
                 pending_input = prompt
                 while True:
                     remaining = deadline - time.monotonic()
@@ -2071,7 +2082,7 @@ def run(
         result.update(status="dry-run", prompt=prompt, projectName=project_name)
         return result
 
-
+    agent_timeout = agent_timeout_seconds(env.get("EVAL_AGENT_TIMEOUT"), case["kind"])
     fixture_case = case["kind"] in ("queue-stall-diagnosis", "queue-recovery")
     recovery_case = case["kind"] == "queue-recovery"
     recovery_fixture = None
@@ -2149,14 +2160,14 @@ def run(
                 with QueueRecoveryFixture(case["scenario"], workspace, checkout, env) as recovery_fixture:
                     agent_run = invoke_agent(
                         prompt, checkout, recovery_fixture.agent_environment(env), trace,
-                        int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
+                        agent_timeout,
                         case.get("agentTools"), mcp_config, transport_contract,
                         use_local_mcp_probe,
                     )
             else:
                 agent_run = invoke_agent(
                     prompt, checkout, install_queue_stall_fixture(workspace, env), trace,
-                    int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
+                    agent_timeout,
                     case.get("agentTools"), mcp_config, transport_contract,
                     use_local_mcp_probe,
                 )
@@ -2198,7 +2209,7 @@ def run(
                         )
                     agent_run = invoke_agent(
                         prompt, checkout, agent_env, trace,
-                        int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
+                        agent_timeout,
                         case.get("agentTools"), mcp_config, transport_contract,
                         use_local_mcp_probe,
                         build_monitor=monitor,
@@ -2209,7 +2220,8 @@ def run(
         agent_exit = agent_run["exitCode"]
         result["agentExitCode"] = agent_exit
         result["agentTimedOut"] = agent_run["timedOut"]
-        result["agentTimeoutSeconds"] = agent_run["timeoutSeconds"]
+        if agent_run["timeoutSeconds"] is not None:
+            result["agentTimeoutSeconds"] = agent_run["timeoutSeconds"]
         if "buildMonitorDiagnostics" in agent_run:
             result["buildMonitorDiagnostics"] = agent_run["buildMonitorDiagnostics"]
         usage = agent_usage(trace)
