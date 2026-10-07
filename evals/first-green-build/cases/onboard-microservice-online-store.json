@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "onboard-microservice-online-store",
+  "kind": "first-green-build",
+  "status": "draft",
+  "skill": "teamcity-onboard",
+  "prompt": "Continue the TeamCity onboarding flow for this checked-out repository. The web hand-over supplies TeamCity server {{teamcity.server}}, parent project {{teamcity.targetProject}}, checkout in the current working directory, remote https://github.com/metao1/microservice-online-store.git, current branch master, and no VCS root. Recreate only the build and test core of its GitHub Actions workflow. Do not publish, deploy, or release. Preserve its Docker-backed Testcontainers tests. Use native TeamCity runners, dependency cache, and parallel tests. Validate the saved pipeline and run it until green.",
+  "teamcity": {"server": "runner-configured", "targetProject": "runner-configured"},
+  "repository": {"url": "https://github.com/metao1/microservice-online-store.git", "revision": "3cd36b06f9bb95462a92a15e33df4b7b74a147b1", "defaultBranch": "master", "root": "."},
+  "stack": {"family": "microservices", "buildTool": "gradle", "gradle": "9"},
+  "requestedConfiguration": {"format": "yaml", "sourcePath": ".teamcity.yml"},
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "verification": {"command": "./gradlew build", "testReportPaths": ["**/build/test-results/test/*.xml"], "artifactPaths": ["**/build/libs/*.jar"]},
+  "expected": {
+    "configurationValidated": true, "testsExecutedAndReported": true, "artifactsPublished": true, "sourceMutations": "none", "toolchain": {"jdk": "25"}, "firstBuild": "SUCCESS",
+    "configuration": {"configurationValidated": true, "sourceMutations": "none", "minimumJobs": 1, "toolchain": {"jdk": "25"}, "requiredStepTypes": ["gradle"], "requiredArtifactRules": ["\\.jar"], "requiredJobProperties": [{"property": "enable-dependency-cache", "value": true}, {"property": "parallelism", "value": 3}]}
+  }
+}

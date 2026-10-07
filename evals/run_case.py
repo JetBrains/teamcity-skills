@@ -551,6 +551,11 @@ class TeamCity:
                     "parameters": jdk_selectors({
                         **(parsed.get("parameters") or {}), **(job.get("parameters") or {}),
                     }, parameter=True),
+                    "jobProperties": {
+                        name: job[name]
+                        for name in ("enable-dependency-cache", "parallelism")
+                        if name in job
+                    },
                 })
         return collected
 
@@ -882,6 +887,21 @@ def grade_configuration(case: dict, observed: dict) -> dict:
             "expected": True,
             "observed": not missing,
             "detail": f"missing {missing} in {rules!r}" if missing else f"rules: {rules!r}",
+        }
+
+    if "requiredJobProperties" in expected:
+        missing = [
+            f"{want['property']}={want['value']!r}"
+            for want in expected["requiredJobProperties"]
+            if not any(
+                job.get("jobProperties", {}).get(want["property"]) == want["value"]
+                for job in jobs
+            )
+        ]
+        checks["requiredJobProperties"] = {
+            "expected": True,
+            "observed": not missing,
+            "detail": f"missing {missing}" if missing else "all present",
         }
 
     if "requiredAgentRequirements" in expected:

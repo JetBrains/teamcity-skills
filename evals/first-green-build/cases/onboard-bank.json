@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "onboard-bank",
+  "kind": "first-green-build",
+  "status": "draft",
+  "skill": "teamcity-onboard",
+  "prompt": "Continue the TeamCity onboarding flow for this checked-out repository. The web hand-over supplies TeamCity server {{teamcity.server}}, parent project {{teamcity.targetProject}}, checkout in the current working directory, remote https://github.com/BrodyGaudel/bank.git, current branch main, and no VCS root. This repository has no GitHub Actions workflow, so design one small build and test pipeline from its Maven project. Do not publish, deploy, or release. Use native TeamCity runners, dependency cache, and parallel tests. Validate the saved pipeline and run it until green.",
+  "teamcity": {"server": "runner-configured", "targetProject": "runner-configured"},
+  "repository": {"url": "https://github.com/BrodyGaudel/bank.git", "revision": "7998b9b18c4be74fb1058eb545cbbec4893158a1", "defaultBranch": "main", "root": "."},
+  "stack": {"family": "microservices", "buildTool": "maven", "maven": "3.9"},
+  "requestedConfiguration": {"format": "yaml", "sourcePath": ".teamcity.yml"},
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "verification": {"command": "mvn -B clean verify", "testReportPaths": ["**/target/surefire-reports/*.xml"], "artifactPaths": ["**/target/*.jar"]},
+  "expected": {
+    "configurationValidated": true, "testsExecutedAndReported": true, "artifactsPublished": true, "sourceMutations": "none", "toolchain": {"jdk": "17"}, "firstBuild": "SUCCESS",
+    "configuration": {"configurationValidated": true, "sourceMutations": "none", "minimumJobs": 1, "toolchain": {"jdk": "17"}, "requiredStepTypes": ["maven"], "requiredArtifactRules": ["\\.jar"], "requiredJobProperties": [{"property": "enable-dependency-cache", "value": true}, {"property": "parallelism", "value": 3}]}
+  }
+}

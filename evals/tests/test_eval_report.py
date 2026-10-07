@@ -308,7 +308,7 @@ class EvalReportTest(unittest.TestCase):
             data = collector.collect("https://teamcity.example", ["pipeline"], 0, [])
         by_id = {case["id"]: case for case in data["cases"]}
         self.assertEqual("unsupported-tool-mode", by_id[queue["id"]]["comparisons"]["mcp-only"]["status"])
-        self.assertEqual(116, data["summary"]["expectedArmSlots"])
+        self.assertEqual(188, data["summary"]["expectedArmSlots"])
         rendered = renderer.render({"cases": [preflight, queue]})
         self.assertIn('colspan="6"><span class="status">not executable', rendered)
         self.assertIn("preflight runner is not implemented", rendered)

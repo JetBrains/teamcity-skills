@@ -23,6 +23,9 @@ import-parameters:
   - eval.claude.connection.id
 parameters:
   case: evals/first-green-build/cases/spring-petclinic-maven-yaml.json
+  # A baseline has identical repository, task, tool mode, and limits; only the
+  # evaluated skill is withheld by the runner.
+  env.EVAL_ARM: skill
   env.EVAL_TOOL_MODE: cli-only
   env.EVAL_MCP_LOCAL_PROBE: "false"
   env.EVAL_AGENT_CONFIG_ID: claude-default

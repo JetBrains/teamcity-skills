@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "onboard-spring-cloud-vault",
+  "kind": "first-green-build",
+  "status": "draft",
+  "skill": "teamcity-onboard",
+  "prompt": "Continue the TeamCity onboarding flow for this checked-out repository. The web hand-over supplies TeamCity server {{teamcity.server}}, parent project {{teamcity.targetProject}}, checkout in the current working directory, remote https://github.com/spring-cloud/spring-cloud-vault.git, current branch main, and no VCS root. Recreate only the build and test core of its GitHub Actions workflow. Do not publish, deploy, or release. Preserve its local Vault test setup. Use native TeamCity runners, dependency cache, and parallel tests. Validate the saved pipeline and run it until green.",
+  "teamcity": {"server": "runner-configured", "targetProject": "runner-configured"},
+  "repository": {"url": "https://github.com/spring-cloud/spring-cloud-vault.git", "revision": "a71a8cd7379dc6a6f8cf28b0a9b5c23834d5ebfd", "defaultBranch": "main", "root": "."},
+  "stack": {"family": "spring-cloud", "buildTool": "maven", "maven": "3.9"},
+  "requestedConfiguration": {"format": "yaml", "sourcePath": ".teamcity.yml"},
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "verification": {"command": "./mvnw -B clean install -Pspring", "testReportPaths": ["**/target/surefire-reports/*.xml"], "artifactPaths": ["**/target/*.jar"]},
+  "expected": {
+    "configurationValidated": true, "testsExecutedAndReported": true, "artifactsPublished": true, "sourceMutations": "none", "toolchain": {"jdk": "17"}, "firstBuild": "SUCCESS",
+    "configuration": {"configurationValidated": true, "sourceMutations": "none", "minimumJobs": 1, "toolchain": {"jdk": "17"}, "requiredStepTypes": ["maven"], "requiredArtifactRules": ["\\.jar"], "requiredJobProperties": [{"property": "enable-dependency-cache", "value": true}, {"property": "parallelism", "value": 3}]}
+  }
+}

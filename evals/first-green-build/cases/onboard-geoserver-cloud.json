@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "onboard-geoserver-cloud",
+  "kind": "first-green-build",
+  "status": "draft",
+  "skill": "teamcity-onboard",
+  "prompt": "Continue the TeamCity onboarding flow for this checked-out repository. The web hand-over supplies TeamCity server {{teamcity.server}}, parent project {{teamcity.targetProject}}, checkout in the current working directory, remote https://github.com/geoserver/geoserver-cloud.git, current branch main, and no VCS root. Recreate only the build and test core of its GitHub Actions workflow. Do not publish, deploy, or release. Preserve its source checkout requirements. Use native TeamCity runners, dependency cache, and parallel tests. Validate the saved pipeline and run it until green.",
+  "teamcity": {"server": "runner-configured", "targetProject": "runner-configured"},
+  "repository": {"url": "https://github.com/geoserver/geoserver-cloud.git", "revision": "02594cb3430f1a354e3810051e94e0ec69bc109a", "defaultBranch": "main", "root": "."},
+  "stack": {"family": "geospatial", "buildTool": "maven", "maven": "3.9"},
+  "requestedConfiguration": {"format": "yaml", "sourcePath": ".teamcity.yml"},
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "verification": {"command": "./mvnw -B verify -Dfmt.skip -Dcoverage -ntp -T1C", "testReportPaths": ["**/target/surefire-reports/*.xml", "**/target/failsafe-reports/*.xml"], "artifactPaths": ["**/target/*.jar"]},
+  "expected": {
+    "configurationValidated": true, "testsExecutedAndReported": true, "artifactsPublished": true, "sourceMutations": "none", "toolchain": {"jdk": "25"}, "firstBuild": "SUCCESS",
+    "configuration": {"configurationValidated": true, "sourceMutations": "none", "minimumJobs": 1, "toolchain": {"jdk": "25"}, "requiredStepTypes": ["maven"], "requiredArtifactRules": ["\\.jar"], "requiredJobProperties": [{"property": "enable-dependency-cache", "value": true}, {"property": "parallelism", "value": 3}]}
+  }
+}
