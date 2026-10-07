@@ -38,7 +38,9 @@ Read [TeamCity tool policy](references/teamcity-tool-policy.md) and
 
 ## 1. Read the repository
 
-Read [Project inspection](references/project-inspection.md). Its GitHub Actions
+Read [Discover and connect](references/discover-and-connect.md) to confirm the
+target, inspect the repository and the server, and find the VCS root. Then read
+[Project inspection](references/project-inspection.md). Its GitHub Actions
 section chooses the workflow: one workflow, use it; several, prefer the classic
 build, test, and publish flow; otherwise propose the one that other workflows
 depend on, runs most often, or suits TeamCity best. State the choice and the
@@ -121,30 +123,17 @@ wait out.
 
 ## 4. Attach it to the repository
 
-Use the VCS root from the hand-over context. Without one, list the roots in the
-parent project and its ancestors and reuse the one that matches the repository
-URL:
+Use the VCS root found in [Discover and connect](references/discover-and-connect.md)
+and create the pipeline:
 
 ```bash
-TEAMCITY_URL=<server> teamcity project vcs list --project <parent-id> --json
-TEAMCITY_URL=<server> teamcity project vcs view <vcs-root-id>
 TEAMCITY_URL=<server> teamcity pipeline create <repo>-pipeline \
   --project <parent-id> --vcs-root <vcs-root-id> --file .teamcity.yml
 ```
 
-When no root exists for a public repository, create one with
-`--auth anonymous` and continue. For a private repository without an
-authorized root, the pipeline cannot read the sources: report it as a
-[manual prerequisite](references/manual-prerequisites.md) naming the web step's
-repository authorization. Do not create a token-based root.
-
-When the root exists but the branch or the latest commit is not pushed, run a
-remote run instead of waiting for a push:
-
-```bash
-TEAMCITY_URL=<server> teamcity run start <job-id> --branch <branch> \
-  --local-changes=git --no-push --personal
-```
+That guide also covers the branch to pass with `--branch`, the anonymous root
+for a public repository, the manual prerequisite for a private one, and the
+remote run when the checked-out commit is not pushed yet.
 
 ## 5. Run it until green, then show the speedup
 
