@@ -42,8 +42,7 @@ environment variable, command history, tool configuration, or repository files.
 
 ## Read shared guides only when needed
 
-- `shared/project-inspection.md` — local repository inspection and reuse of
-  GitHub Actions workflows.
+- `shared/project-inspection.md` — local repository inspection.
 - `shared/build-step-selection.md` — build steps, JVM verification, outputs,
   and status messages.
 - `shared/kmp-mobile.md` — Kotlin Multiplatform, Android, Compose, or iOS.

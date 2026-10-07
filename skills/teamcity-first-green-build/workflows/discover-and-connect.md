@@ -28,10 +28,6 @@ Find the smallest build and test commands that prove the project works. Record:
 - required services, caches, environment variables, and credentials; and
 - checked-in CI, TeamCity YAML, or Kotlin DSL.
 
-When the repository has `.github/workflows/`, read
-[Project inspection](../shared/project-inspection.md) to choose one workflow
-and translate its jobs, commands, and artifacts into the pipeline.
-
 Read [KMP and mobile](../shared/kmp-mobile.md) for Kotlin Multiplatform,
 Compose, Android, or iOS. Treat `./gradlew --no-daemon clean test build` only
 as a candidate command; verify it against the repository.
@@ -46,6 +42,10 @@ List connections through the parent chain to `_Root`; a child-project listing
 can omit inherited connections. Record each connection ID and owner project.
 For an existing pipeline, inspect its VCS-root attachment. A visible project
 root does not prove that the pipeline uses it.
+
+When GitHub Actions exist without matching TeamCity CI, run
+`teamcity migrate --from github-actions`, then review its output and manual
+setup before using it.
 
 ## Use Remote Run only as a VCS fallback
 
