@@ -40,14 +40,9 @@ runtime.
 
 ## Validate the saved configuration
 
-Validate the source file that will become the source of truth:
-
-```bash
-teamcity project settings validate path/to/.teamcity
-teamcity pipeline validate path/to/pipeline.yml
-```
-
-An exposed MCP validator also works. A local YAML parser proves syntax only.
+Validate the source file that will become the source of truth with
+`teamcity pipeline validate <file>` (the CLI skill's pipelines workflow). An
+exposed MCP validator also works. A local YAML parser proves syntax only.
 Report a missing semantic validator before queueing.
 
 After a server-side correction, reconcile the source file with the stored
@@ -63,14 +58,10 @@ availability, runner types, Docker, parameters, credentials, and VCS change
 collection. Pull saved Pipeline YAML and verify that each `%name%` substitution
 is declared or inherited.
 
-For a Pipeline job, use TeamCity's compatibility result. With the CLI:
-
-```bash
-TEAMCITY_URL=<server> teamcity pipeline schema --refresh
-TEAMCITY_URL=<server> teamcity agent list --connected --enabled --authorized \
-  --limit 0 --json=id,name,typeId,pool.id,pool.name
-TEAMCITY_URL=<server> teamcity agent jobs <agent-id> --incompatible --json
-```
+For a Pipeline job, use TeamCity's compatibility result: `pipeline schema
+--refresh`, `agent list --connected --enabled --authorized`, then
+`agent jobs <agent-id> --incompatible` for each candidate (the CLI skill's
+agents workflow).
 
 Check the exact job across all candidate agents, not one convenient host.
 Auto-generated Pipeline jobs may be absent from the CLI's compatible and

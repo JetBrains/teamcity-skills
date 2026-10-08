@@ -42,6 +42,9 @@ TeamCity server's supported capabilities.
 - .NET: prefer a .NET runner when available.
 - Docker: prefer a Docker runner when the schema exposes one; otherwise keep
   container validation as a clear script-based job instead of dropping it.
+  Match the agent's CPU architecture to the images the build pulls, including
+  Testcontainers images: an amd64-only image on an arm64 agent fails with
+  `exec format error`.
 - Python, Go, Rust, and other stacks: use dedicated runners when the active
   server exposes them; otherwise use the project's standard command in a script
   step.
