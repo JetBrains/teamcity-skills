@@ -1732,8 +1732,7 @@ def copy_agent_log(source: pathlib.Path, root: pathlib.Path,
             candidate /= part
             if candidate.is_symlink():
                 return False
-        if not source.resolve().is_relative_to(root.resolve()):
-            return False
+        source.resolve().relative_to(root.resolve())
         if source.stat().st_mtime < started_at - 2:
             return False
         source_fd = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))

@@ -17,6 +17,30 @@ CODEX_SESSION = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 
 
 class AgentLogArtifactsTest(unittest.TestCase):
+    def test_copy_agent_log_without_path_is_relative_to(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = pathlib.Path(directory)
+            root = workspace / "config"
+            root.mkdir()
+            source = root / "session.jsonl"
+            source.write_text("current session")
+            outside = workspace / "outside.jsonl"
+            outside.write_text("other session")
+            artifact = workspace / "artifact" / "session.jsonl"
+
+            with mock.patch.object(pathlib.Path, "is_relative_to",
+                                   side_effect=AttributeError("unavailable"), create=True):
+                self.assertTrue(run_case.copy_agent_log(
+                    source, root, artifact, time.time(),
+                ))
+                self.assertFalse(run_case.copy_agent_log(
+                    root / ".." / "outside.jsonl", root,
+                    workspace / "artifact" / "outside.jsonl", time.time(),
+                ))
+
+            self.assertEqual("current session", artifact.read_text())
+            self.assertFalse((workspace / "artifact" / "outside.jsonl").exists())
+
     def test_claude_copies_only_current_session_and_its_debug_log(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
