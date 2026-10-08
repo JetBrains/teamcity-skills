@@ -6,101 +6,103 @@ description: Use inside the TeamCity onboarding flow, after the web step created
 
 # TeamCity Onboard
 
-Show that is leaving GitHub Actions what the same build looks like on
-TeamCity. Recreate only the core of one workflow, use native runners, turn on
-parallel tests, and run the pipeline until it is green and the speedup is
-visible. The web step before this skill created the instance and, when it
-could, an authenticated VCS root. This skill is not a stand-alone setup tool.
+Show a team leaving GitHub Actions what their build looks like on TeamCity:
+one workflow's build and test core, native runners, parallel tests, and a
+green pipeline with a visible speedup. The web step before this skill created
+the instance and, when it could, an authenticated VCS root. This skill does
+not work without that step.
 
-## Inputs
+## Load the CLI skill first
 
-Take these from the hand-over context. Do not ask for them and never take the
-server from a saved CLI default:
+Every TeamCity operation goes through the `teamcity` CLI, and the
+`teamcity-cli` skill owns how to use it. Invoke that skill before the first
+TeamCity command: through the Skill tool when it is available, otherwise by
+reading `../teamcity-cli/SKILL.md`. If it is not installed, run
+`teamcity skill install`.
 
-- TeamCity server URL and the parent project ID. The parent is never `_Root`.
-- The checked-out repository: its path, remote URL, and current branch.
-- The VCS root ID, when the web step created one.
+The CLI skill supplies command syntax and flags, output formats, how to start
+and watch a run, failure investigation, build-chain debugging, and the
+pipeline pull, validate, push loop. Do not guess a flag or re-derive a
+workflow that it documents. This skill adds only the onboarding decisions and
+these overrides, which win where the two differ:
 
-The CLI is already authenticated. Confirm the identity once with
-`TEAMCITY_URL=<server> teamcity auth status`, then prefix every command with
-the same `TEAMCITY_URL`. If a value is missing from the context, stop and report which
-one the web step must provide.
+- Prefix every command with `TEAMCITY_URL=<server>` from the hand-over
+  context. Never use the saved default server, `teamcity auth login`, or
+  `teamcity api`.
+- Never edit repository sources, skip tests, or disable steps to get green.
+  The "fix the code and verify with `--local-changes`" path of the CLI skill
+  is out of scope here.
+- Create no connections, triggers, or pull-request handling.
 
-## Rules
+## Inputs and rules
 
-Read [TeamCity tool policy](references/teamcity-tool-policy.md) and
-[Token safety](references/token-safety.md). Then:
+The hand-over context supplies the server URL, the parent project ID, the
+checked-out repository with its remote URL and branch, and the VCS root ID
+when one exists. Never ask for these. If one is missing, stop and name it.
+Confirm the authenticated identity once with `teamcity auth status`.
 
-- do not create connections, VCS roots, triggers, or pull-request handling;
-- recreate only build and test jobs, never the whole workflow;
-- prefer dedicated runners over script steps; and
-- add dependency cache and parallel tests even when the workflow had none.
+Read [Token safety](references/token-safety.md). Then:
+
+- recreate only the build and test jobs of one workflow;
+- use dedicated runners; a script step is for glue only; and
+- add the dependency cache and parallel tests even if the workflow had none.
 
 ## 1. Read the repository
 
-Read [Discover and connect](references/discover-and-connect.md) to confirm the
-target, inspect the repository and the server, and find the VCS root. Then read
-[Project inspection](references/project-inspection.md). Its GitHub Actions
-section chooses the workflow: one workflow, use it; several, prefer the classic
-build, test, and publish flow; otherwise propose the one that other workflows
-depend on, runs most often, or suits TeamCity best. State the choice and the
-reason in the report. A repository without workflows is supported but not the
-priority: design from the build files and README alone.
+Read [Discover and connect](references/discover-and-connect.md): it confirms
+the target, inspects the server, and finds the VCS root and the branch.
 
-From the chosen workflow keep only the jobs that build and test. Drop publish,
-release, deploy, scan, and bot jobs, and list them in the report as not
-migrated. Keep one matrix combination, Linux first.
+Read [Project inspection](references/project-inspection.md) and choose the
+workflow by its rules: prefer the classic build, test, and publish flow; with
+none, propose the one that others depend on or that suits TeamCity best.
+Record the choice and the reason for the report. A repository without
+workflows is supported: design from the build files and README.
+
+Keep only the jobs that build and test, and one matrix combination, Linux
+first. List everything dropped as not migrated.
 
 ## 2. Choose where it runs
 
-A wrong `runs-on` is the most common way an onboarding freezes: the build
-stays queued forever because no agent satisfies the requirement. Decide the
-selector from this server's evidence before writing any YAML:
+A wrong `runs-on` is how an onboarding freezes: the build queues forever
+because no agent matches. Decide the selector from the server before writing
+YAML. `teamcity pipeline schema --refresh` gives the `runs-on` enum;
+`teamcity agent list --connected --enabled --authorized` gives the agents
+(see the CLI skill's agents workflow for the fields).
 
-```bash
-TEAMCITY_URL=<server> teamcity pipeline schema --refresh
-TEAMCITY_URL=<server> teamcity agent list --connected --enabled --authorized \
-  --limit 0 --json=id,name,typeId,pool.id,pool.name
-```
-
-- Use a hosted selector that the schema's `runs-on` enum lists, or a
-  self-hosted capability observed on a connected agent. Never copy a selector
-  from another server, a GitHub `ubuntu-latest` label, or a transient VM name.
-- Do not add OS, JDK, Docker, or parameter requirements the workflow did not
-  need. Each one shrinks the compatible agent set. `os-family` and similar
-  keys must exist on an observed agent; changing a value's case cannot make a
-  key exist.
-- An exact JDK is a `parameters.env.JAVA_HOME` value taken from an observed
-  agent key such as `%env.JDK_21_0%`, never a guessed key. A referenced key
-  that no agent advertises is an unmet requirement before dispatch, and no
-  build step can download the JDK because the build never starts. On Linux,
-  prefer a pinned JDK image through `docker-image` on the step when the
-  server has Docker-capable agents.
-- Keep one Linux job unless the repository needs macOS or Windows.
+- Use a hosted selector from the schema's `runs-on` enum, or a capability
+  observed on a connected agent. Never a GitHub label, a selector from another
+  server, or a VM name.
+- Add no OS, JDK, Docker, or parameter requirement the workflow did not need.
+  Each one shrinks the set of compatible agents.
+- Select an exact JDK through `parameters.env.JAVA_HOME` with a key an agent
+  advertises, such as `%env.JDK_21_0%`. A key no agent has blocks dispatch,
+  and no build step can install the JDK because the build never starts. On
+  Linux, a pinned JDK `docker-image` on the step is the safer choice.
+- Match the agents' CPU architecture to the images the build pulls, including
+  Testcontainers images. An amd64-only image on an arm64 agent fails with
+  `exec format error`.
+- Count the compatible agents. Each parallel test batch needs one at the same
+  time.
 
 ## 3. Write the pipeline
 
 Read [Build-step selection](references/build-step-selection.md) for runner
-choice, the Script Parameter Gate, and status messages.
+choice, the Script Parameter Gate, and status messages. Then add:
 
-Add these to every pipeline, whether or not the workflow had them:
-
-- `enable-dependency-cache: true` on each job.
-- `parallelism: <n>` on the job whose primary step runs the tests through a
-  Gradle, Maven, or .NET runner. Start with 3. TeamCity splits the tests into
-  that many batches once it has test history. Keep packaging out of that job,
-  because every batch runs the whole job.
-- For a test step that must stay a script, an `xml-report` job feature
-  (`report-type: junit` and `rules:` for the report files) so the tests show
-  in the TeamCity UI.
-- `files-publication` for the packaged output: what the workflow uploaded,
-  or the application JAR or package the build produces.
+- `enable-dependency-cache: true` on each job;
+- `parallelism` on the test job, when its tests run through a Gradle, Maven,
+  or .NET runner: 3, or the number of compatible agents if smaller, and none
+  below 2. Keep packaging out of that job, because every batch runs it all;
+- an `xml-report` job feature (`report-type: junit`, `rules:`) only when the
+  test step has to stay a script; and
+- `files-publication` for the packaged output, whether the workflow uploaded
+  it or not.
 
 ```yaml
 jobs:
   test:
     name: Build and test
-    runs-on: <a value from the schema enum, for example Linux-Medium>
+    runs-on: Linux-Medium   # a value from this server's schema enum
     enable-dependency-cache: true
     parallelism: 3
     steps:
@@ -109,72 +111,56 @@ jobs:
         tasks: test
 ```
 
-Then read
-[Validate and check compatibility](references/validate-and-check-compatibility.md)
-and run its checks. Before queueing anything, pull the stored YAML and ask
-TeamCity which agents reject the job:
+Read [Validate and check compatibility](references/validate-and-check-compatibility.md)
+and run its checks. Before queueing, ask TeamCity which agents reject the job
+with `teamcity agent jobs <agent-id> --incompatible`. Zero compatible agents
+is a defect to fix now, not to wait out.
 
-```bash
-TEAMCITY_URL=<server> teamcity agent jobs <agent-id> --incompatible --json
-```
+## 4. Create the pipeline
 
-Zero compatible agents is a configuration defect to fix now, not something to
-wait out.
+Create it with `teamcity pipeline create` against the parent project and the
+VCS root, as the CLI skill's pipelines workflow shows. The root, the
+`--branch` value, and the remote-run fallback for an unpushed commit come from
+[Discover and connect](references/discover-and-connect.md).
 
-## 4. Attach it to the repository
+## 5. Run it until green
 
-Use the VCS root found in [Discover and connect](references/discover-and-connect.md)
-and create the pipeline:
+Read [Verify a build](references/verify-build.md). It uses the CLI skill's
+run-and-watch and fix-and-verify workflows and adds the onboarding stop rules.
+Keep going until the head and every job are green or a blocker is proven.
 
-```bash
-TEAMCITY_URL=<server> teamcity pipeline create <repo>-pipeline \
-  --project <parent-id> --vcs-root <vcs-root-id> --file .teamcity.yml
-```
+**Queued for 60–120 seconds** means blocked, not slow. Read the wait reason
+with `teamcity queue list --job <job-id>`, then follow "Diagnose A Build That
+Remains Queued" in [Build diagnostics](references/build-diagnostics.md): one
+correction the evidence supports, validate, requeue. Never requeue unchanged,
+add a requirement, or switch branches to hide an error. "No idle compatible
+agents" with compatible agents confirmed and test batches queued means the
+pipeline wants more agents than exist: lower `parallelism`, push, requeue.
 
-That guide also covers the branch to pass with `--branch`, the anonymous root
-for a public repository, the manual prerequisite for a private one, and the
-remote run when the checked-out commit is not pushed yet.
+**A red head with green jobs** and the problem `invalid_branch_name` is a
+branch binding error. Fix the branch selection; do not touch the steps.
 
-## 5. Run it until green, then show the speedup
+**A test that fails on its own**, with no TeamCity cause in the log, is a
+repository failure. Report the test, the assertion, and the build ID, and
+stop. A job that failed only through its snapshot dependency needs no
+diagnosis.
 
-Read [Verify a build](references/verify-build.md) to queue, watch, and correct
-the first run. Keep going until the pipeline head and every job are green or a
-blocker is proven.
+## 6. Show the speedup
 
-A run still queued after two observations or 60–120 seconds is blocked, not
-slow. Stop polling and read the wait reason:
-
-```bash
-TEAMCITY_URL=<server> teamcity queue list --job <job-id> --json=id,waitReason,queuedDate
-```
-
-For **no compatible agents** or **unresolved parameters**, follow "Diagnose A
-Build That Remains Queued" in [Build diagnostics](references/build-diagnostics.md):
-list agents, query the job's incompatibility reasons, pull the stored YAML, make
-one correction the evidence supports, validate, and only then queue again. Do
-not requeue unchanged, do not add another requirement, and do not switch
-branches to hide the error. Treat **no idle compatible agents** as busy capacity
-only after the incompatibility query confirms at least one compatible agent.
-
-Then run the pipeline two more times on the same revision. The first green run
+Run the pipeline two more times on the same revision. The first green run
 gives TeamCity the test history; the later runs split the tests into
-parallel batches. Compare them:
+batches. Compare them with `teamcity run list --job <job-id>` and the
+`startDate` and `finishDate` fields.
 
-```bash
-TEAMCITY_URL=<server> teamcity run list --job <job-id> \
-  --json=id,status,startDate,finishDate
-```
-
-Report only what you observed. When the test job takes under a minute,
-say that parallel tests will not help yet and keep `parallelism` small or
-remove it.
+Report only what you observed. If the test job takes under a minute, say that
+parallel tests do not pay off yet.
 
 ## Report
 
-Lead with the pipeline URL confirmed by `teamcity pipeline view <id> --web`.
-Then:
+Lead with the pipeline URL from `teamcity pipeline view <id> --web`. Then:
 
-- the workflow chosen and why, and the jobs that were not migrated;
+- the workflow chosen and why, and the jobs not migrated;
 - each job with its runner type and the features added;
-- a table of the runs: ID, state, duration, and number of test batches;
-- each manual prerequisite, in the form the shared guide requires.
+- the runs: ID, state, duration, number of test batches;
+- each manual prerequisite, in the form
+  [Manual prerequisites](references/manual-prerequisites.md) requires.

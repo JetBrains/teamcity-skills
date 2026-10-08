@@ -3,7 +3,9 @@
 Read [TeamCity tool policy](teamcity-tool-policy.md) first. This guide
 establishes the target, the repository facts, and the VCS root that the
 pipeline will use. In the onboarding flow the target and the repository are
-already resolved; the work here is to confirm them and to find the root.
+already resolved; the work here is to confirm them and to find the root. The
+`teamcity-cli` skill's "Project connections & VCS roots" and "Working with
+pipelines" workflows give the commands.
 
 ## Confirm the target
 
@@ -11,14 +13,9 @@ The hand-over context names the TeamCity server and the parent project ID.
 Do not resolve a project by name, do not ask for either value, and do not take
 the server from the saved CLI default. `_Root` is never the parent.
 
-Confirm the authenticated identity once:
-
-```bash
-TEAMCITY_URL=<server> teamcity auth status
-```
-
-Do not run `teamcity auth login`; the flow authenticated the CLI before this
-skill started. Keep tokens, keys, passwords, and authorization headers out of
+Confirm the authenticated identity once with `teamcity auth status`. Do not
+run `teamcity auth login`; the flow authenticated the CLI before this skill
+started. Keep tokens, keys, passwords, and authorization headers out of
 commands, logs, configuration, and reports.
 
 ## Inspect the repository
@@ -41,16 +38,9 @@ this skill recreates only its build and test core.
 
 ## Inspect TeamCity
 
-On the confirmed server, inspect the parent project, its existing pipelines
-and VCS roots, the connected agents, and the Pipeline schema:
-
-```bash
-TEAMCITY_URL=<server> teamcity pipeline list --project <parent-id>
-TEAMCITY_URL=<server> teamcity project vcs list --project <parent-id> --json
-TEAMCITY_URL=<server> teamcity pipeline schema --refresh
-```
-
-If a pipeline for this repository already exists, update it instead of
+On the confirmed server, list the parent project's pipelines and VCS roots,
+the connected agents, and the Pipeline schema (`pipeline list`,
+`project vcs list`, `agent list`, `pipeline schema --refresh`). If a pipeline for this repository already exists, update it instead of
 creating another. The agent inventory and the schema decide `runs-on`; see
 "Choose where it runs" in the skill.
 
@@ -58,15 +48,14 @@ creating another. The agent inventory and the schema decide `runs-on`; see
 
 Use the VCS root ID from the hand-over context. Without one, list the roots in
 the parent project and its ancestors and reuse the one whose URL matches the
-repository. Inspect it before using it; do not guess its ID:
-
-```bash
-TEAMCITY_URL=<server> teamcity project vcs view <vcs-root-id>
-```
+repository. Follow the CLI skill's required sequence: `project vcs list`, then
+`project vcs view <id>` for URL, default branch, and auth. Do not guess an ID.
 
 - A matching authorized root: use it.
 - No root and a public repository: create one with `--auth anonymous` and
-  continue. This is the only root this skill creates.
+  `--branch refs/heads/<checked-out-branch>`, so the root's default branch is
+  the branch in the checkout; the CLI otherwise assumes `main`. This is the
+  only root this skill creates.
 - No authorized root and a private repository: the pipeline cannot read the
   sources. Report a [manual prerequisite](manual-prerequisites.md) naming the
   web step's repository authorization. Do not create a connection, do not
@@ -76,11 +65,24 @@ TEAMCITY_URL=<server> teamcity project vcs view <vcs-root-id>
 
 Read the root's default branch and branch specification from the `vcs view`
 output. The web step created the root, so its default branch may not be the
-branch that is checked out. Before queueing, pass `--branch` with a value the
-specification accepts; the literal Git ref name is not always one, and
-omitting `--branch` while pinning a revision can resolve to `<unspecified>`
-and fail checkout. After queueing, read back the run's branch and revision
-before waiting on it.
+branch that is checked out. Then:
+
+- When the checked-out branch is the root's default branch, queue without
+  `--branch`. Naming the default branch (`main`, `master`, a release branch)
+  fails with `invalid_branch_name` whenever the specification does not list
+  it, and TeamCity then builds default-branch revisions under a red head.
+- For any other branch, pass `--branch` with a logical name the
+  specification accepts. The literal Git ref is not always one. The accepted
+  names are visible in `teamcity run list --job <job-id>` once a build ran, or
+  derive them from the specification: `+:refs/heads/*` names `feature/x` as
+  `feature/x`.
+- Do not pin a revision without `--branch`; it can resolve to `<unspecified>`
+  and fail checkout.
+
+After queueing, read back the run's branch and revision before waiting on it.
+A red head whose problem is `invalid_branch_name` while every job is green is
+a branch binding error, not a step failure: fix the branch selection, do not
+touch the steps, and do not report that run as green.
 
 If the checked-out branch is not covered by the specification, report a
 [manual prerequisite](manual-prerequisites.md) for the root's branch
@@ -92,13 +94,8 @@ Access Failures" in [Build diagnostics](build-diagnostics.md).
 
 When the root exists but the branch or the latest commit is not pushed, run a
 personal build from the local checkout instead of waiting for a push:
-
-```bash
-TEAMCITY_URL=<server> teamcity run start <job-id> --branch <branch> \
-  --local-changes=git --no-push --personal
-```
-
-A remote run gives early evidence; the pipeline still needs the root for
+`run start --local-changes=git --no-push --personal` with the chosen
+`--branch`, as in the CLI skill's "Personal Builds" section. A remote run gives early evidence; the pipeline still needs the root for
 ordinary runs. For a missing custom-patch permission, use
 [Manual prerequisites](manual-prerequisites.md). For a change-collection
 failure before checkout, read [Build diagnostics](build-diagnostics.md).
