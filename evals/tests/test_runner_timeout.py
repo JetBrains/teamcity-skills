@@ -124,7 +124,7 @@ class AgentTimeoutTest(unittest.TestCase):
         })
         self.assertEqual("other", published["queueWaitReason"])
 
-    def test_queued_build_stops_after_grace_period_instead_of_full_build_timeout(self):
+    def test_no_idle_capacity_waits_until_build_timeout(self):
         tc = mock.Mock()
         tc.pipeline_ids.return_value = ["target-job"]
         tc.pipeline_definition.return_value = {"jobs": {"verify": {}}}
@@ -135,22 +135,57 @@ class AgentTimeoutTest(unittest.TestCase):
 
         with mock.patch.object(run_case.time, "time", side_effect=lambda: clock[0]), \
                 mock.patch.object(run_case.time, "sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
-            with self.assertRaises(run_case.BuildQueueStalled) as stalled:
+            with self.assertRaises(run_case.BuildWaitTimeout) as stalled:
                 run_case.wait_for_build(
-                    tc, "project", timeout=3600, poll=1,
+                    tc, "project", timeout=8, poll=1,
                     queue_check_after=2, queue_stall_timeout=4,
                 )
 
-        self.assertEqual(4, clock[0])
+        self.assertEqual(8, clock[0])
         self.assertEqual("no-idle-compatible-agents", stalled.exception.reason)
         self.assertEqual(1, tc.queue_wait_reason.call_count)
-        self.assertEqual(
-            ("build-queue-stalled", "build remained queued; TeamCity reported no idle compatible agents"),
-            collector.classify(None, {"state": "finished", "status": "FAILURE"}, {
-                "errorCategory": "build-queue-stalled",
-                "queueWaitReason": stalled.exception.reason,
-            }),
-        )
+
+    def test_waiting_head_does_not_hide_runnable_child_queue_reason(self):
+        tc = mock.Mock()
+        tc.pipeline_ids.return_value = ["target-job"]
+        tc.pipeline_definition.return_value = {"jobs": {"verify": {}}}
+        tc.builds.return_value = [{"id": 42, "buildTypeId": "target-job"}]
+        tc.build_tree.return_value = {
+            "id": 42, "state": "queued", "buildTypeId": "target-job",
+            "dependencies": [{
+                "id": 43, "state": "queued", "buildTypeId": "build",
+                "dependencies": [],
+            }],
+        }
+        tc.queue_wait_reason.return_value = "no-idle-compatible-agents"
+        clock = [0]
+        with mock.patch.object(run_case.time, "time", side_effect=lambda: clock[0]), \
+                mock.patch.object(run_case.time, "sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+            with self.assertRaises(run_case.BuildWaitTimeout) as timed_out:
+                run_case.wait_for_build(
+                    tc, "project", timeout=8, poll=1,
+                    queue_check_after=2, queue_stall_timeout=4,
+                )
+        self.assertEqual("no-idle-compatible-agents", timed_out.exception.reason)
+        self.assertEqual(43, tc.queue_wait_reason.call_args.args[0]["id"])
+
+    def test_other_runnable_queue_reason_still_stops_after_grace(self):
+        tc = mock.Mock()
+        tc.pipeline_ids.return_value = ["target-job"]
+        tc.pipeline_definition.return_value = {"jobs": {"verify": {}}}
+        tc.builds.return_value = [{"id": 42, "buildTypeId": "target-job"}]
+        tc.build_tree.return_value = {"id": 42, "state": "queued", "buildTypeId": "target-job", "dependencies": []}
+        tc.queue_wait_reason.return_value = "other"
+        clock = [0]
+        with mock.patch.object(run_case.time, "time", side_effect=lambda: clock[0]), \
+                mock.patch.object(run_case.time, "sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+            with self.assertRaises(run_case.BuildQueueStalled) as stalled:
+                run_case.wait_for_build(
+                    tc, "project", timeout=8, poll=1,
+                    queue_check_after=2, queue_stall_timeout=4,
+                )
+        self.assertEqual(4, clock[0])
+        self.assertEqual("other", stalled.exception.reason)
 
     def test_unresolved_queue_requirement_stops_at_checkpoint(self):
         tc = mock.Mock()

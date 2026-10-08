@@ -119,6 +119,10 @@ class NoBuildQueued(EvalError):
 class BuildWaitTimeout(EvalError):
     """An agent-queued build did not finish during the wait window."""
 
+    def __init__(self, message: str, reason: str = "unavailable"):
+        self.reason = reason
+        super().__init__(message)
+
 
 class BuildQueueStalled(EvalError):
     """An agent-queued build did not leave the queue within its grace period."""
@@ -2143,8 +2147,15 @@ def wait_for_build(
                         "pipelineId": pipeline_id, "selection": selection, "attempts": attempts,
                         "status": "SUCCESS" if all(node["status"] == "SUCCESS" for node in nodes)
                         else "FAILURE"}
+            by_id = {node["id"]: node for node in nodes}
             for node in nodes:
-                if node["state"] != "queued":
+                # A head or downstream job waiting for another queued job is
+                # not the source of the queue delay. Inspect runnable jobs.
+                runnable = (node["state"] == "queued" and all(
+                    by_id[dependency]["state"] == "finished"
+                    for dependency in node["dependencies"]
+                ))
+                if not runnable:
                     queued.pop(node["id"], None)
                     continue
                 state = queued.setdefault(node["id"], {"since": time.time(), "reason": None})
@@ -2153,12 +2164,15 @@ def wait_for_build(
                     state["reason"] = tc.queue_wait_reason(node)
                     if state["reason"] in ("no-compatible-agents", "unresolved-parameters"):
                         raise BuildQueueStalled(state["reason"])
-                if elapsed >= queue_stall_timeout:
+                if (elapsed >= queue_stall_timeout
+                        and state["reason"] != "no-idle-compatible-agents"):
                     raise BuildQueueStalled(state["reason"] or tc.queue_wait_reason(node))
         time.sleep(poll)
     if latest is None:
         raise NoBuildQueued("the agent queued no build in the temporary project")
-    raise BuildWaitTimeout(f"build {latest['id']} did not finish within {timeout}s")
+    reason = next((state["reason"] for state in queued.values()
+                   if state["reason"] and state["reason"] != "unavailable"), "unavailable")
+    raise BuildWaitTimeout(f"build {latest['id']} did not finish within {timeout}s", reason)
 
 
 def run(
@@ -2467,9 +2481,10 @@ def run(
             result["errorCategory"] = result.get("errorCategory") or "build-queue-stalled"
             result["queueWaitReason"] = exc.reason
             raise
-        except BuildWaitTimeout:
+        except BuildWaitTimeout as exc:
             result["verificationErrorCategory"] = "build-wait-timeout"
             result["errorCategory"] = result.get("errorCategory") or "build-wait-timeout"
+            result["queueWaitReason"] = exc.reason
             raise
         except EvalError:
             result["verificationErrorCategory"] = "verification-observation-failed"
