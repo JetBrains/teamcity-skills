@@ -104,7 +104,10 @@ for **no idle compatible agents**: that message does not distinguish busy
 capacity from zero compatible agents.
 If an unmet `os-family teamcity.agent.jvm.os.family equals Linux` requirement
 uses a key absent from the candidate agent, replace it with an observed,
-relevant parameter; changing the value's case cannot make the key exist.
+relevant parameter expressed as an explicit custom requirement (see
+[Validate and check compatibility](validate-and-check-compatibility.md)).
+Writing that parameter name as a bare `self-hosted` key does not create a
+requirement. Changing the value's case cannot make the missing key exist.
 
 For an unresolved host-JDK parameter such as `env.JDK_25`, report a
 pre-dispatch blocker. A build step cannot download JDK 25 because it has not

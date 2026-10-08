@@ -77,6 +77,24 @@ Auto-generated Pipeline jobs may be absent from the CLI's compatible and
 incompatible lists; absence proves nothing. Use the permitted fallback in
 [Build diagnostics](build-diagnostics.md) before declaring capacity available.
 
+When the job needs Linux and connected agents report
+`teamcity.agent.jvm.os.name=Linux`, use a custom requirement, not a bare
+`teamcity.agent.jvm.os.name: Linux` entry or `os-family: Linux`:
+
+```yaml
+runs-on:
+  self-hosted:
+    - requirement: equals
+      name: Linux operating system
+      parameter: teamcity.agent.jvm.os.name
+      value: Linux
+```
+
+Check this exact draft with TeamCity's compatibility result before queueing.
+The schema listing a hosted Linux selector does not prove that this server
+offers a compatible hosted image. Use another observed parameter only when
+the agents and compatibility result support it.
+
 When compatibility access is denied, record it as unverified. Use another
 permitted machine-readable operation. If none exists, use
 [Manual prerequisites](manual-prerequisites.md).

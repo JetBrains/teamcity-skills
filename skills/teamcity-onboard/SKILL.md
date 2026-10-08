@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.1.2
+version: 0.1.3
 description: Use inside the TeamCity onboarding flow, after the web step created the instance and handed over its context. Reads a checked-out repository and its GitHub Actions workflow, recreates the build and test core as a TeamCity pipeline with native runners and parallel tests, and runs it until green.
 ---
 
@@ -63,13 +63,16 @@ TEAMCITY_URL=<server> teamcity agent list --connected --enabled --authorized \
   --limit 0 --json=id,name,typeId,pool.id,pool.name
 ```
 
-- Use a hosted selector that the schema's `runs-on` enum lists, or a
-  self-hosted capability observed on a connected agent. Never copy a selector
-  from another server, a GitHub `ubuntu-latest` label, or a transient VM name.
+- Use a hosted selector only when the schema lists it and TeamCity confirms a
+  compatible image, or use a self-hosted capability observed on a connected
+  agent. Never copy a selector from another server, a GitHub `ubuntu-latest`
+  label, or a transient VM name.
 - Do not add OS, JDK, Docker, or parameter requirements the workflow did not
-  need. Each one shrinks the compatible agent set. `os-family` and similar
-  keys must exist on an observed agent; changing a value's case cannot make a
-  key exist.
+  need. Each one shrinks the compatible agent set. `os-family` maps to
+  `teamcity.agent.jvm.os.family`, which may be absent even on Linux agents.
+  Use an explicit custom requirement for an observed agent parameter; a bare
+  parameter name in `self-hosted` is not a custom requirement. Changing a
+  value's case cannot make a missing parameter exist.
 - An exact JDK is a `parameters.env.JAVA_HOME` value taken from an observed
   agent key such as `%env.JDK_21_0%`, never a guessed key. A referenced key
   that no agent advertises is an unmet requirement before dispatch, and no
