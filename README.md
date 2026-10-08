@@ -62,6 +62,7 @@ others.
 | [`teamcity-jdk-selection`](skills/teamcity-jdk-selection/) | Select and verify the JDK used by a TeamCity job, on an agent or in a container. |
 | [`teamcity-intellij`](skills/teamcity-intellij/) | Work with TeamCity from an IntelliJ-based IDE: where the bundled CLI is, and when to use it or the MCP tools. |
 | [`migrate-to-teamcity`](skills/migrate-to-teamcity/) | Convert GitHub Actions or Bamboo pipelines to TeamCity. |
+| [`teamcity-onboard`](skills/teamcity-onboard/) | Analyze a repo and its GitHub Actions workflows, create a TeamCity pipeline from YAML, and babysit it until green. |
 
 Also: [`prompts/`](prompts/) for reusable prompts, and [`examples/`](examples/)
 for a small project you can try the skills against.
