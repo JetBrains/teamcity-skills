@@ -257,7 +257,11 @@ def agent_task_prompt(case: dict, server: str, target_project: str) -> str:
         prompt += (
             "\n\nRepository context: the checked-out default branch is "
             f"{case['repository']['defaultBranch']!r} at the pinned revision. "
-            "Ensure the VCS root monitors that branch before triggering a build."
+            "Ensure the VCS root monitors that branch before triggering a build. "
+            "If it is the VCS root's default branch and no branch specification "
+            "includes it separately, trigger the default branch without an "
+            "explicit branch name. Check the pipeline head for invalid_branch_name "
+            "even when its child jobs succeed."
         )
     requested = case.get("requestedConfiguration")
     if requested:

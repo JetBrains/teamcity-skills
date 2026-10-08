@@ -95,6 +95,30 @@ The schema listing a hosted Linux selector does not prove that this server
 offers a compatible hosted image. Use another observed parameter only when
 the agents and compatibility result support it.
 
+If a required Docker image has no usable ARM variant, add a second custom
+requirement using the architecture parameter observed on this server. A
+published ARM manifest is not runtime proof: `mockserver/mockserver:5.15.0`
+has one, but its Java process failed with `exec format error` on a Linux ARM
+agent. This server reports `teamcity.agent.jvm.os.arch=amd64` on compatible
+Linux images and `aarch64` on its Linux ARM images:
+
+```yaml
+runs-on:
+  self-hosted:
+    - requirement: equals
+      name: Linux operating system
+      parameter: teamcity.agent.jvm.os.name
+      value: Linux
+    - requirement: equals
+      name: x86_64 architecture
+      parameter: teamcity.agent.jvm.os.arch
+      value: amd64
+```
+
+Check the full job draft, including its JDK and runner requirements, against
+every offered agent and cloud image. Do not add the architecture requirement
+when all required images support ARM; it would reduce capacity needlessly.
+
 When compatibility access is denied, record it as unverified. Use another
 permitted machine-readable operation. If none exists, use
 [Manual prerequisites](manual-prerequisites.md).

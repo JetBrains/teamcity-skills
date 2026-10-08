@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.1.3
+version: 0.1.4
 description: Use inside the TeamCity onboarding flow, after the web step created the instance and handed over its context. Reads a checked-out repository and its GitHub Actions workflow, recreates the build and test core as a TeamCity pipeline with native runners and parallel tests, and runs it until green.
 ---
 
@@ -73,6 +73,10 @@ TEAMCITY_URL=<server> teamcity agent list --connected --enabled --authorized \
   Use an explicit custom requirement for an observed agent parameter; a bare
   parameter name in `self-hosted` is not a custom requirement. Changing a
   value's case cannot make a missing parameter exist.
+- Check the architecture of required Docker images before allowing Linux ARM
+  agents. An ARM manifest alone does not prove its binaries run on ARM. If a
+  required container fails with `exec format error`, select an observed,
+  compatible x86_64 agent as shown in [Validate and check compatibility](references/validate-and-check-compatibility.md).
 - An exact JDK is a `parameters.env.JAVA_HOME` value taken from an observed
   agent key such as `%env.JDK_21_0%`, never a guessed key. A referenced key
   that no agent advertises is an unmet requirement before dispatch, and no
