@@ -50,7 +50,10 @@ def chain_nodes(tree, head_id, pipeline_id):
                 or node.get("state") not in ("queued", "running", "finished")
                 or not isinstance(node.get("dependencies"), list)):
             raise EvidenceError("verification-chain-incomplete")
+        if any(not isinstance(child, dict) for child in node["dependencies"]):
+            raise EvidenceError("verification-chain-incomplete")
         identity = {key: node.get(key) for key in ("id", "buildTypeId", "state", "status")}
+        identity["dependencies"] = [child.get("id") for child in node["dependencies"]]
         if build_id in found:
             if identity != found[build_id]:
                 raise EvidenceError("verification-chain-incomplete")
@@ -65,18 +68,52 @@ def chain_nodes(tree, head_id, pipeline_id):
     return list(found.values())
 
 
-def bind_jobs(jobs, builds):
-    """Bind stored declarations to actual members via unique CLI job names.
+def bind_jobs(jobs, builds, nodes):
+    """Bind YAML jobs by name; bind TeamCity test batches by tree parent.
 
-    No parsing of undocumented virtual buildTypeId suffixes. A missing,
-    duplicated, or foreign job is an explicit observation error, not a pass.
+    A batch is an extra build of a declared parallel job, not another YAML
+    declaration. Unknown builds, ambiguous names, and missing jobs fail closed.
     """
-    declared = {job["name"]: job for job in jobs}
-    actual = {build.get("buildType", {}).get("name"): build for build in builds}
-    if (not jobs or len(declared) != len(jobs) or len(actual) != len(builds)
-            or set(actual) != set(declared)):
+    declared = {job["name"]: {"job": job, "members": [], "batches": []}
+                for job in jobs}
+    by_id = {build["id"]: build for build in builds}
+    if (not jobs or len(declared) != len(jobs) or len(by_id) != len(builds)
+            or set(by_id) != {node["id"] for node in nodes[1:]}):
         raise EvidenceError("verification-chain-incomplete")
-    return [declared[build["buildType"]["name"]] for build in builds]
+
+    for build in builds:
+        name = build.get("buildType", {}).get("name")
+        if name in declared:
+            declared[name]["members"].append(build)
+
+    if any(not group["members"] or len({member["buildTypeId"]
+                                          for member in group["members"]}) != 1
+           for group in declared.values()):
+        raise EvidenceError("verification-chain-incomplete")
+
+    for build in builds:
+        if build.get("buildType", {}).get("name") in declared:
+            continue
+        match = re.fullmatch(r"Batch ([1-9]\d*)", build.get("buildType", {}).get("name") or "")
+        parents = {by_id[node["id"]]["buildType"]["name"]
+                   for node in nodes[1:]
+                   if node["id"] in by_id and build["id"] in node["dependencies"]
+                   and by_id[node["id"]]["buildType"]["name"] in declared}
+        if (not match or len(parents) != 1
+                or next(iter(parents)) not in declared):
+            raise EvidenceError("verification-chain-incomplete")
+        group = declared[next(iter(parents))]
+        parallelism = group["job"].get("jobProperties", {}).get("parallelism")
+        if (type(parallelism) is not int or parallelism < 2
+                or int(match.group(1)) > parallelism):
+            raise EvidenceError("verification-chain-incomplete")
+        group["batches"].append(build)
+
+    for group in declared.values():
+        names = [build["buildType"]["name"] for build in group["batches"]]
+        if len(names) != len(set(names)):
+            raise EvidenceError("verification-chain-incomplete")
+    return list(declared.values())
 
 
 def jdk_selectors(mapping, parameter=False):
@@ -122,20 +159,33 @@ def observe_chain(tc, project_id, build, required_jdk):
         if any(member.get(key) != node[key] for key in ("id", "buildTypeId", "state", "status")):
             raise EvidenceError("verification-chain-incomplete")
         members.append(member)
-    jobs = bind_jobs(tc.jobs(project_id, build["pipelineId"]), members)
+    groups = bind_jobs(tc.jobs(project_id, build["pipelineId"]), members, build["nodes"])
+    jobs = [group["job"] for group in groups]
     artifacts, all_tests, diagnostics, job_results = [], [], [], []
-    for member, job in zip(members, jobs):
+    observations = {}
+    for member in members:
         tests = tc.test_results(member["id"])
         published_artifacts = tc.artifacts(member["id"])
-        all_tests.extend(tests)
-        artifacts.extend(published_artifacts)
-        job_results.append({"job": job, "status": member.get("status"),
-                            "tests": tests, "artifacts": published_artifacts})
+        observations[member["id"]] = (tests, published_artifacts)
         diagnostics.append({"id": member["id"], "state": member.get("state"),
                             "status": member.get("status"), "testCount": len(tests),
                             "successfulTestCount": sum(test["status"] == "SUCCESS"
                                                        and not test["ignored"] for test in tests),
                             "artifactCount": len(published_artifacts)})
+    for group in groups:
+        # Parallel parent jobs report the same tests as their child batches.
+        test_builds = group["batches"] or group["members"]
+        job_tests = [test for member in test_builds
+                     for test in observations[member["id"]][0]]
+        job_artifacts = [artifact for member in group["members"] + group["batches"]
+                         for artifact in observations[member["id"]][1]]
+        job_results.append({"job": group["job"],
+                            "status": "SUCCESS" if all(member["status"] == "SUCCESS"
+                                                       for member in group["members"] + group["batches"])
+                                      else "FAILURE",
+                            "tests": job_tests, "artifacts": job_artifacts})
+        all_tests.extend(job_tests)
+        artifacts.extend(job_artifacts)
     _, _, jdk = jdk_evidence({}, required_jdk, jobs)
     head = next(node for node in build["nodes"] if node["id"] == build["id"])
     metadata = None

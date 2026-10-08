@@ -114,6 +114,65 @@ class FirstGreenEvidenceTest(unittest.TestCase):
         self.assertTrue(diagnostics["jdk"]["declaredMatch"])
         self.assertFalse(diagnostics["jdk"]["runtimeVerified"])
 
+    def test_parallel_batches_are_not_yaml_jobs_or_duplicate_tests(self):
+        tree = node(10, "pipeline", children=[node(11, "test", children=[
+            node(12, "batch-1"), node(13, "batch-2"),
+        ])])
+        names = {11: "Build and test", 12: "Batch 1", 13: "Batch 2"}
+        tc = mock.Mock()
+        tc.jobs.return_value = [{"name": "Build and test", "jobProperties": {"parallelism": 2}}]
+        tc.build.side_effect = lambda build_id: {
+            "id": build_id, "buildTypeId": {11: "test", 12: "batch-1", 13: "batch-2"}[build_id],
+            "state": "finished", "status": "SUCCESS", "buildType": {"name": names[build_id]},
+        }
+        tc.test_results.side_effect = lambda build_id: [
+            {"name": f"Example.test{number}", "status": "SUCCESS", "ignored": False}
+            for number in ({11: (1, 2), 12: (1,), 13: (2,)})[build_id]
+        ]
+        tc.artifacts.side_effect = lambda build_id: ["report.xml"] if build_id == 11 else []
+        observed, diagnostics = evidence.observe_chain(tc, "project", {
+            "id": 10, "nodes": evidence.chain_nodes(tree, 10, "pipeline"),
+            "pipelineId": "pipeline", "selection": "source-matched",
+            "attempts": 1, "status": "SUCCESS",
+        }, "17")
+        self.assertEqual(1, len(observed["jobs"]))
+        self.assertEqual(1, len(observed["jobResults"]))
+        self.assertEqual(2, observed["testCount"])
+        self.assertEqual(["report.xml"], observed["artifacts"])
+        self.assertEqual([11, 12, 13], [item["id"] for item in diagnostics["builds"]])
+
+    def test_parallel_batches_allow_reused_job_but_reject_foreign_build(self):
+        tree = node(10, "pipeline", children=[
+            node(11, "test", children=[
+                node(12, "batch-1", children=[node(14, "build")]),
+                node(13, "batch-2", children=[node(15, "build")]),
+            ]), node(15, "build"),
+        ])
+        names = {11: "Test", 12: "Batch 1", 13: "Batch 2", 14: "Build", 15: "Build"}
+        tc = mock.Mock()
+        tc.jobs.return_value = [
+            {"name": "Test", "jobProperties": {"parallelism": 2}}, {"name": "Build"},
+        ]
+        tc.build.side_effect = lambda build_id: {
+            "id": build_id, "buildTypeId": {11: "test", 12: "batch-1", 13: "batch-2",
+                                       14: "build", 15: "build"}[build_id],
+            "state": "finished", "status": "SUCCESS", "buildType": {"name": names[build_id]},
+        }
+        tc.test_results.return_value = []
+        tc.artifacts.return_value = []
+        build = {"id": 10, "nodes": evidence.chain_nodes(tree, 10, "pipeline"),
+                 "pipelineId": "pipeline", "selection": "source-matched",
+                 "attempts": 1, "status": "SUCCESS"}
+        observed, _ = evidence.observe_chain(tc, "project", build, "17")
+        self.assertEqual(["Test", "Build"], [job["name"] for job in observed["jobs"]])
+        self.assertEqual(2, len(observed["jobResults"]))
+
+        names[13] = "Foreign job"
+        tc.test_results.reset_mock()
+        with self.assertRaises(evidence.EvidenceError):
+            evidence.observe_chain(tc, "project", build, "17")
+        tc.test_results.assert_not_called()
+
     def test_missing_or_conflicting_tree_is_not_green(self):
         tc, tree = self.fixture()
         for corrupt in [node(10, "wrong"), {"id": 10, "buildTypeId": "main"},
