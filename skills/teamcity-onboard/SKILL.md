@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.1.0
+version: 0.1.1
 description: Use inside the TeamCity onboarding flow, after the web step created the instance and handed over its context. Reads a checked-out repository and its GitHub Actions workflow, recreates the build and test core as a TeamCity pipeline with native runners and parallel tests, and runs it until green.
 ---
 

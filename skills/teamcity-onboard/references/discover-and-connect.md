@@ -76,11 +76,14 @@ TEAMCITY_URL=<server> teamcity project vcs view <vcs-root-id>
 
 Read the root's default branch and branch specification from the `vcs view`
 output. The web step created the root, so its default branch may not be the
-branch that is checked out. Before queueing, pass `--branch` with a value the
-specification accepts; the literal Git ref name is not always one, and
-omitting `--branch` while pinning a revision can resolve to `<unspecified>`
-and fail checkout. After queueing, read back the run's branch and revision
-before waiting on it.
+branch that is checked out. TeamCity's logical default branch is `<default>`:
+when the checked-out Git branch equals the root's default ref, queue with
+`--branch '<default>'`, including when pinning `--revision`. Do not pass its
+literal name (`main`, `master`, or similar) as a named branch: without a
+matching branch specification, TeamCity marks the pipeline head with
+`invalid_branch_name` even when every job succeeds. For a non-default branch,
+derive the accepted logical name from the root's branch specification. After
+queueing, read back the run's branch and revision before waiting on it.
 
 If the checked-out branch is not covered by the specification, report a
 [manual prerequisite](manual-prerequisites.md) for the root's branch
@@ -94,9 +97,12 @@ When the root exists but the branch or the latest commit is not pushed, run a
 personal build from the local checkout instead of waiting for a push:
 
 ```bash
-TEAMCITY_URL=<server> teamcity run start <job-id> --branch <branch> \
+TEAMCITY_URL=<server> teamcity run start <job-id> --branch '<default>' \
   --local-changes=git --no-push --personal
 ```
+
+Use the accepted logical branch instead of `<default>` when the checkout is
+not at the root's default ref.
 
 A remote run gives early evidence; the pipeline still needs the root for
 ordinary runs. For a missing custom-patch permission, use
