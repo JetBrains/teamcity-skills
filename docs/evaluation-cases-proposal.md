@@ -347,7 +347,8 @@ On demand, by label, or on a schedule:
 4. run `teamcity pipeline validate` against the active server before queueing;
 5. queue a personal build, inspect test occurrences and artifact metadata, and
    evaluate the assertions;
-6. publish only the minimal result JSON as a CI artifact;
+6. publish the minimal result JSON and a separate, session-scoped raw agent-log
+   artifact for debugging;
 7. mark temporary objects for the separate lifecycle collector. The runner
    does not delete them inline: deletion is a distinct, reversible archive-then-
    delete workflow. Registering that server-side cleanup pipeline is currently
@@ -423,7 +424,9 @@ Every public result may include only the provider-reported numeric
 `agentUsage` allowlist: `inputTokens`, `outputTokens`, `cacheReadTokens`,
 `cacheWriteTokens`, and `totalCostUsd`. The report shows these per run and as
 aggregates. It does not estimate a cost when the provider omitted one, and it
-never copies a prompt, trajectory, session ID, tool argument, or trace field.
+never copies a prompt, trajectory, session ID, tool argument, or trace field
+into the result JSON or aggregate report. The separate agent-log artifact is
+raw diagnostic data and must not be shared as a safe report.
 
 `evals/run-eval-report.sh` is the cross-platform wrapper for that job. It
 bootstraps the TeamCity CLI when needed, detects Python on Linux/macOS/Windows,
@@ -502,6 +505,18 @@ project's JCP Central connection. The feature makes `claude` available and
 injects a short-lived credential at build time. It does not require
 `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `CODEX_API_KEY`, or
 `CODEX_HOME` in the YAML, repository, or TeamCity parameters.
+
+The TeamCity case wrapper clears `.teamcity/evaluation-agent-logs/` before each
+run. When the agent finishes (including a failed exit or runner timeout), it
+copies only files belonging to the current structured session from the
+agent's system directory: Claude's project transcript, available debug log,
+and subagent transcripts, or Codex's rollout JSONL. The wrapper publishes
+that directory as a separate TeamCity artifact; `manifest.json` records a
+fixed status when no session file was available. It never copies the whole
+`~/.claude` or `~/.codex` tree, authentication/configuration files, a shared
+Codex log, or an unrelated older session. Raw session logs can contain prompts,
+source code, tool output, and credentials. Restrict access to these build
+artifacts and do not feed them to the shareable evaluation report.
 
 For the evaluation project on each installation, configure the normal runner
 parameters in TeamCity: `env.TEAMCITY_URL` for that server, and
@@ -640,9 +655,9 @@ measure.
 `TeamCitySkills` owns case definitions, schemas, expected assertions, and
 lightweight validation. The evaluation runner owns private staging credentials,
 agent invocation, TeamCity lifecycle, build execution, cleanup, and disposable
-traces; it publishes only minimized verdicts. This keeps cases reviewable and
-prevents infrastructure secrets from entering the skills repository or build
-artifacts.
+traces. It publishes minimized verdicts for reporting and a separate raw
+agent-log artifact for restricted debugging. Keep that artifact out of reports
+and outside any broadly shared artifact mirror.
 
 ## Suggested list of projects to test
 | Repository | Stack | Evaluation focus |

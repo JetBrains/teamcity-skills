@@ -33,6 +33,8 @@ Configuration comes from the environment, never from the case:
                            in place, the same as --keep
     EVAL_TRACE_DIR         protected directory for the agent trace (default:
                            the disposable evaluation workspace)
+    EVAL_AGENT_LOG_ARTIFACT_DIR optional TeamCity-only directory for copies of
+                           the current Claude/Codex system session logs
     EVAL_FAILED_AGENT_GRACE  seconds to still wait for a build after the agent
                            exited non-zero (default 120)
     EVAL_ARM               "skill" (default) or "baseline". The baseline arm
@@ -68,6 +70,7 @@ import secrets
 import shlex
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -79,6 +82,9 @@ EVALS = pathlib.Path(__file__).parent
 PLACEHOLDER = re.compile(r"\{\{teamcity\.(server|targetProject)\}\}")
 SAFE_AGENT_METADATA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SAFE_REVISION = re.compile(r"^[a-fA-F0-9]{40}$")
+SAFE_SESSION_ID = re.compile(
+    r"^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$"
+)
 TOOL_MODES = ("cli-only", "mcp-only", "cli+mcp")
 sys.path.insert(0, str(EVALS))
 from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
@@ -1657,6 +1663,138 @@ def trace_output_lines(trace: pathlib.Path) -> list:
     return captured
 
 
+def agent_log_provider(command: str) -> Optional[str]:
+    """Only known CLI entry points have a supported system-session layout."""
+    try:
+        executable = shlex.split(command)[0].replace("\\", "/").rsplit("/", 1)[-1].lower()
+    except (ValueError, IndexError):
+        return None
+    if executable in ("claude", "claude.cmd", "claude.exe"):
+        return "claude"
+    if executable in ("codex", "codex.cmd", "codex.exe"):
+        return "codex"
+    return None
+
+
+def agent_log_session_id(trace: pathlib.Path, provider: str) -> Optional[str]:
+    """Bind system logs to the structured session started by this invocation."""
+    session_ids = set()
+    fallback_ids = set()
+    for line in trace_output_lines(trace):
+        try:
+            event = json.loads(line)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(event, dict):
+            continue
+        if provider == "claude" and (
+            event.get("type"), event.get("subtype")
+        ) == ("system", "init"):
+            session_id = event.get("session_id")
+            selected = session_ids
+        elif provider == "claude" and event.get("type") == "result":
+            session_id = event.get("session_id")
+            selected = fallback_ids
+        elif provider == "codex" and event.get("type") == "thread.started":
+            session_id = event.get("thread_id")
+            selected = session_ids
+        else:
+            continue
+        if isinstance(session_id, str) and SAFE_SESSION_ID.fullmatch(session_id):
+            selected.add(session_id.lower())
+    selected = session_ids or fallback_ids
+    return next(iter(selected)) if len(selected) == 1 else None
+
+
+def agent_config_root(env: dict, provider: str, checkout: pathlib.Path) -> pathlib.Path:
+    configured = env.get("CLAUDE_CONFIG_DIR" if provider == "claude" else "CODEX_HOME")
+    if configured:
+        root = pathlib.Path(configured)
+        return root if root.is_absolute() else checkout / root
+    home = env.get("HOME") or env.get("USERPROFILE")
+    home_path = pathlib.Path(home) if home else pathlib.Path.home()
+    if not home_path.is_absolute():
+        home_path = pathlib.Path.home()
+    return home_path / (".claude" if provider == "claude" else ".codex")
+
+
+def copy_agent_log(source: pathlib.Path, root: pathlib.Path,
+                   destination: pathlib.Path, started_at: float) -> bool:
+    """Copy a fresh regular file, refusing symlinks and path escapes."""
+    try:
+        relative = source.relative_to(root)
+        candidate = root
+        for part in relative.parts:
+            candidate /= part
+            if candidate.is_symlink():
+                return False
+        if not source.resolve().is_relative_to(root.resolve()):
+            return False
+        if source.stat().st_mtime < started_at - 2:
+            return False
+        source_fd = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except (OSError, ValueError):
+        return False
+    try:
+        if not stat.S_ISREG(os.fstat(source_fd).st_mode):
+            return False
+        destination.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+        with os.fdopen(source_fd, "rb") as content:
+            source_fd = -1
+            with os.fdopen(os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                                   0o600), "wb") as output:
+                shutil.copyfileobj(content, output)
+        return True
+    finally:
+        if source_fd != -1:
+            os.close(source_fd)
+
+
+def collect_agent_logs(trace: pathlib.Path, checkout: pathlib.Path, env: dict,
+                       command: str, destination: pathlib.Path,
+                       started_at: float) -> dict:
+    """Publish only this Claude/Codex session, never a shared home or auth file."""
+    if destination.is_symlink():
+        raise OSError("agent log artifact directory is a symlink")
+    destination.mkdir(parents=True, mode=0o700, exist_ok=True)
+    provider = agent_log_provider(command)
+    session_id = agent_log_session_id(trace, provider) if provider else None
+    copied = 0
+    status = "no-session-id" if provider and not session_id else "unsupported-agent"
+    if session_id:
+        root = agent_config_root(env, provider, checkout)
+        if provider == "claude":
+            main = list((root / "projects").glob(f"*/{session_id}.jsonl"))
+            logs = [(root / "debug" / f"{session_id}.txt",
+                     destination / "claude" / "debug.txt")]
+            if len(main) == 1:
+                logs.insert(0, (main[0], destination / "claude" / "session.jsonl"))
+                subagents = main[0].with_suffix("") / "subagents"
+                logs.extend((source, destination / "claude" / "subagents" / source.name)
+                            for source in subagents.glob("*.jsonl"))
+            else:
+                status = "ambiguous-session" if main else "session-not-found"
+        else:
+            sessions = root / "sessions"
+            main = list(sessions.glob(f"*/*/*/rollout-*-{session_id}.jsonl"))
+            main.extend(sessions.glob(f"rollout-*-{session_id}.jsonl"))
+            logs = [(main[0], destination / "codex" / "rollout.jsonl")] if len(main) == 1 else []
+            if len(main) != 1:
+                status = "ambiguous-session" if main else "session-not-found"
+        for source, target in logs:
+            if copy_agent_log(source, root, target, started_at):
+                copied += 1
+        if logs:
+            if copied:
+                status = "copied"
+            elif status != "ambiguous-session":
+                status = "session-not-found"
+    manifest = {"provider": provider or "unknown", "status": status,
+                "copiedFiles": copied}
+    (destination / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    return manifest
+
+
 def trace_error_category(trace: pathlib.Path) -> Optional[str]:
     """Classify a known agent failure without publishing trace contents."""
     tail = "\n".join(trace_tail(trace)).lower()
@@ -2039,6 +2177,9 @@ def run(
 
     tool_mode = resolve_tool_mode(tool_mode)
     env = dict(os.environ)
+    log_artifact_dir = env.pop("EVAL_AGENT_LOG_ARTIFACT_DIR", None)
+    if log_artifact_dir:
+        log_artifact_dir = pathlib.Path(log_artifact_dir).absolute()
     use_local_mcp_probe = local_mcp_probe(
         tool_mode, env.get("EVAL_MCP_LOCAL_PROBE")
     )
@@ -2117,6 +2258,7 @@ def run(
     trace.parent.mkdir(parents=True, exist_ok=True)
     project_id = None
     target_project = None
+    agent_started_at = None
     phases = PhaseMonitor()
     phases.enter("preparation")
 
@@ -2156,6 +2298,7 @@ def run(
         )
         if fixture_case:
             phases.enter("agent")
+            agent_started_at = time.time()
             if recovery_case:
                 with QueueRecoveryFixture(case["scenario"], workspace, checkout, env) as recovery_fixture:
                     agent_run = invoke_agent(
@@ -2200,6 +2343,7 @@ def run(
                         if uses_cli else agent_environment_without_cli(env, url)
                     )
                     phases.enter("agent")
+                    agent_started_at = time.time()
                     monitor = None
                     if case["kind"] == "first-green-build":
                         monitor = LiveBuildMonitor(
@@ -2386,6 +2530,16 @@ def run(
 
     finally:
         phases.enter("cleanup")
+        if log_artifact_dir and agent_started_at is not None:
+            try:
+                collect_agent_logs(
+                    trace, checkout, env, env.get("EVAL_AGENT_CMD", "claude -p"),
+                    log_artifact_dir, agent_started_at,
+                )
+            except OSError:
+                # Raw diagnostic paths must not leak to the build log or mask
+                # the scored outcome if artifact collection fails.
+                print("[eval-agent-logs] could not copy session logs", file=sys.stderr)
         if project_id and not keep:
             # Temporary project deletion is disabled while the target server
             # does not complete the project DELETE request. Keep the project

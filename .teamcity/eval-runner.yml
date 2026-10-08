@@ -47,6 +47,9 @@ jobs:
       - path: eval-result.json
         publish-artifact: true
         share-with-jobs: false
+      - path: .teamcity/evaluation-agent-logs/**
+        publish-artifact: true
+        share-with-jobs: false
     steps:
       - type: script
         name: Run the case

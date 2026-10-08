@@ -32,4 +32,5 @@ eval-result.json
 agent-trace-*.log
 cleanup-report.json
 .teamcity/evaluation-report/
+.teamcity/evaluation-agent-logs/
 .teamcity/jcp-central/
