@@ -141,6 +141,29 @@ class FirstGreenEvidenceTest(unittest.TestCase):
         self.assertEqual(["report.xml"], observed["artifacts"])
         self.assertEqual([11, 12, 13], [item["id"] for item in diagnostics["builds"]])
 
+    def test_parallel_batch_archive_contains_published_jar(self):
+        tc = runner.TeamCity("teamcity", "https://example.invalid", "synthetic", {})
+        listings = {
+            "": {"file": [{"name": "batch1", "children": {}},
+                         {"name": "report.zip"}]},
+            "batch1": {"file": [{"name": ".shared_files.zip"}]},
+            "batch1/.shared_files.zip": {"file": [{"name": "libs", "children": {}}]},
+            "batch1/.shared_files.zip!/libs": {
+                "file": [{"name": "target", "children": {}}]},
+            "batch1/.shared_files.zip!/libs/target": {
+                "file": [{"name": "app.jar"}]},
+        }
+
+        def listing(arguments, json_output=False):
+            path = arguments[arguments.index("--path") + 1] if "--path" in arguments else ""
+            return listings[path]
+
+        with mock.patch.object(tc, "_run", side_effect=listing) as run:
+            artifacts = tc.artifacts(10)
+        self.assertIn("batch1/.shared_files.zip!/libs/target/app.jar", artifacts)
+        self.assertTrue(runner.artifact_matches("**/target/*.jar", artifacts))
+        self.assertEqual(5, run.call_count)
+
     def test_parallel_batches_allow_reused_job_but_reject_foreign_build(self):
         tree = node(10, "pipeline", children=[
             node(11, "test", children=[

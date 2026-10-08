@@ -599,8 +599,8 @@ class TeamCity:
         return [{"name": test["name"], "status": test.get("status"),
                  "ignored": test.get("ignored", False) is not False} for test in records]
 
-    def artifacts(self, build_id: int, path: str = "") -> list:
-        """Every artifact returned by the first-class CLI, walked recursively."""
+    def artifacts(self, build_id: int, path: str = "", in_archive: bool = False) -> list:
+        """Walk published artifacts, including TeamCity's parallel-batch archive."""
         command = ["run", "artifacts", str(build_id), "--json"]
         if path:
             command.extend(["--path", path])
@@ -610,11 +610,14 @@ class TeamCity:
             if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
                 continue
             name = entry["name"]
-            full = f"{path}/{name}".lstrip("/")
+            separator = "!/" if in_archive and path.endswith(".shared_files.zip") else "/"
+            full = f"{path}{separator}{name}" if path else name
             if "children" in entry:
-                collected.extend(self.artifacts(build_id, full))
+                collected.extend(self.artifacts(build_id, full, in_archive))
             else:
                 collected.append(full)
+                if name == ".shared_files.zip" and not in_archive:
+                    collected.extend(self.artifacts(build_id, full, in_archive=True))
         return collected
 
 
