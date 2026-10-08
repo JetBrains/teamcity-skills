@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.1.1
+version: 0.1.2
 description: Use inside the TeamCity onboarding flow, after the web step created the instance and handed over its context. Reads a checked-out repository and its GitHub Actions workflow, recreates the build and test core as a TeamCity pipeline with native runners and parallel tests, and runs it until green.
 ---
 
@@ -111,13 +111,9 @@ jobs:
 
 Then read
 [Validate and check compatibility](references/validate-and-check-compatibility.md)
-and run its checks. Before queueing anything, pull the stored YAML and ask
-TeamCity which agents reject the job:
-
-```bash
-TEAMCITY_URL=<server> teamcity agent jobs <agent-id> --incompatible --json
-```
-
+and run its checks. Before queueing, pull the stored YAML and check the exact
+job against every candidate agent or cloud image. An agent name, host
+architecture, or successful YAML validation does not prove compatibility.
 Zero compatible agents is a configuration defect to fix now, not something to
 wait out.
 
@@ -141,20 +137,21 @@ Read [Verify a build](references/verify-build.md) to queue, watch, and correct
 the first run. Keep going until the pipeline head and every job are green or a
 blocker is proven.
 
-A run still queued after two observations or 60–120 seconds is blocked, not
-slow. Stop polling and read the wait reason:
+A runnable job still queued after two observations or 120 seconds needs a
+compatibility check. Inspect that job, not a pipeline head waiting for it, and
+read its wait reason:
 
 ```bash
 TEAMCITY_URL=<server> teamcity queue list --job <job-id> --json=id,waitReason,queuedDate
 ```
 
-For **no compatible agents** or **unresolved parameters**, follow "Diagnose A
-Build That Remains Queued" in [Build diagnostics](references/build-diagnostics.md):
-list agents, query the job's incompatibility reasons, pull the stored YAML, make
-one correction the evidence supports, validate, and only then queue again. Do
-not requeue unchanged, do not add another requirement, and do not switch
-branches to hide the error. Treat **no idle compatible agents** as busy capacity
-only after the incompatibility query confirms at least one compatible agent.
+For **no compatible agents**, **no idle compatible agents**, or **unresolved
+parameters**, follow "Diagnose A Build That Remains Queued" in
+[Build diagnostics](references/build-diagnostics.md). Check every candidate's
+exact incompatibility reason. Treat **no idle compatible agents** as busy
+capacity only when at least one candidate is confirmed compatible. Make one
+evidence-backed correction, validate, and only then queue again. Do not requeue
+unchanged, add another requirement, or switch branches to hide the error.
 
 Then run the pipeline two more times on the same revision. The first green run
 gives TeamCity the test history; the later runs split the tests into

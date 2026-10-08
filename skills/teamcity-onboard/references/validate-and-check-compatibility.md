@@ -72,6 +72,11 @@ TEAMCITY_URL=<server> teamcity agent list --connected --enabled --authorized \
 TEAMCITY_URL=<server> teamcity agent jobs <agent-id> --incompatible --json
 ```
 
+Check the exact job across all candidate agents, not one convenient host.
+Auto-generated Pipeline jobs may be absent from the CLI's compatible and
+incompatible lists; absence proves nothing. Use the permitted fallback in
+[Build diagnostics](build-diagnostics.md) before declaring capacity available.
+
 When compatibility access is denied, record it as unverified. Use another
 permitted machine-readable operation. If none exists, use
 [Manual prerequisites](manual-prerequisites.md).

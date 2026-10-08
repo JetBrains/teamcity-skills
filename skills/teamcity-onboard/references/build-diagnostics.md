@@ -72,23 +72,36 @@ successfully on the intended sources.
 
 ## Diagnose A Build That Remains Queued
 
-For a run that stays queued after two observations or 60--120 seconds, stop
-waiting and read the run and queue details, including the specific wait reason.
-If the request already reports that duration, treat the threshold as reached:
-run these checks before another status poll.
-Then:
+After two observations or 120 seconds in the queue, identify the runnable
+queued job in the dependency chain; a queued head waiting for that job is not
+the cause. Read that job's wait reason. If the request already reports two
+minutes, perform the following checks before another status poll:
 
-1. List enabled, authorized agents and applicable cloud images or hosted
-   selectors.
-2. Query the job against candidate agents so TeamCity reports unmet
-   requirements, missing versions, pool restrictions, or unresolved
-   parameters.
-3. Pull the server-stored Pipeline YAML and verify that every `%name%`
-   substitution is declared or inherited.
+1. List every enabled, authorized agent in the target pool and all applicable
+   cloud images or hosted selectors.
+2. Check the exact job against **each** candidate. Record whether it is
+   compatible and, if not, the unmet requirement, missing parameter or version,
+   pool restriction, or unresolved parameter. Group repeated reasons and count
+   compatible candidates. Do not infer compatibility from an agent's name or
+   from a generic queue message.
+3. Pull the server-stored Pipeline YAML. Match its `runs-on` requirements and
+   every `%name%` substitution to the reported reasons. A host architecture
+   observed inside a build does not prove that the corresponding TeamCity
+   agent parameter exists before dispatch.
+
+With the CLI, run `teamcity agent jobs <agent-id> --incompatible --json` for
+each listed agent and check the same job in the compatible result. Auto-generated
+Pipeline jobs can be absent from both CLI lists; absence is **not** a
+compatibility result. When a matching MCP tool is available, use its Pipeline
+compatibility check for the saved draft (`/app/pipeline/<pipeline-id>/compatibility/agents`);
+it also covers offered cloud images. Do not call that endpoint from a shell.
+If no permitted tool can check the exact job, report compatibility as
+unverified and follow [Manual prerequisites](manual-prerequisites.md).
 
 Perform these checks immediately when the reason says **no compatible agents**
-or **unresolved parameters**. Treat **no idle compatible agents** as ambiguous
-until the job result distinguishes busy capacity from zero compatible agents.
+or **unresolved parameters**. At the two-minute checkpoint, perform them also
+for **no idle compatible agents**: that message does not distinguish busy
+capacity from zero compatible agents.
 If an unmet `os-family teamcity.agent.jvm.os.family equals Linux` requirement
 uses a key absent from the candidate agent, replace it with an observed,
 relevant parameter; changing the value's case cannot make the key exist.
