@@ -35,11 +35,24 @@ create is a deliverable the user will see in their project.
   requirement: use `requirement`, `parameter`, and `value` from the schema.
 - Match the agents' CPU architecture to the images the build pulls, including
   Testcontainers images. An amd64-only image on an arm64 agent fails with
-  `exec format error`. Pin `x86_64` when the images are not multi-arch.
+  `exec format error`. Select a verified x86-capable agent for such an image;
+  if you add an architecture requirement, use the agent's exact
+  `teamcity.agent.jvm.os.arch` value, not the workflow's `x86_64` label. An
+  x86 agent may advertise `amd64`.
 - Count compatible agents and cloud images for the exact job. Each parallel
   test batch needs one agent at the same time to achieve a speedup. A queued
   batch with compatible but busy agents is a capacity wait, not proof of an
   invalid requirement.
+
+For every custom requirement, check both its parameter name and its value on
+the candidate set. A Linux agent may advertise
+`teamcity.agent.jvm.os.name=Linux` but have no
+`teamcity.agent.jvm.os.family` parameter; an `os-family=Linux` requirement on
+the absent key cannot schedule. Likewise, do not assume
+`docker.server.osType` exists merely because the job needs Docker: use a
+confirmed Docker-capable selector or parameter, then run `docker info` in the
+job. Treat the compatibility helper's unresolved parameters as dispatch
+blockers, not as build-step problems.
 
 ## Select the JDK
 
@@ -80,9 +93,13 @@ the stored configuration and validate again.
 
 Pull the stored YAML and verify that each `%name%` substitution is declared
 or inherited. Check the exact job against every candidate agent and cloud
-image. A generated job absent from the CLI's compatible and incompatible
-lists has unverified compatibility; use the permitted Pipeline helper. Zero
-compatible candidates is a defect to fix now, not to wait out.
+image with the permitted Pipeline helper when the CLI does not include generated
+jobs. Read its unmet requirements and unresolved parameters for every job,
+including jobs with dependencies. Zero compatible candidates is a defect to
+fix now, not to wait out, even if TeamCity says "no idle compatible agents".
+After changing the stored YAML, repeat the check before queueing. A generated
+job absent from the CLI's compatible and incompatible lists has unverified
+compatibility, not a pass.
 When compatibility access is denied, record it as unverified and use
 [Manual prerequisites](manual-prerequisites.md) if no other read works.
 

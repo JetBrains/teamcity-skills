@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.1.5
+version: 0.1.6
 description: Use inside the TeamCity onboarding flow, after the web step created the instance and handed over its context. Reads a checked-out repository and its GitHub Actions workflow, recreates the build and test core as a TeamCity pipeline with native runners and parallel tests, and runs it until green.
 ---
 
@@ -51,7 +51,10 @@ List everything dropped as not migrated.
 
 [Agents, JDK, and compatibility](references/agents-and-jdk.md) decides
 `runs-on`, the JDK, and the CPU architecture from the server's own evidence,
-before any YAML is written.
+before any YAML is written. Before queueing, check the stored pipeline's exact
+jobs against every candidate agent and cloud image. Zero compatible candidates
+is a configuration blocker even when the queue says "no idle compatible
+agents"; correct the requirement and check again before running.
 
 ## 3. Write the pipeline
 
