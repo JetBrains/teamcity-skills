@@ -1,7 +1,7 @@
 # Verify a build
 
-Use this guide to queue a verification build and drive it to a result. Read
-[Validate and check compatibility](validate-and-check-compatibility.md) first.
+Use this guide to queue the pipeline, drive it to green, and show the parallel
+test speedup. Read [Agents, JDK, and compatibility](agents-and-jdk.md) first.
 
 The mechanics come from the `teamcity-cli` skill: "Start, monitor & personal
 builds" for starting a run, reading back its branch and revision, and
@@ -13,20 +13,51 @@ onboarding changes.
 
 Queue on the branch chosen in [Discover and connect](discover-and-connect.md).
 Poll rather than `--watch`: the user is waiting, and a queued run has to be
-noticed early.
+noticed early. Keep going until the head and every job are green or a blocker
+is proven.
 
-After two observations or 60–120 seconds in the queue, record the ID and the
-wait reason and read [Build diagnostics](build-diagnostics.md). Queue the next
-build only after a documented correction or blocker.
+## Decide what a failure means
 
-## Handle a failed build
+**Queued for 60–120 seconds** means blocked, not slow. Read the wait reason
+with `teamcity queue list --job <job-id>`, then follow "Diagnose A Build That
+Remains Queued" in [Build diagnostics](build-diagnostics.md): one
+correction the evidence supports, validate, requeue. Never requeue unchanged,
+add a requirement, or switch branches to hide an error. "No idle compatible
+agents" with compatible agents confirmed and test batches queued means the
+pipeline wants more agents than exist: lower `parallelism`, push, requeue.
 
-Record the build ID and terminal state. Read
-[Build diagnostics](build-diagnostics.md) to interpret the evidence that the
-CLI skill's investigation workflow collects. Of the CLI skill's fix paths,
-only the pipeline YAML path applies: pull the stored YAML, correct it, validate,
-push, and keep the checkout's `.teamcity.yml` identical to it. Code fixes and
-`--local-changes` verification of source edits are out of scope.
+**A red head with green jobs** and the problem `invalid_branch_name` is a
+branch binding error. Fix the branch selection as
+[Discover and connect](discover-and-connect.md) describes; do not touch the
+steps.
+
+**A test that fails only in a batch**, while the same class is green when the
+job runs unsplit or in a different batch, is a test isolation problem, usually
+shared state such as a reused Testcontainers container or static data. Do not
+retry it. Remove `parallelism` from that job, push, requeue, and report the
+test and the reason the speedup is not available for it.
+
+**A test that fails on its own**, in every run and with no TeamCity cause in
+the log, is a repository failure. Report the test, the assertion, and the
+build ID, and stop. A job that failed only through its snapshot dependency
+needs no diagnosis.
+
+**Anything else**: read [Build diagnostics](build-diagnostics.md) to interpret
+the evidence the CLI skill's investigation workflow collects. Of the CLI
+skill's fix paths, only the pipeline YAML path applies: pull the stored YAML,
+correct it, validate, push, and keep the checkout's `.teamcity.yml` identical
+to it. Code fixes and `--local-changes` verification of source edits are out
+of scope.
 
 Continue only when new evidence supports a correction, and stop after three
 corrections. A successful child does not make a failed head green.
+
+## Show the speedup
+
+After the first green run, run the pipeline two more times on the same
+revision. The first run gives TeamCity the test history; the later runs split
+the tests into batches. Compare them with
+`teamcity run list --job <job-id> --json=id,status,startDate,finishDate`.
+
+Report only what you observed. If the test job takes under a minute, say that
+parallel tests do not pay off yet.
