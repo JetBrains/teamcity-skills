@@ -47,7 +47,7 @@ Environment override note:
 | Command                          | Description              |
 |----------------------------------|--------------------------|
 | `teamcity run list`              | List recent builds       |
-| `teamcity run view <id>`         | View build details       |
+| `teamcity run view <id>`         | View run details, including queued-run compatibility |
 | `teamcity run start <job-id>`    | Start a new build        |
 | `teamcity run cancel <id>`       | Cancel a build           |
 | `teamcity run restart <id>`      | Restart a build          |
@@ -129,6 +129,8 @@ Shows all branches and all build states (including canceled, personal, composite
 - `--timeout <duration>` - Timeout duration (e.g., 30m, 1h)
 
 ### Flags for `teamcity run view`
+
+For a queued run, output includes compatible and incompatible agents plus cloud images when the server supports it. Large pools are summarized. `--json` includes every compatibility entry under `.compatibility`.
 
 - `--json` - Output as JSON
 - `-w, --web` - Open in browser

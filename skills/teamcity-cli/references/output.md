@@ -39,6 +39,7 @@ teamcity run list --json=id,buildType.name,triggered.user.username
 | Command        | Example fields                                                                                                                                                                                        |
 |----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `run list`     | `id`, `number`, `status`, `state`, `branchName`, `buildTypeId`, `buildType.name`, `buildType.projectName`, `triggered.type`, `triggered.user.name`, `agent.name`, `startDate`, `finishDate`, `webUrl` |
+| `run view`     | Build fields; queued runs also include `.compatibility` with every compatible and incompatible resource when the server supports it |
 | `job list`     | `id`, `name`, `projectName`, `projectId`, `paused`, `href`, `webUrl`                                                                                                                                  |
 | `project list` | `id`, `name`, `description`, `parentProjectId`, `href`, `webUrl`                                                                                                                                      |
 | `queue list`   | `id`, `buildTypeId`, `state`, `branchName`, `queuedDate`, `waitReason`, `buildType.name`, `triggered.user.name`, `webUrl`                                                                                           |

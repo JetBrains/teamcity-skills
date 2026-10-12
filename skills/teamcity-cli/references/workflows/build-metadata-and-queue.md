@@ -44,6 +44,14 @@ teamcity run comment <run-id> --delete
 teamcity queue list
 ```
 
+**Explain why a queued run cannot start:**
+```bash
+teamcity run view <run-id>
+teamcity run view <run-id> --json | jq '.compatibility'
+```
+
+When the server supports queued-run compatibility, the text output groups compatible and incompatible agents and cloud images. Large pools are summarized; JSON contains every entry in `.compatibility`.
+
 **Filter queue by job:**
 ```bash
 teamcity queue list --job <job-id>
