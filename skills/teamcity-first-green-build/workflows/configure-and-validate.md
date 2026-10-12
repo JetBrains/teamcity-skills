@@ -15,52 +15,23 @@ publication, and repository-required container work. Reference TeamCity
 credentials and connections; never hardcode secrets.
 
 If the requested CI must build pull requests, or the planned verification uses
-a PR ref, verify **Repository → Pull requests** on the selected Pipeline before
-queueing that branch. Configure it through a supported TeamCity operation or
-the Pipeline settings UI. **On New Changes → Pull requests** controls automatic
-queueing; a trigger or branch specification alone does not enable PR handling.
-If the available CLI or MCP cannot configure this setting, give the exact
-[manual prerequisite](../shared/manual-prerequisites.md) and verify the saved
-setting before claiming PR CI works. A successful ordinary-branch build is not
-proof that a `refs/pull/...` build is trusted.
+a PR ref, first ensure that the Pipeline's Repository tracks the provider's PR
+branches. Then enable **Repository → Pull requests** on the selected Pipeline
+before queueing that branch. Use a dedicated CLI command when the installed
+version provides one. CLI 1.5.0 has no command for this setting, and
+`pipeline push` cannot change it because repository settings live outside
+Pipeline YAML.
+Check for a dedicated MCP write next. Use the Pipeline settings UI only as a
+fallback; if that is unavailable, give the exact
+[manual prerequisite](../shared/manual-prerequisites.md). Verify the saved
+setting before claiming PR CI works. **On New Changes → Pull requests** controls
+automatic queueing; a trigger or branch specification alone does not enable
+PR handling. A successful ordinary-branch build is not proof that a
+`refs/pull/...` build is trusted.
 For a branch-only pipeline, do not enable PR triggers as incidental setup.
 
-Use schema, agent, compatibility, and validation reads to diagnose the target
-environment. Do not create a separate server-stored diagnostic pipeline or
-"retired" diagnostic job unless the user explicitly requests one. Create only
-the requested deliverable pipeline and its required jobs.
-
-For an exact host JDK, inspect parameters reported by compatible agents or
-images on this server. A key such as `env.JDK_21_0` advertises an installed JDK
-path; its name is an example, not a TeamCity constant. Use the actual key from
-the agent's Parameters view or an available TeamCity tool. The CLI's
-`teamcity agent jobs <agent-id> --incompatible --json` can confirm an unmet
-requirement but does not list the agent's parameters. Treat a conventional key
-inferred from the requested Java version as a candidate until agent parameters
-or job compatibility confirm it.
-
-For the full host-JDK and container decision, read the companion
-[TeamCity JDK Selection](../../teamcity-jdk-selection/SKILL.md) skill when it is
-installed. The checks below remain usable when this skill is installed alone.
-
-The two settings have different jobs:
-
-- An agent requirement that the observed JDK key exists limits scheduling to
-  agents that advertise it. Check the job's compatibility result. A reference
-  to `%env.JDK_21_0%` may already provide that requirement implicitly; add an
-  explicit `exists` requirement when it does not.
-- Set the job's `parameters.env.JAVA_HOME` to the observed key, for example
-  `%env.JDK_21_0%`. This selects that installation for Maven or Gradle; the
-  requirement alone does not change the Java used by the build.
-
-TeamCity checks agent compatibility before dispatch. A script that searches
-host paths and calls `setParameter` runs too late to select an agent. Pull the
-saved Pipeline YAML and check both scheduling and JDK selection on every
-affected job before queueing; confirm the runtime with
-`"$JAVA_HOME/bin/java" -version` in the build. A Linux container-safe job
-without a matching host JDK needs Docker capability and a pinned JDK image,
-not a host-JDK requirement. macOS and iOS work needs a native compatible
-runtime.
+When a job requires a specific JDK, read [JDK selection](../shared/jdk-selection.md)
+before configuring its agent requirement, runner, or container.
 
 Keep independent jobs from the repository. Keep mobile work in a KMP pipeline.
 Use meaningful TeamCity status messages.
@@ -105,15 +76,10 @@ permitted machine-readable operation. If none exists, use
 
 Choose `runs-on` from target-server evidence. Use an observed stable
 self-hosted capability or a server-provided hosted selector. Never use a
-transient VM name or a selector copied from another server. Confirm the final
-JDK through the build's `JAVA_HOME` and Java version.
+transient VM name or a selector copied from another server.
 
-Check each host-JDK requirement against compatible agents. An unresolved JDK
-parameter is a pre-dispatch blocker. For a Linux container-safe job, replace
-the host-JDK requirement with Docker capability and run the job in the pinned
-JDK image. For native work, the infrastructure owner must provide the required
-JDK, image, or agent capability and return its selector and compatibility
-evidence.
+Check each job's requirements against compatible agents. If none match, report
+the missing capability and the evidence needed before retrying.
 
 For configuration-only work, stop after the saved-YAML audit, one inventory
 query, and one compatibility query. A missing or denied query is a blocker.

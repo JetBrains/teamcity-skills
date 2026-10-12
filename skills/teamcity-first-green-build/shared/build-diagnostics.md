@@ -94,10 +94,9 @@ uses a key absent from the candidate agent, replace it with an observed,
 relevant parameter; changing the value's case cannot make the key exist.
 
 For an unresolved host-JDK parameter such as `env.JDK_25`, report a
-pre-dispatch blocker. A build step cannot download JDK 25 because it has not
-started. For a Linux container-safe job, replace the host-JDK requirement with
-Docker capability and run the job in a pinned JDK 25 image. Native work needs
-an agent or image that already provides JDK 25.
+pre-dispatch blocker: a build step cannot install JDK 25 before the job starts.
+Read [JDK selection](jdk-selection.md) to choose a compatible host or container
+route before changing the job. Native work needs a matching agent or image.
 
 If the evidence proves zero compatible agents or images, stop polling. Do not
 queue a duplicate or retry unchanged. Make at most one correction directly

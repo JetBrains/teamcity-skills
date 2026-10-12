@@ -1,9 +1,9 @@
 # TeamCity CLI And MCP
 
-Use this reference when TeamCity CLI or MCP is available. It avoids a common
-mistake: a child project can display an inherited connection in the UI while a
-CLI list command reports no connection because it lists only objects owned by
-that child.
+Use this reference for TeamCity VCS connections and roots. CLI 1.5.0 and later
+include inherited connections in a child project's connection list; older CLI
+versions may list only connections owned by that child. Identify the owning
+project before changing or deleting a connection.
 
 ## Select The Matching Server
 
@@ -55,13 +55,17 @@ server.
 
 ## Find An Inherited Connection
 
-1. Read the target project and note its `parentProjectId`.
-2. At the target and then at each parent up to `_Root`, run
-   `teamcity project connection list --project <project-id>`.
-3. For every candidate, verify its type and details in the same project scope:
-   `teamcity project connection view <connection-id> --project <owner-project-id>`.
-4. Keep the connection ID together with the project that owns it. A connection
-   displayed as inherited by the UI belongs to an ancestor, not to the target.
+1. Check `teamcity --version`, then list connections in the target project with
+   `teamcity project connection list --project <target-project-id>`.
+2. CLI 1.5.0 and later include connections inherited from parents through
+   `_Root`. With older versions, read the target's `parentProjectId` and list
+   each ancestor when the target list has no suitable connection.
+3. Verify a candidate's type and details with
+   `teamcity project connection view <connection-id> --project <project-id>`.
+   Before changing or deleting it, identify its owner from project settings or
+   by comparing connection lists along the parent chain.
+4. Keep the connection ID with its owning project. Visibility in a child does
+   not make that child the owner.
 
 Use matching MCP read tools to corroborate project ancestry or connection
 details when available. The MCP result is evidence for discovery; do not assume
@@ -69,21 +73,24 @@ it can create a VCS root or pipeline.
 
 ## Authenticate The VCS Connection
 
-Use the connection type to choose the authentication path:
+Signing in to TeamCity CLI only grants access to TeamCity; it does not authorize
+a GitHub connection. If the current TeamCity user has not authorized a GitHub
+App or GitHub OAuth App connection, authorize it in a project where the CLI can
+resolve the connection:
 
-- **GitHub App:** it authenticates as the app. Verify that its installation has
-  access to the target repository. It does not become usable merely because a
-  user authenticated TeamCity CLI.
-- **GitHub OAuth App:** authorize the current TeamCity user through the project
-  that owns the connection:
+```bash
+TEAMCITY_URL=<server> teamcity project connection authorize <connection-id> \
+  --project <project-id>
+```
 
-  ```bash
-  TEAMCITY_URL=<server> teamcity project connection authorize <connection-id> \
-    --project <owner-project-id>
-  ```
-
-  This may open the provider's OAuth flow. Do not replace it with a copied
-  personal access token unless the user explicitly chooses that trade-off.
+With CLI 1.5.0 or later, the target child can resolve an inherited connection.
+With an older CLI, use the connection's owner project for this command.
+This may open a GitHub authorization flow. For a GitHub App, also verify that
+the App is installed with access to the target repository: user authorization
+does not install the App. Test the resulting VCS root against the repository;
+authorization alone does not prove checkout access. Do not replace this flow
+with a copied personal access token unless the user explicitly chooses that
+trade-off.
 
 ## Create Or Reuse The VCS Root
 

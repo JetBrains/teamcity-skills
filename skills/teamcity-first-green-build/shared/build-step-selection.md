@@ -22,14 +22,9 @@ TeamCity server's supported capabilities.
   runner for primary Gradle build, test, and package tasks. Set its `tasks`
   property from the repository's verified Gradle tasks. Do not substitute a
   generic script merely because schema validation does not validate every
-  runner-specific property. When the repository declares an exact JDK, use a
-  discovered server-managed installation and set job-level `env.JAVA_HOME`, or
-  use a step-level official JDK container image pinned to that major version
-  when the repository is container-safe and compatible Docker agents are
-  programmatically confirmed. The container is the preferred fallback for an
-  otherwise missing JDK on ephemeral Linux agents; do not mutate the host or
-  rely on its default Java. Keep host-native macOS/iOS work outside that
-  fallback. Use a script only for non-Gradle glue that the Gradle runner cannot
+  runner-specific property. When the repository declares an exact JDK, read
+  [JDK selection](jdk-selection.md) before selecting a host installation or
+  container. Use a script only for non-Gradle glue that the Gradle runner cannot
   express.
 - Maven: when the live Pipeline schema exposes `type: maven`, use the Maven
   runner for the primary lifecycle work and put the repository's verified

@@ -58,8 +58,7 @@ others.
 | Skill | Purpose |
 | --- | --- |
 | [`teamcity-cli`](skills/teamcity-cli/) | Drive the `teamcity` CLI: builds, logs, jobs, queues, agents, projects, pipelines. |
-| [`teamcity-first-green-build`](skills/teamcity-first-green-build/) | Set up CI for a repository and get it to its first successful build. |
-| [`teamcity-jdk-selection`](skills/teamcity-jdk-selection/) | Select and verify the JDK used by a TeamCity job, on an agent or in a container. |
+| [`teamcity-first-green-build`](skills/teamcity-first-green-build/) | Set up CI for a repository and get it to its first successful build, with JDK selection guidance when needed. |
 | [`teamcity-intellij`](skills/teamcity-intellij/) | Work with TeamCity from an IntelliJ-based IDE: where the bundled CLI is, and when to use it or the MCP tools. |
 | [`migrate-to-teamcity`](skills/migrate-to-teamcity/) | Convert GitHub Actions or Bamboo pipelines to TeamCity. |
 

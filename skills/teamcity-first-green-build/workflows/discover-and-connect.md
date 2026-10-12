@@ -38,8 +38,9 @@ On the confirmed server, inspect the parent project and inherited settings,
 existing pipelines and VCS roots, connections, agents or images, and Pipeline
 schema. Reuse a matching configuration when possible.
 
-List connections through the parent chain to `_Root`; a child-project listing
-can omit inherited connections. Record each connection ID and owner project.
+List connections for the target project. CLI 1.5.0 and later include inherited
+connections; with older versions, inspect parents through `_Root` when needed.
+Record each connection ID and owner project.
 For an existing pipeline, inspect its VCS-root attachment. A visible project
 root does not prove that the pipeline uses it.
 

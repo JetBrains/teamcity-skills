@@ -1,6 +1,6 @@
 ---
 name: teamcity-first-green-build
-version: 1.2.0
+version: 2.0.2
 description: Use when creating, validating, or updating TeamCity CI for a repository and driving it through its first successful build.
 ---
 
@@ -45,6 +45,8 @@ environment variable, command history, tool configuration, or repository files.
 - `shared/project-inspection.md` — local repository inspection.
 - `shared/build-step-selection.md` — build steps, JVM verification, outputs,
   and status messages.
+- `shared/jdk-selection.md` — agent selection and runtime verification when a
+  job requires a specific JDK.
 - `shared/kmp-mobile.md` — Kotlin Multiplatform, Android, Compose, or iOS.
 - `shared/token-safety.md` — credentials.
 - `shared/vcs-connections-and-auth.md` — VCS connections, auth, and roots.
