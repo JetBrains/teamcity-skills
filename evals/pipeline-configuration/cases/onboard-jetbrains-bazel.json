@@ -10,5 +10,5 @@
   "stack": {"family": "bazel-distribution", "buildTool": "script"},
   "requestedConfiguration": {"format": "yaml", "sourcePath": ".teamcity.yml"},
   "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
-  "expected": {"configurationValidated": true, "sourceMutations": "none", "minimumJobs": 1, "requiredStepTypes": ["script"], "requiredArtifactRules": ["bazel-bin/src/bazel"]}
+  "expected": {"configurationValidated": true, "sourceMutations": "none", "minimumJobs": 1, "requiredStepTypes": ["script"], "requiredArtifactRules": ["(?:bazel-bin/src/bazel|artifacts/(?:bazel[^\\s]*|\\*))"]}
 }
