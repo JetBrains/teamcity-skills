@@ -1,25 +1,64 @@
 # Verify a build
 
-Use this guide to queue a verification build and drive it to a result. Read
-[Validate and check compatibility](validate-and-check-compatibility.md) first.
+Use this guide to queue the pipeline, drive it to green, and show the parallel
+test speedup. Read [Agents, JDK, and compatibility](agents-and-jdk.md) first.
+
+The mechanics come from the `teamcity-cli` skill: "Start, monitor & personal
+builds" for starting a run, reading back its branch and revision, and
+reporting progress at 5, 10, 20, then 30 seconds; "Fix a failure & monitor
+until green" for the loop and its stop conditions. This guide adds what
+onboarding changes.
 
 ## Queue and watch
 
-Queue a personal or isolated build when supported. Read back the queued
-build's branch and revision before waiting. Poll the pipeline head and jobs
-with bounded backoff: 5, 10, 20, then 30 seconds.
+Queue on the branch chosen in [Discover and connect](discover-and-connect.md).
+Poll rather than `--watch`: the user is waiting, and a queued run has to be
+noticed early. Keep going until the head and every job are green or a blocker
+is proven.
 
-After two observations or 60–120 seconds in the queue, record the ID and queue
-state. Read [Build diagnostics](build-diagnostics.md). Queue the next build
-only after a documented correction or blocker.
+## Decide what a failure means
 
-## Handle a failed build
+**A runnable job queued for two observations or 120 seconds** needs its exact
+wait reason from `teamcity queue list --job <job-id>` and the candidate check
+in [Build diagnostics](build-diagnostics.md). Zero compatible candidates or
+unresolved parameters need a supported correction. "No idle compatible
+agents" with compatible candidates confirmed means busy capacity; continue
+watching the accepted run. Do not requeue unchanged, add a requirement, or
+switch branches to hide an error. Lower `parallelism` for a later run only
+when evidence shows the available capacity cannot provide the planned split.
 
-Record the build ID and terminal state. Read
-[Build diagnostics](build-diagnostics.md). Apply its correction or manual
-blocker. Before retrying, compare the source YAML with the server-stored
-Pipeline YAML, reconcile any difference, and validate the result. Then queue
-the next verification build.
+**A red head with green jobs** and the problem `invalid_branch_name` is a
+branch binding error. Fix the branch selection as
+[Discover and connect](discover-and-connect.md) describes; do not touch the
+steps.
 
-Continue only when new evidence supports a correction. A successful probe or
-child does not make a failed primary head green.
+**A test that fails only in a batch**, while the same class is green when the
+job runs unsplit or in a different batch, is a test isolation problem, usually
+shared state such as a reused Testcontainers container or static data. Do not
+retry it. Remove `parallelism` from that job, push, requeue, and report the
+test and the reason the speedup is not available for it.
+
+**A test that fails on its own**, in every run and with no TeamCity cause in
+the log, is a repository failure. Report the test, the assertion, and the
+build ID, and stop. A job that failed only through its snapshot dependency
+needs no diagnosis.
+
+**Anything else**: read [Build diagnostics](build-diagnostics.md) to interpret
+the evidence the CLI skill's investigation workflow collects. Of the CLI
+skill's fix paths, only the pipeline YAML path applies: pull the stored YAML,
+correct it, validate, push, and keep the checkout's `.teamcity.yml` identical
+to it. Code fixes and `--local-changes` verification of source edits are out
+of scope.
+
+Continue only when new evidence supports a correction, and stop after three
+corrections. A successful child does not make a failed head green.
+
+## Show the speedup
+
+After the first green run, run the pipeline two more times on the same
+revision. The first run gives TeamCity the test history; the later runs split
+the tests into batches. Compare them with
+`teamcity run list --job <job-id> --json=id,status,startDate,finishDate`.
+
+Report only what you observed. If the test job takes under a minute, say that
+parallel tests do not pay off yet.

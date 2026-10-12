@@ -3,14 +3,14 @@
 This guide investigates an existing TeamCity run. It does not create or
 redesign CI configuration.
 
-Use this guide with `teamcity-cli` when the TeamCity CLI is available.
-`teamcity-cli` supplies the command syntax and the basic failure workflow;
+Use this guide with the `teamcity-cli` skill, loaded at the start of the
+onboarding. It supplies the command syntax and the basic failure workflow;
 this guide supplies the investigation order, special cases, and boundaries for
 optional live-agent access. Do not duplicate or replace its command reference.
 
 ## Work With `teamcity-cli`
 
-Read `teamcity-cli/references/workflows/investigate-failure.md` first for:
+Read its "Investigate a build failure" workflow first for:
 
 - locating the failed run and reading its overview, logs, tests, and changes;
 - finding the deepest failing build in a dependency chain;
@@ -104,8 +104,8 @@ for **no idle compatible agents**: that message does not distinguish busy
 capacity from zero compatible agents.
 If an unmet `os-family teamcity.agent.jvm.os.family equals Linux` requirement
 uses a key absent from the candidate agent, replace it with an observed,
-relevant parameter expressed as an explicit custom requirement (see
-[Validate and check compatibility](validate-and-check-compatibility.md)).
+   relevant parameter expressed as an explicit custom requirement (see
+   [Agents, JDK, and compatibility](agents-and-jdk.md)).
 Writing that parameter name as a bare `self-hosted` key does not create a
 requirement. Changing the value's case cannot make the missing key exist.
 
@@ -133,7 +133,12 @@ blocker.
 For `invalid_branch_name`, or when TeamCity substitutes default-branch
 revisions, inspect the VCS roots attached to the pipeline, their default
 branches and branch specifications, and the mapping from the requested Git
-branch to TeamCity's logical branch. Do not switch to `main`/`master` or widen
+branch to TeamCity's logical branch. The usual cause is naming the default
+branch explicitly (`--branch main`) when the specification does not list it;
+queue with the logical `--branch '<default>'`, particularly when pinning a
+revision. A red head with this problem and
+green jobs is a branch binding error, not a step failure, and is not a green
+build. Do not switch to `main`/`master` or widen
 branch filters merely to suppress the error. Retry only after correcting a
 demonstrated mismatch.
 
