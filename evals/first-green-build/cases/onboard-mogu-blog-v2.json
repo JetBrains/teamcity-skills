@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "onboard-mogu-blog-v2",
+  "kind": "first-green-build",
+  "status": "draft",
+  "skill": "teamcity-onboard",
+  "prompt": "Continue the TeamCity onboarding flow for this checked-out repository. The web hand-over supplies TeamCity server {{teamcity.server}}, parent project {{teamcity.targetProject}}, checkout in the current working directory, remote https://github.com/moxi624/mogu_blog_v2.git, current branch Nacos, and no VCS root. Recreate the public Java Maven build and test core of its GitHub Actions workflow. Do not use private deployment configuration, skip tests, publish images, deploy, or release. Use native TeamCity runners, dependency cache, and parallel tests when compatible. Validate the saved pipeline and run it until green or report a proven external prerequisite.",
+  "teamcity": {"server": "runner-configured", "targetProject": "runner-configured"},
+  "repository": {"url": "https://github.com/moxi624/mogu_blog_v2.git", "revision": "025d78c7ac7e19b1abf796fa3cc158d855723d15", "defaultBranch": "Nacos", "root": "."},
+  "stack": {"family": "spring-cloud-microservices", "buildTool": "maven", "maven": "3.9"},
+  "requestedConfiguration": {"format": "yaml", "sourcePath": ".teamcity.yml"},
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "verification": {"command": "mvn -B clean verify", "testReportPaths": ["**/target/surefire-reports/*.xml"], "artifactPaths": ["**/target/*.jar"]},
+  "expected": {
+    "configurationValidated": true, "testsExecutedAndReported": true, "artifactsPublished": true, "sourceMutations": "none", "toolchain": {"jdk": "8"}, "firstBuild": "SUCCESS",
+    "configuration": {"configurationValidated": true, "sourceMutations": "none", "minimumJobs": 1, "toolchain": {"jdk": "8"}, "requiredStepTypes": ["maven"], "requiredArtifactRules": ["\\.jar"], "requiredJobProperties": [{"property": "enable-dependency-cache", "value": true}]}
+  }
+}

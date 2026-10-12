@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "onboard-jetbrains-rd",
+  "kind": "first-green-build",
+  "status": "draft",
+  "skill": "teamcity-onboard",
+  "prompt": "Continue the TeamCity onboarding flow for this checked-out repository. The web hand-over supplies TeamCity server {{teamcity.server}}, parent project {{teamcity.targetProject}}, checkout in the current working directory, remote https://github.com/JetBrains/rd.git, current branch master, and no VCS root. Recreate only the Linux rd-kt build and test core of its GitHub Actions container workflow, with its stated container runtime and environment. Do not publish packages, deploy, or release. Use native TeamCity runners, dependency cache, and parallel tests when compatible. Validate the saved pipeline and run it until green.",
+  "teamcity": {"server": "runner-configured", "targetProject": "runner-configured"},
+  "repository": {"url": "https://github.com/JetBrains/rd.git", "revision": "d495569e08d17fa7fae7e5310bd21e3a3fc592c4", "defaultBranch": "master", "root": "."},
+  "stack": {"family": "kotlin-multimodule", "buildTool": "gradle", "gradle": "8.1", "kotlin": "mixed"},
+  "requestedConfiguration": {"format": "yaml", "sourcePath": ".teamcity.yml"},
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "verification": {"command": "./gradlew assemble build", "testReportPaths": ["**/build/test-results/test/*.xml"], "artifactPaths": ["**/build/libs/*.jar"]},
+  "expected": {
+    "configurationValidated": true, "testsExecutedAndReported": true, "artifactsPublished": true, "sourceMutations": "none", "toolchain": {"jdk": "11"}, "firstBuild": "SUCCESS",
+    "configuration": {"configurationValidated": true, "sourceMutations": "none", "minimumJobs": 1, "toolchain": {"jdk": "11"}, "requiredStepTypes": ["gradle"], "requiredArtifactRules": ["\\.jar"], "requiredJobProperties": [{"property": "enable-dependency-cache", "value": true}]}
+  }
+}

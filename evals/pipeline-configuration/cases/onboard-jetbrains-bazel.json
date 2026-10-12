@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "onboard-jetbrains-bazel",
+  "kind": "pipeline-configuration",
+  "status": "draft",
+  "skill": "teamcity-onboard",
+  "prompt": "Continue the TeamCity onboarding flow for this checked-out repository. The web hand-over supplies TeamCity server {{teamcity.server}}, parent project {{teamcity.targetProject}}, checkout in the current working directory, remote https://github.com/JetBrains/bazel.git, current branch master, and no VCS root. Configure and validate only the Linux x86_64 build core of its GitHub Actions workflow: check out the pinned upstream Bazel source, apply this repository's patches, build the Bazel binary, and publish that binary as an artifact. This repository has no test suite, so do not invent one. Do not queue a build, publish a release, or deploy.",
+  "teamcity": {"server": "runner-configured", "targetProject": "runner-configured"},
+  "repository": {"url": "https://github.com/JetBrains/bazel.git", "revision": "f621422a7e311884c5d51e57d8ac0c57f34e8747", "defaultBranch": "master", "root": "."},
+  "stack": {"family": "bazel-distribution", "buildTool": "script"},
+  "requestedConfiguration": {"format": "yaml", "sourcePath": ".teamcity.yml"},
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "expected": {"configurationValidated": true, "sourceMutations": "none", "minimumJobs": 1, "requiredStepTypes": ["script"], "requiredArtifactRules": ["bazel-bin/src/bazel"]}
+}

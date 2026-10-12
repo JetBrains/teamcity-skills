@@ -375,6 +375,19 @@
           "not": {
             "required": ["gradle"]
           }
+        },
+        {
+          "properties": {
+            "buildTool": {
+              "const": "script"
+            }
+          },
+          "not": {
+            "anyOf": [
+              {"required": ["maven"]},
+              {"required": ["gradle"]}
+            ]
+          }
         }
       ]
     },
