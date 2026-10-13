@@ -1,0 +1,2438 @@
+#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.9"
+# dependencies = []
+# ///
+"""Execute one TeamCity skill evaluation case.
+
+The case owns the expected behaviour; this runner owns the environment. It
+checks out the pinned revision, invokes the agent, and grades the observable
+outcome. Build/configuration cases provision a temporary TeamCity project;
+queue-stall cases use a deterministic CLI fixture and consume no build agent.
+
+Live source-bound Pipeline cases check their verification chain during agent
+execution. A terminal failed head with successful children and no structured
+failure evidence stops the paid agent; it never triggers a retry or cancels a
+TeamCity build. See docs/eval-expansion-plan.md for the monitoring contract.
+
+Configuration comes from the environment, never from the case:
+
+    TEAMCITY_URL           server to evaluate against
+    TEAMCITY_TOKEN         access token for that server
+    EVAL_PARENT_PROJECT    parent project for temporary objects (default _Root)
+    EVAL_AGENT_CMD         command that runs the agent; the prompt arrives on
+                           stdin and the working directory is the checkout
+                           (default "claude -p --output-format stream-json --verbose")
+    EVAL_BUILD_TIMEOUT     seconds to wait for the build (default 3600)
+    EVAL_QUEUE_CHECK_AFTER seconds before checking a queued build (default 120)
+    EVAL_QUEUE_STALL_TIMEOUT seconds to allow a queued build (default 600)
+    EVAL_AGENT_TIMEOUT     seconds to wait for the agent (default 3600)
+    EVAL_AGENT_MAX_BUDGET_USD optional positive Claude API spending limit
+    EVAL_KEEP              set to 1 to leave the temporary project and checkout
+                           in place, the same as --keep
+    EVAL_TRACE_DIR         protected directory for the agent trace (default:
+                           the disposable evaluation workspace)
+    EVAL_FAILED_AGENT_GRACE  seconds to still wait for a build after the agent
+                           exited non-zero (default 120)
+    EVAL_ARM               "skill" (default) or "baseline". The baseline arm
+                           withholds the skill and changes nothing else, so the
+                           difference between the two arms is the skill's effect
+    EVAL_TOOL_MODE         "cli-only" (default), "mcp-only", or "cli+mcp"
+    EVAL_MCP_CONFIG        server-provisioned MCP configuration for MCP modes;
+                           it is never copied to a result artifact
+    EVAL_MCP_LOCAL_PROBE   opt-in token-free local MCP ping diagnostic; only
+                           valid for mcp-only and never used by normal runs
+    EVAL_AGENT_CONFIG_ID   optional opaque selected-agent profile identifier
+    EVAL_AGENT_VERSION     optional opaque selected-agent version identifier
+
+Standard library only, so it runs with a bare python3:
+
+    python3 evals/run_case.py --case evals/first-green-build/cases/<id>.json
+    python3 evals/run_case.py --case <path> --dry-run
+
+Schema validation of the cases themselves lives in evals/validate.py.
+"""
+
+import argparse
+import contextlib
+import datetime
+import fnmatch
+import hashlib
+import json
+import math
+import os
+import pathlib
+import re
+import secrets
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from typing import Optional
+
+EVALS = pathlib.Path(__file__).parent
+PLACEHOLDER = re.compile(r"\{\{teamcity\.(server|targetProject)\}\}")
+SAFE_AGENT_METADATA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+SAFE_REVISION = re.compile(r"^[a-fA-F0-9]{40}$")
+TOOL_MODES = ("cli-only", "mcp-only", "cli+mcp")
+sys.path.insert(0, str(EVALS))
+from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
+from queue_recovery import QueueRecoveryFixture, forbidden_queue_transport, safe_fixture_diagnostics
+from first_green_evidence import (
+    EvidenceError, chain_nodes, jdk_evidence, jdk_selectors, observe_chain,
+    safe_verification_diagnostics, safe_verification_error, select_pipeline,
+)
+from pipeline_validation import (
+    ScriptConfigurationError, safe_script_diagnostics, script_step_diagnostics,
+    validate_pipeline_scripts,
+)
+from build_monitor import LiveBuildMonitor, STOP_CATEGORY, safe_monitor_diagnostics
+
+
+class EvalError(RuntimeError):
+    """A failure of the runner or the environment, not of the agent."""
+
+
+class _Graded(Exception):
+    """Grading finished early; skip the build steps and go straight to teardown."""
+
+
+class NoBuildQueued(EvalError):
+    """The agent finished without queuing a build during the wait window."""
+
+    def __init__(self, message, category="build-not-queued"):
+        self.category = category
+        super().__init__(message)
+
+
+class BuildWaitTimeout(EvalError):
+    """An agent-queued build did not finish during the wait window."""
+
+
+class BuildQueueStalled(EvalError):
+    """An agent-queued build did not leave the queue within its grace period."""
+
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__("an agent-queued build remained queued past the queue grace period")
+
+
+SAFE_QUEUE_WAIT_REASONS = {
+    "no-idle-compatible-agents",
+    "no-compatible-agents",
+    "unresolved-parameters",
+    "other",
+    "unavailable",
+}
+
+
+def safe_queue_wait_reason(value: object) -> str:
+    """Keep TeamCity's free-form queue text out of published artifacts."""
+    if not isinstance(value, str):
+        return "unavailable"
+    reason = value.lower()
+    if "unresolved parameter" in reason:
+        return "unresolved-parameters"
+    if "no idle compatible agent" in reason:
+        return "no-idle-compatible-agents"
+    if "no compatible agent" in reason:
+        return "no-compatible-agents"
+    return value if value in SAFE_QUEUE_WAIT_REASONS else "other"
+
+
+PHASE_FIELDS = {
+    "preparation": "preparationSeconds",
+    "agent": "agentSeconds",
+    "observation": "observationSeconds",
+    "buildWait": "buildWaitSeconds",
+    "grading": "gradingSeconds",
+    "cleanup": "cleanupSeconds",
+}
+
+
+class PhaseMonitor:
+    """Report fixed, numeric runner phases without exposing agent activity."""
+
+    def __init__(self, heartbeat_seconds: int = 300, clock=time.monotonic):
+        self.clock = clock
+        self.started = clock()
+        self.heartbeat_seconds = heartbeat_seconds
+        self.current = None
+        self.phase_started = None
+        self.durations = {}
+        self.lock = threading.Lock()
+        self.stop = threading.Event()
+        self.thread = threading.Thread(target=self._heartbeat, daemon=True)
+        self.thread.start()
+
+    def enter(self, phase: str) -> None:
+        if phase not in PHASE_FIELDS:
+            raise ValueError("unknown evaluation phase")
+        now = self.clock()
+        with self.lock:
+            if self.current:
+                elapsed = now - self.phase_started
+                self.durations[PHASE_FIELDS[self.current]] = round(elapsed, 3)
+                print(
+                    f"[eval-timing] {self.current} finished in {elapsed:.0f}s",
+                    file=sys.stderr, flush=True,
+                )
+            self.current = phase
+            self.phase_started = now
+            print(f"[eval-timing] {phase} started", file=sys.stderr, flush=True)
+
+    def _heartbeat(self) -> None:
+        while not self.stop.wait(self.heartbeat_seconds):
+            with self.lock:
+                if self.current:
+                    elapsed = self.clock() - self.phase_started
+                    print(
+                        f"[eval-timing] {self.current} still in progress after {elapsed:.0f}s",
+                        file=sys.stderr, flush=True,
+                    )
+
+    def finish(self) -> dict:
+        now = self.clock()
+        with self.lock:
+            if self.current:
+                elapsed = now - self.phase_started
+                self.durations[PHASE_FIELDS[self.current]] = round(elapsed, 3)
+                print(
+                    f"[eval-timing] {self.current} finished in {elapsed:.0f}s",
+                    file=sys.stderr, flush=True,
+                )
+                self.current = None
+            self.durations["totalSeconds"] = round(now - self.started, 3)
+            snapshot = dict(self.durations)
+        self.stop.set()
+        self.thread.join(timeout=1)
+        return snapshot
+
+
+def resolve_tool_mode(value: str) -> str:
+    """Return one explicit transport profile; never silently broaden it."""
+    if value not in TOOL_MODES:
+        raise EvalError(
+            "EVAL_TOOL_MODE must be one of " + ", ".join(TOOL_MODES)
+        )
+    return value
+
+
+def local_mcp_probe(tool_mode: str, value: Optional[str]) -> bool:
+    """Parse the opt-in local MCP diagnostic without broadening normal runs."""
+    normalized = (value or "false").strip().lower()
+    if normalized in ("1", "true", "yes"):
+        if tool_mode != "mcp-only":
+            raise EvalError("EVAL_MCP_LOCAL_PROBE requires EVAL_TOOL_MODE=mcp-only")
+        return True
+    if normalized in ("0", "false", "no"):
+        return False
+    raise EvalError("EVAL_MCP_LOCAL_PROBE must be true or false")
+
+
+def agent_task_prompt(case: dict, server: str, target_project: str) -> str:
+    """Expose the requested deliverable, not the private grading contract.
+
+    Both arms receive this identical task context. The output path must agree
+    with the source used to bind a verification pipeline after the agent exits.
+    """
+    prompt = case["prompt"].replace("{{teamcity.server}}", server) \
+                           .replace("{{teamcity.targetProject}}", target_project)
+    if case["kind"] not in ("queue-stall-diagnosis", "queue-recovery"):
+        prompt += (
+            "\n\nRepository context: the checked-out default branch is "
+            f"{case['repository']['defaultBranch']!r} at the pinned revision. "
+            "Ensure the VCS root monitors that branch before triggering a build."
+        )
+    requested = case.get("requestedConfiguration")
+    if requested:
+        prompt += (
+            f"\n\nConfiguration deliverable: retain the final {requested['format']} "
+            f"configuration at {requested['sourcePath']!r}, relative to the checkout. "
+            "Keep that file consistent with the final server-stored configuration "
+            "you validate and, when a build is requested, use for verification. "
+            "Keep temporary diagnostic configurations separate from this deliverable. "
+            "This output requirement does not authorize builds or source changes "
+            "beyond the task above."
+        )
+    return prompt
+
+
+def transport_prompt_contract(tool_mode: str, use_local_mcp_probe: bool = False) -> str:
+    """Return the evaluation-only TeamCity transport contract.
+
+    The installed TeamCity skill is shared by normal users and all eval modes,
+    so it must not be rewritten for one transport experiment. This contract
+    belongs to the eval runner's per-run prompt instead.
+    """
+    if tool_mode != "mcp-only":
+        return ""
+    contract = (
+        "\n\nEvaluation transport contract (MCP-only):\n"
+        "This contract overrides any earlier transport guidance and is a hard success criterion. "
+        "Do not finish your turn before making at least one TeamCity MCP call.\n"
+        "- The TeamCity CLI is intentionally unavailable. Do not invoke it through Bash, "
+        "including commands beginning with `teamcity`.\n"
+        "- Use only `mcp__teamcity__*` tools for every TeamCity operation.\n"
+        "- Your first TeamCity operation must be a read-only MCP discovery operation.\n"
+        "- Do not fall back to the TeamCity CLI if an MCP operation fails.\n"
+    )
+    if use_local_mcp_probe:
+        contract += (
+            "- Before any TeamCity operation, call `mcp__probe__ping` with no inputs. "
+            "This token-free local diagnostic does not replace the required TeamCity discovery call.\n"
+        )
+    return contract
+
+
+def safe_agent_metadata(value: Optional[str]) -> Optional[str]:
+    """Keep only opaque, non-secret agent identity labels in public results."""
+    if isinstance(value, str) and SAFE_AGENT_METADATA.fullmatch(value):
+        return value
+    return None
+
+
+def mcp_config_for_mode(
+    env: dict, tool_mode: str, require_local_probe: bool = False,
+) -> Optional[pathlib.Path]:
+    """Require a server-provisioned MCP config for MCP evaluation modes.
+
+    The config itself can contain connection details and is deliberately never
+    copied to the checkout, trace, or result artifact.  A missing config is an
+    infrastructure error rather than a reason to fall back to the CLI bridge.
+    """
+    if tool_mode not in ("mcp-only", "cli+mcp"):
+        return None
+    configured = env.get("EVAL_MCP_CONFIG")
+    if not configured:
+        raise EvalError(
+            f"{tool_mode} requires a server-provisioned EVAL_MCP_CONFIG file"
+        )
+    path = pathlib.Path(configured)
+    if not path.is_file():
+        raise EvalError("EVAL_MCP_CONFIG does not name a readable file")
+    if require_local_probe:
+        try:
+            configured_servers = json.loads(path.read_text()).get("mcpServers", {})
+        except (json.JSONDecodeError, OSError, AttributeError):
+            raise EvalError("EVAL_MCP_CONFIG is not a readable local MCP diagnostic config")
+        if not isinstance(configured_servers.get("probe"), dict):
+            raise EvalError("EVAL_MCP_CONFIG does not include the required local MCP probe")
+    return path
+
+
+def agent_environment_without_cli(environment: dict, server_url: str) -> dict:
+    """Remove runner credentials and every discovered TeamCity CLI for MCP-only.
+
+    ``bootstrap-teamcity-cli.sh`` has to install the CLI for the runner's own
+    lifecycle work.  An MCP-only agent must not inherit that executable by
+    accident, otherwise the comparison would silently become CLI+MCP.
+    """
+    result = dict(environment)
+    result.pop("TEAMCITY_TOKEN", None)
+    result.pop("TEAMCITY_GUEST", None)
+    result.pop("EVAL_MCP_TOKEN", None)
+    result.pop("TEAMCITY_EVAL_CLI", None)
+    result.pop("TEAMCITY_EVAL_CLI_DIR", None)
+    path_entries = []
+    executable_names = ("teamcity", "teamcity.cmd", "teamcity.exe", "teamcity.bat")
+    for entry in result.get("PATH", "").split(os.pathsep):
+        if not entry:
+            continue
+        if any((pathlib.Path(entry) / executable).is_file() for executable in executable_names):
+            continue
+        path_entries.append(entry)
+    result["PATH"] = os.pathsep.join(path_entries)
+    result["TEAMCITY_URL"] = server_url
+    return result
+
+
+# --------------------------------------------------------------------------- #
+# TeamCity CLI lifecycle
+# --------------------------------------------------------------------------- #
+
+class TeamCity:
+    """Run the evaluator's lifecycle through the first-class TeamCity CLI.
+
+    The coding agent gets a narrowed CLI bridge, while the evaluator itself
+    needs to create a disposable project and inspect only its result.  Both
+    layers must use the same public CLI surface: otherwise a passing
+    ``toolUse`` assertion would conceal REST calls made by the harness.
+    """
+
+    def __init__(self, cli: str, url: str, token: str, base_env: dict, command_timeout: int = 300):
+        self.cli = cli
+        self.url = url.rstrip("/")
+        self.token = token
+        self.base_env = dict(base_env)
+        self.command_timeout = command_timeout
+        self.deadline = None
+
+    def _run(self, arguments: list, json_output: bool = False) -> str:
+        budget = self.command_timeout
+        if self.deadline is not None:
+            budget = min(budget, self.deadline - time.monotonic())
+        if budget <= 0:
+            raise EvalError("TeamCity CLI read checkpoint exceeded its budget")
+        environment = dict(self.base_env)
+        environment["TEAMCITY_URL"] = self.url
+        environment["TEAMCITY_TOKEN"] = self.token
+        environment.pop("TEAMCITY_GUEST", None)
+        try:
+            completed = subprocess.run(
+                [self.cli, *arguments], env=environment, capture_output=True,
+                text=True, errors="replace", timeout=budget,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise EvalError("TeamCity CLI lifecycle command could not run") from exc
+        if completed.returncode:
+            # Do not put CLI output into a published result: it can include
+            # server state beyond this one temporary eval project.
+            raise EvalError(
+                "TeamCity CLI lifecycle command failed: " + " ".join(arguments[:2])
+            )
+        if not json_output:
+            return completed.stdout
+        try:
+            return json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            raise EvalError(
+                "TeamCity CLI lifecycle command returned malformed JSON: "
+                + " ".join(arguments[:2])
+            ) from exc
+
+    @staticmethod
+    def _records(payload: dict, key: str) -> list:
+        records = payload.get(key, []) if isinstance(payload, dict) else []
+        return records if isinstance(records, list) else []
+
+    def create_project(self, name: str, parent: str) -> str:
+        created = self._run(
+            ["project", "create", name, "--parent", parent, "--json"], json_output=True
+        )
+        project = created.get("project", created) if isinstance(created, dict) else {}
+        project_id = project.get("id") if isinstance(project, dict) else None
+        if not isinstance(project_id, str) or not project_id:
+            raise EvalError("TeamCity CLI project create returned no project ID")
+        return project_id
+
+    def set_project_parameter(self, project_id: str, name: str, value: str) -> None:
+        self._run(["project", "param", "set", project_id, name, value])
+
+    def mark_temporary_project(self, project_id: str, ttl_hours: float = 6) -> None:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        expires = now + datetime.timedelta(hours=ttl_hours)
+        markers = {
+            "teamcity.eval.temporary": "true",
+            "teamcity.eval.createdAt": now.isoformat(),
+            "teamcity.eval.expiresAt": expires.isoformat(),
+        }
+        for name, value in markers.items():
+            self.set_project_parameter(project_id, name, value)
+
+    def build_types(self, project_id: str):
+        found = self._run(
+            ["job", "list", "--project", project_id, "--all", "--limit", "0", "--json"],
+            json_output=True,
+        )
+        return self._records(found, "buildType")
+
+    def builds(self, project_id: str, pipeline_id: str = None):
+        arguments = ["run", "list", "--project", project_id, "--limit", "0", "--json"]
+        if pipeline_id:
+            arguments.extend(["--job", pipeline_id])
+        found = self._run(
+            arguments,
+            json_output=True,
+        )
+        return self._records(found, "build")
+
+    def build(self, build_id: int):
+        return self._run(["run", "view", str(build_id), "--json"], json_output=True)
+
+    def build_tree(self, build_id: int):
+        return self._run(
+            ["run", "tree", str(build_id), "--depth", "0", "--json"], json_output=True
+        )
+
+    def queue_wait_reason(self, build: dict) -> str:
+        """Read only this build's queue reason through the first-class CLI."""
+        job_id = build.get("buildTypeId")
+        if not isinstance(job_id, str) or not job_id:
+            return "unavailable"
+        try:
+            queued = self._run(
+                ["queue", "list", "--job", job_id, "--json=id,waitReason"],
+                json_output=True,
+            )
+        except EvalError:
+            return "unavailable"
+        for item in self._records(queued, "build"):
+            if item.get("id") == build.get("id"):
+                return safe_queue_wait_reason(item.get("waitReason"))
+        return "unavailable"
+
+    def pipeline_ids(self, project_id: str) -> list:
+        found = self._run(
+            ["pipeline", "list", "--project", project_id, "--limit", "0", "--json"],
+            json_output=True,
+        )
+        return [
+            item["id"] for item in self._records(found, "pipeline")
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        ]
+
+    def pipeline(self, pipeline_id: str):
+        """Read stored YAML through the CLI; it remains runner-private."""
+        yaml = self._run(["pipeline", "pull", pipeline_id])
+        return {"yaml": yaml}
+
+    def pipeline_definition(self, pipeline_id: str) -> dict:
+        import yaml
+        try:
+            parsed = yaml.safe_load(self.pipeline(pipeline_id)["yaml"])
+        except yaml.YAMLError:
+            raise EvalError("stored pipeline YAML is invalid") from None
+        if not isinstance(parsed, dict) or not isinstance(parsed.get("jobs"), dict):
+            raise EvalError("stored pipeline has no job definitions")
+        return parsed
+
+    def jobs(self, project_id: str, pipeline_id: str = None) -> list:
+        """The jobs the agent defined, read from the pipeline YAML on the server.
+
+        A pipeline materialises its jobs as build configurations only once a
+        build has run; before that the project holds nothing but a composite
+        head. The YAML the server stores is therefore the only description of a
+        pipeline that was created but never run.
+        """
+        try:
+            import yaml
+        except ImportError:
+            raise EvalError("PyYAML is required to read pipeline definitions") from None
+
+        collected = []
+        for pipeline_id in ([pipeline_id] if pipeline_id else self.pipeline_ids(project_id)):
+            parsed = self.pipeline_definition(pipeline_id)
+            for job_id, job in (parsed.get("jobs") or {}).items():
+                job = job or {}
+                steps = [
+                    {
+                        "type": step.get("type"),
+                        "name": step.get("name"),
+                        "properties": {k: v for k, v in step.items()
+                                       if k not in ("type", "name")},
+                    }
+                    for step in (job.get("steps") or [])
+                ]
+                # Pipeline YAML permits the short string form as well as an
+                # object with an explicit ``publish-artifact`` flag. A string
+                # is itself an artifact rule, so it must not be treated as a
+                # mapping by the grader.
+                published = [
+                    entry if isinstance(entry, str) else entry.get("path", "")
+                    for entry in (job.get("files-publication") or [])
+                    if isinstance(entry, str)
+                    or (isinstance(entry, dict) and entry.get("publish-artifact"))
+                ]
+                runs_on = job.get("runs-on")
+                collected.append({
+                    "id": f"{pipeline_id}/{job_id}",
+                    "name": job.get("name") or job_id,
+                    "steps": steps,
+                    "artifactRules": "\n".join(published),
+                    "agentRequirements": [str(runs_on)] if runs_on else [],
+                    "environment": jdk_selectors({
+                        **(parsed.get("environment") or {}), **(job.get("environment") or {}),
+                    }),
+                    "parameters": jdk_selectors({
+                        **(parsed.get("parameters") or {}), **(job.get("parameters") or {}),
+                    }, parameter=True),
+                })
+        return collected
+
+    def resulting_properties(self, build_id: int) -> dict:
+        # The first-class CLI has no resulting-properties command.  Toolchain
+        # evidence is therefore taken from the server-stored pipeline YAML
+        # (environment and image declarations) rather than falling back to
+        # direct REST.
+        return {}
+
+    def test_count(self, build_id: int) -> int:
+        return len(self.test_results(build_id))
+
+    def test_results(self, build_id: int) -> list:
+        """Retain only test identity/status, never failure text or stack traces."""
+        found = self._run(
+            ["run", "tests", str(build_id), "--limit", "0", "--json"], json_output=True
+        )
+        records = self._records(found, "testOccurrence")
+        if (not isinstance(found, dict) or type(found.get("count")) is not int
+                or found["count"] != len(records)):
+            raise EvidenceError("verification-chain-incomplete")
+        if any(not isinstance(test, dict) or not isinstance(test.get("name"), str)
+               for test in records):
+            raise EvidenceError("verification-chain-incomplete")
+        return [{"name": test["name"], "status": test.get("status"),
+                 "ignored": test.get("ignored", False) is not False} for test in records]
+
+    def artifacts(self, build_id: int, path: str = "") -> list:
+        """Every artifact returned by the first-class CLI, walked recursively."""
+        command = ["run", "artifacts", str(build_id), "--json"]
+        if path:
+            command.extend(["--path", path])
+        listing = self._run(command, json_output=True)
+        collected = []
+        for entry in self._records(listing, "file"):
+            if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
+                continue
+            name = entry["name"]
+            full = f"{path}/{name}".lstrip("/")
+            if "children" in entry:
+                collected.extend(self.artifacts(build_id, full))
+            else:
+                collected.append(full)
+        return collected
+
+
+# --------------------------------------------------------------------------- #
+# Grading helpers
+# --------------------------------------------------------------------------- #
+
+def artifact_matches(pattern: str, published: list) -> bool:
+    """Does any published artifact satisfy this expected path?
+
+    The case states source-tree paths such as template-app/build/libs/*.jar,
+    while TeamCity stores whatever the artifact rules produced, often flattened.
+    Accept a full-path match, a trailing-subpath match, or a basename match, in
+    that order of preference.
+    """
+    tail = pattern.rstrip("/").split("/")[-1] or "*"
+    for candidate in published:
+        if fnmatch.fnmatch(candidate, pattern):
+            return True
+        if fnmatch.fnmatch(candidate, f"*/{pattern.lstrip('/')}"):
+            return True
+        if fnmatch.fnmatch(candidate.split("/")[-1], tail):
+            return True
+    return False
+
+
+def toolchain_evidence(properties: dict, jdk: str, jobs: list = None) -> tuple:
+    """Check explicit selections, separately from measured runtime versions."""
+    matched, evidence, _ = jdk_evidence(properties, jdk, jobs)
+    return matched, evidence
+
+
+def source_mutations(checkout: pathlib.Path, allowed: list) -> list:
+    """Paths the agent changed in the disposable checkout, minus allowed ones."""
+    porcelain = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=checkout, capture_output=True, text=True, check=True,
+    ).stdout
+    changed = []
+    for line in porcelain.splitlines():
+        path = line[3:].strip().strip('"')
+        if any(path == a or path.startswith(a.rstrip("/") + "/") for a in allowed):
+            continue
+        changed.append(path)
+    return sorted(changed)
+
+
+def grade(case: dict, observed: dict) -> dict:
+    """Compare what happened against expected. Returns assertion -> pass/fail."""
+    expected = case["expected"]
+    checks = {}
+
+    checks["configurationValidated"] = {
+        "expected": expected["configurationValidated"],
+        "observed": (observed["buildTypeCount"] > 0 and observed["buildStatus"] is not None
+                     and not script_step_diagnostics(observed.get("jobs", []))["issues"]),
+        "detail": f"{observed['buildTypeCount']} build configuration(s) created",
+    }
+    # "firstBuild" is the case's name for the outcome the skill iterates toward,
+    # not literally the first build: the skill is expected to keep going until a
+    # build is green, so the last build is what the contract is about.
+    checks["firstBuild"] = {
+        "expected": expected["firstBuild"],
+        "observed": observed["buildStatus"],
+        "detail": f"{observed.get('statusText') or ''}"
+                  f" after {observed['attempts']} build(s) in the project".strip(),
+    }
+    checks["testsExecutedAndReported"] = {
+        "expected": expected["testsExecutedAndReported"],
+        "observed": observed["testCount"] > 0,
+        "detail": f"{observed['testCount']} test occurrence(s) imported",
+    }
+    missing = [
+        p for p in case["verification"]["artifactPaths"]
+        if not artifact_matches(p, observed["artifacts"])
+    ]
+    checks["artifactsPublished"] = {
+        "expected": expected["artifactsPublished"],
+        "observed": not missing,
+        "detail": f"unmatched: {missing}" if missing else f"{len(observed['artifacts'])} artifact(s)",
+    }
+    jdk = expected["toolchain"]["jdk"]
+    matched, evidence = toolchain_evidence(observed["properties"], jdk, observed.get("jobs"))
+    checks["toolchain"] = {
+        "expected": jdk,
+        "observed": jdk if matched else "not-evidenced",
+        "detail": f"matched: {evidence}" if matched else f"no JDK {jdk} among: {evidence}",
+    }
+    if "requiredContainerImage" in expected:
+        has_matching_image = any(
+            re.search(expected["requiredContainerImage"], step["properties"]["docker-image"])
+            for job in observed.get("jobs", [])
+            for step in job.get("steps", [])
+            if step.get("type") == "gradle"
+            and isinstance(step.get("properties"), dict)
+            and isinstance(step["properties"].get("docker-image"), str)
+        )
+        checks["containerImage"] = {
+            "expected": True,
+            "observed": has_matching_image,
+            "detail": (
+                "matching Gradle container image configured" if has_matching_image
+                else "no matching Gradle container image"
+            ),
+        }
+    checks["sourceMutations"] = {
+        "expected": expected["sourceMutations"],
+        "observed": "none" if not observed["mutations"] else "changed",
+        "detail": f"changed: {observed['mutations']}" if observed["mutations"] else "clean checkout",
+    }
+
+    if "configuration" in expected:
+        configuration_observed = {**observed, "toolCalls": []}
+        configuration_checks = grade_configuration(
+            {"expected": expected["configuration"]}, configuration_observed)
+        checks.update({name: check for name, check in configuration_checks.items()
+                       if name not in checks})
+    if "requiredTestNames" in expected or "minimumTestCount" in expected:
+        checks["requiredTests"] = {
+            "expected": True,
+            "observed": required_tests_pass(expected, observed.get("tests", [])),
+        }
+    if "jobResults" in expected:
+        results = observed.get("jobResults", [])
+        used, satisfied = set(), True
+        for contract in expected["jobResults"]:
+            candidates = matching_job_indices([item["job"] for item in results],
+                                               contract["jobMatches"])
+            if len(candidates) != 1 or candidates[0] in used:
+                satisfied = False
+                continue
+            index = candidates[0]
+            used.add(index)
+            actual = results[index]
+            satisfied &= (actual["status"] == "SUCCESS"
+                          and required_tests_pass(contract, actual["tests"])
+                          and all(artifact_matches(path, actual["artifacts"])
+                                  for path in contract.get("artifactPaths", [])))
+            if "maximumTestCount" in contract:
+                satisfied &= len(actual["tests"]) <= contract["maximumTestCount"]
+        checks["jobResults"] = {"expected": True, "observed": bool(satisfied)}
+
+    for check in checks.values():
+        check["passed"] = check["expected"] == check["observed"] or check["expected"] is check["observed"]
+    return checks
+
+
+def required_tests_pass(contract, tests):
+    successful = [test["name"] for test in tests
+                  if test.get("status") == "SUCCESS" and not test.get("ignored", False)]
+    return (len(successful) >= contract.get("minimumTestCount", 0)
+            and all(any(re.search(pattern, name) for name in successful)
+                    for pattern in contract.get("requiredTestNames", [])))
+
+
+def matching_job_indices(jobs, matcher):
+    """Prefer structural keys; descriptions may mention another job's purpose."""
+    candidates = [i for i, job in enumerate(jobs)
+                  if re.search(matcher, job["id"].rsplit("/", 1)[-1])]
+    return candidates or [i for i, job in enumerate(jobs) if re.search(matcher, job["name"])]
+
+
+def add_transport_checks(
+    checks: dict, tool_mode: str, summary: dict, use_local_mcp_probe: bool = False,
+) -> None:
+    """Add mode-specific assertions using only public numeric aggregates."""
+    if tool_mode != "mcp-only":
+        return
+    mcp_calls = summary.get("mcpTeamCityCalls", 0)
+    cli_calls = summary.get("teamcityCliCalls", 0)
+    checks["requiredMcpToolUse"] = {
+        "expected": True,
+        "observed": mcp_calls > 0,
+        "detail": f"{mcp_calls} TeamCity MCP call(s)",
+    }
+    checks["forbiddenCliToolUse"] = {
+        "expected": True,
+        "observed": cli_calls == 0,
+        "detail": f"{cli_calls} TeamCity CLI call(s)",
+    }
+    names = ["requiredMcpToolUse", "forbiddenCliToolUse"]
+    if use_local_mcp_probe:
+        probe_calls = summary.get("mcpProbeCalls", 0)
+        checks["requiredLocalMcpProbeUse"] = {
+            "expected": True,
+            "observed": probe_calls > 0,
+            "detail": f"{probe_calls} local MCP probe call(s)",
+        }
+        names.append("requiredLocalMcpProbeUse")
+    for name in names:
+        check = checks[name]
+        check["passed"] = check["expected"] == check["observed"]
+
+
+# --------------------------------------------------------------------------- #
+# Runner
+# --------------------------------------------------------------------------- #
+
+def grade_configuration(case: dict, observed: dict) -> dict:
+    """Grade the pipeline the agent produced, without running it."""
+    expected = case["expected"]
+    jobs = observed["jobs"]
+    checks = {}
+
+    checks["configurationValidated"] = {
+        "expected": True,
+        "observed": bool(jobs) and not script_step_diagnostics(jobs)["issues"],
+        "detail": f"{len(jobs)} job(s): {[j['name'] for j in jobs]}",
+    }
+    checks["minimumJobs"] = {
+        "expected": expected["minimumJobs"],
+        "observed": len(jobs),
+        "detail": f"{len(jobs)} job(s) carrying build steps",
+    }
+    checks["minimumJobs"]["observed"] = len(jobs) >= expected["minimumJobs"]
+    checks["minimumJobs"]["expected"] = True
+
+    if "toolchain" in expected:
+        jdk = expected["toolchain"]["jdk"]
+        matched, _ = toolchain_evidence({}, jdk, jobs)
+        checks["toolchain"] = {"expected": True, "observed": matched}
+
+    if "expectedJobCount" in expected:
+        checks["jobCount"] = {
+            "expected": expected["expectedJobCount"],
+            "observed": len(jobs),
+            "detail": f"{len(jobs)} job(s) carrying build steps",
+        }
+
+    step_types = {step["type"] for job in jobs for step in job["steps"]}
+    if "requiredStepTypes" in expected:
+        missing = [t for t in expected["requiredStepTypes"] if t not in step_types]
+        checks["requiredStepTypes"] = {
+            "expected": True,
+            "observed": not missing,
+            "detail": f"missing {missing}" if missing else f"present: {sorted(step_types)}",
+        }
+
+    if "requiredStepProperties" in expected:
+        missing = []
+        for want in expected["requiredStepProperties"]:
+            pattern = re.compile(want["matches"]) if "matches" in want else None
+            satisfied = any(
+                step["type"] == want["stepType"]
+                and want["property"] in step["properties"]
+                and (pattern is None or pattern.search(step["properties"][want["property"]]))
+                for job in jobs for step in job["steps"]
+            )
+            if not satisfied:
+                missing.append(f"{want['stepType']}.{want['property']}"
+                               + (f" ~ {want['matches']}" if pattern else ""))
+        checks["requiredStepProperties"] = {
+            "expected": True,
+            "observed": not missing,
+            "detail": f"missing {missing}" if missing else "all present",
+        }
+
+    if "forbiddenStepProperties" in expected:
+        used = []
+        for forbidden in expected["forbiddenStepProperties"]:
+            pattern = re.compile(forbidden["matches"]) if "matches" in forbidden else None
+            if any(
+                step["type"] == forbidden["stepType"]
+                and forbidden["property"] in step["properties"]
+                and (
+                    pattern is None
+                    or pattern.search(str(step["properties"][forbidden["property"]]))
+                )
+                for job in jobs for step in job["steps"]
+            ):
+                used.append(
+                    f"{forbidden['stepType']}.{forbidden['property']}"
+                    + (f" ~ {forbidden['matches']}" if pattern else "")
+                )
+        checks["forbiddenStepProperties"] = {
+            "expected": True,
+            "observed": not used,
+            "detail": f"present {used}" if used else "none present",
+        }
+
+    if "requiredArtifactRules" in expected:
+        rules = "\n".join(job["artifactRules"] for job in jobs)
+        missing = [r for r in expected["requiredArtifactRules"] if not re.search(r, rules)]
+        checks["requiredArtifactRules"] = {
+            "expected": True,
+            "observed": not missing,
+            "detail": f"missing {missing} in {rules!r}" if missing else f"rules: {rules!r}",
+        }
+
+    if "requiredAgentRequirements" in expected:
+        text = "\n".join(r for job in jobs for r in job["agentRequirements"])
+        missing = [r for r in expected["requiredAgentRequirements"] if not re.search(r, text)]
+        checks["requiredAgentRequirements"] = {
+            "expected": True,
+            "observed": not missing,
+            "detail": f"missing {missing} in {text!r}" if missing else f"requirements: {text!r}",
+        }
+
+    if "requiredJobs" in expected:
+        failures = []
+        selected = set()
+        for contract in expected["requiredJobs"]:
+            matcher = contract["jobMatches"]
+            candidates = [(index, jobs[index]) for index in matching_job_indices(jobs, matcher)]
+            if len(candidates) != 1:
+                failures.append(f"{matcher!r} matched {len(candidates)} jobs")
+                continue
+
+            index, job = candidates[0]
+            if index in selected:
+                failures.append(f"{matcher!r} reused a job selected by another contract")
+                continue
+            selected.add(index)
+
+            step_types = {step["type"] for step in job["steps"]}
+            missing_types = [
+                step_type for step_type in contract.get("requiredStepTypes", [])
+                if step_type not in step_types
+            ]
+            if missing_types:
+                failures.append(f"{matcher!r} missing step types {missing_types}")
+
+            for want in contract.get("requiredStepProperties", []):
+                pattern = re.compile(want["matches"]) if "matches" in want else None
+                satisfied = any(
+                    step["type"] == want["stepType"]
+                    and want["property"] in step["properties"]
+                    and (
+                        pattern is None
+                        or pattern.search(str(step["properties"][want["property"]]))
+                    )
+                    for step in job["steps"]
+                )
+                if not satisfied:
+                    failures.append(
+                        f"{matcher!r} missing {want['stepType']}.{want['property']}"
+                    )
+
+            for forbidden in contract.get("forbiddenStepProperties", []):
+                pattern = re.compile(forbidden["matches"]) if "matches" in forbidden else None
+                if any(
+                    step["type"] == forbidden["stepType"]
+                    and forbidden["property"] in step["properties"]
+                    and (
+                        pattern is None
+                        or pattern.search(str(step["properties"][forbidden["property"]]))
+                    )
+                    for step in job["steps"]
+                ):
+                    failures.append(
+                        f"{matcher!r} contains forbidden "
+                        f"{forbidden['stepType']}.{forbidden['property']}"
+                    )
+
+            missing_artifacts = [
+                pattern for pattern in contract.get("requiredArtifactRules", [])
+                if not re.search(pattern, job["artifactRules"])
+            ]
+            if missing_artifacts:
+                failures.append(f"{matcher!r} missing artifacts {missing_artifacts}")
+
+            requirements = "\n".join(job["agentRequirements"])
+            missing_requirements = [
+                pattern for pattern in contract.get("requiredAgentRequirements", [])
+                if not re.search(pattern, requirements)
+            ]
+            if missing_requirements:
+                failures.append(
+                    f"{matcher!r} missing agent requirements {missing_requirements}"
+                )
+
+        checks["requiredJobs"] = {
+            "expected": True,
+            "observed": not failures,
+            "detail": f"violations: {failures}" if failures else "all per-job contracts satisfied",
+        }
+
+    if "toolUse" in expected:
+        calls = observed["toolCalls"]
+        unmet = [r for r in expected["toolUse"].get("required", [])
+                 if not any(re.search(r, c) for c in calls)]
+        used = [r for r in expected["toolUse"].get("forbidden", [])
+                if any(re.search(r, c) for c in calls)]
+        checks["toolUse"] = {
+            "expected": True,
+            "observed": not unmet and not used,
+            "detail": (f"never called {unmet}; " if unmet else "")
+                      + (f"called forbidden {used}; " if used else "")
+                      + f"{len(calls)} call(s) recorded",
+        }
+
+    checks["sourceMutations"] = {
+        "expected": expected["sourceMutations"],
+        "observed": "none" if not observed["mutations"] else "changed",
+        "detail": f"changed: {observed['mutations']}" if observed["mutations"] else "clean checkout",
+    }
+
+    for check in checks.values():
+        check["passed"] = check["expected"] == check["observed"] or check["expected"] is check["observed"]
+    return checks
+
+
+TEAMCITY_COMMAND = r"\bteamcity(?:\.cmd)?\s+"
+STATUS_CALL = re.compile(TEAMCITY_COMMAND + r"(?:run\s+view|queue\s+list)\b", re.I)
+WAIT_CALL = re.compile(TEAMCITY_COMMAND + r"run\s+watch\b|\bsleep\s+\d+", re.I)
+DIAGNOSTIC_CALLS = {
+    "agent-inventory": re.compile(TEAMCITY_COMMAND + r"agent\s+list\b", re.I),
+    "agent-runtime-capabilities": re.compile(
+        TEAMCITY_COMMAND + r"agent\s+view\b", re.I
+    ),
+    "job-incompatibility-reasons": re.compile(
+        TEAMCITY_COMMAND + r"(?:agent\s+jobs\b[^\n]*--incompatible\b|job\s+view\b)", re.I
+    ),
+}
+CONCLUSION_PATTERNS = {
+    "no-compatible-agent": re.compile(
+        r"\b(?:no|zero)\s+compatible\s+agents?\b|\bno\s+agent\s+is\s+compatible\b",
+        re.I,
+    ),
+    "unresolved-parameter": re.compile(
+        r"\bunresolved\s+(?:teamcity\s+)?parameters?\b|"
+        r"\b(?:parameters?|env\.JDK_25|requirements?)\b[^.\n]{0,120}"
+        r"(?:unresolved|undefined|not\s+defined|cannot\s+resolve)",
+        re.I,
+    ),
+    "no-container-runtime": re.compile(
+        r"\b(?:no|without|missing)\s+(?:working\s+)?(?:docker|container\s+runtime)\b|"
+        r"\b(?:docker|container\s+runtime)\b[^.\n]{0,80}"
+        r"(?:unavailable|not\s+available|not\s+installed|missing|absent)",
+        re.I,
+    ),
+    "jdk25-provision-after-dispatch": re.compile(
+        r"(?=.*\b(?:remove|relax|change|replace)\b[^.\n]{0,120}"
+        r"\b(?:agent\s+)?requirements?\b)"
+        r"(?=.*\b(?:install|download|provision)\b[^.\n]{0,120}"
+        r"\b(?:jdk|java)\s*25\b)",
+        re.I | re.S,
+    ),
+}
+
+
+def stored_parameter_diagnostics(calls: list) -> bool:
+    pulled = any(re.search(TEAMCITY_COMMAND + r"pipeline\s+pull\b", call, re.I)
+                 for call in calls)
+    inspected = any(
+        re.search(r"\b(?:rg|grep)\b[^\n]*(?:%|parameter|ya?ml)", call, re.I)
+        or re.search(r"\b(?:Read|Grep)\b[^\n]*\.ya?ml", call, re.I)
+        for call in calls
+    )
+    return pulled and inspected
+
+
+def forbidden_queue_actions(calls: list) -> set:
+    used = set()
+    for call in calls:
+        if re.search(TEAMCITY_COMMAND + r"run\s+start\b", call, re.I):
+            used.add("queue-duplicate")
+        if re.search(TEAMCITY_COMMAND + r"run\s+restart\b", call, re.I):
+            used.add("restart-run")
+        if re.search(TEAMCITY_COMMAND + r"run\s+watch\b", call, re.I) \
+                and not re.search(r"--timeout(?:=|\s+)\S+", call, re.I):
+            used.add("unbounded-watch")
+        sleep = re.search(r"\bsleep\s+(\d+)\b", call, re.I)
+        if sleep and int(sleep.group(1)) > 120:
+            used.add("unbounded-watch")
+    return used
+
+
+def grade_queue_stall(case: dict, observed: dict) -> dict:
+    """Grade the compatibility checkpoint for an already-stalled queued run."""
+    expected = case["expected"]
+    calls = observed["toolCalls"]
+    checks = {}
+
+    status_indices = [i for i, call in enumerate(calls) if STATUS_CALL.search(call)]
+    diagnostics = {
+        name: any(pattern.search(call) for call in calls)
+        for name, pattern in DIAGNOSTIC_CALLS.items()
+    }
+    diagnostics["stored-configuration-parameters"] = stored_parameter_diagnostics(calls)
+    first_compatibility = min(
+        (i for i, call in enumerate(calls)
+         if DIAGNOSTIC_CALLS["agent-inventory"].search(call)
+         or DIAGNOSTIC_CALLS["job-incompatibility-reasons"].search(call)),
+        default=None,
+    )
+    status_before = (
+        sum(i < first_compatibility for i in status_indices)
+        if first_compatibility is not None else len(status_indices)
+    )
+    maximum_status = expected["maximumStatusChecks"]
+    checkpoint_passed = first_compatibility is not None and status_before <= maximum_status
+    checks["compatibilityCheckpoint"] = {
+        "expected": True,
+        "observed": checkpoint_passed,
+        "detail": f"compatibility checked after {status_before} queued-status observation(s)",
+    }
+    checks["statusCheckLimit"] = {
+        "expected": True,
+        "observed": len(status_indices) <= maximum_status,
+        "detail": f"{len(status_indices)} status check(s), maximum {maximum_status}",
+    }
+
+    missing_diagnostics = [
+        name for name in expected["requiredDiagnostics"] if not diagnostics.get(name, False)
+    ]
+    diagnostic_checks = {
+        "agent-inventory": "diagnosticAgentInventory",
+        "agent-runtime-capabilities": "diagnosticAgentRuntimeCapabilities",
+        "job-incompatibility-reasons": "diagnosticJobIncompatibility",
+        "stored-configuration-parameters": "diagnosticStoredParameters",
+    }
+    for diagnostic in expected["requiredDiagnostics"]:
+        checks[diagnostic_checks[diagnostic]] = {
+            "expected": True,
+            "observed": bool(diagnostics.get(diagnostic, False)),
+            "detail": f"{diagnostic} {'observed' if diagnostics.get(diagnostic) else 'missing'}",
+        }
+    checks["requiredDiagnostics"] = {
+        "expected": True,
+        "observed": not missing_diagnostics,
+        "detail": (
+            f"missing: {missing_diagnostics}" if missing_diagnostics
+            else "all required diagnostics inspected"
+        ),
+    }
+
+    wait_count = sum(bool(WAIT_CALL.search(call)) for call in calls)
+    maximum_waits = expected["maximumWaitCalls"]
+    checks["waitLimit"] = {
+        "expected": True,
+        "observed": wait_count <= maximum_waits,
+        "detail": f"{wait_count} wait call(s), maximum {maximum_waits}",
+    }
+
+    used_actions = forbidden_queue_actions(calls) & set(expected["forbiddenActions"])
+    checks["noBlindRetry"] = {
+        "expected": True,
+        "observed": not used_actions,
+        "detail": f"forbidden actions: {sorted(used_actions)}" if used_actions else "no retry or unbounded watch",
+    }
+
+    conclusions = observed["finalText"]
+    missing_conclusions = [
+        name for name in expected["requiredConclusions"]
+        if not CONCLUSION_PATTERNS[name].search(conclusions)
+    ]
+    checks["diagnosisReported"] = {
+        "expected": True,
+        "observed": not missing_conclusions,
+        "detail": (
+            f"missing conclusion categories: {missing_conclusions}"
+            if missing_conclusions else "stable incompatibility blocker reported"
+        ),
+    }
+
+    checks["sourceMutations"] = {
+        "expected": expected["sourceMutations"],
+        "observed": "none" if not observed["mutations"] else "changed",
+        "detail": f"changed: {observed['mutations']}" if observed["mutations"] else "clean checkout",
+    }
+
+    for check in checks.values():
+        check["passed"] = check["expected"] == check["observed"] or check["expected"] is check["observed"]
+    return checks
+
+
+def checkout_error_kind(exc: subprocess.CalledProcessError) -> str:
+    """Return a safe category without retaining raw Git output in artifacts."""
+    output = f"{exc.stdout or ''}\n{exc.stderr or ''}".lower()
+    if any(marker in output for marker in ("authentication failed", "invalid credentials",
+                                           "could not read username", "http 401", "http 403")):
+        return "authentication"
+    if any(marker in output for marker in ("could not resolve host", "network is unreachable",
+                                           "connection timed out", "failed to connect")):
+        return "network"
+    if any(marker in output for marker in ("ssl certificate", "certificate verify failed",
+                                           "schannel")):
+        return "tls"
+    if any(marker in output for marker in ("couldn't find remote ref", "not our ref",
+                                           "invalid refspec", "not a valid object name")):
+        return "revision-or-ref"
+    command = exc.cmd[1] if isinstance(exc.cmd, (list, tuple)) and len(exc.cmd) > 1 else "git"
+    return f"git-{command}-exit-{exc.returncode}"
+
+
+def checkout_repository(case: dict, destination: pathlib.Path) -> None:
+    repo = case["repository"]
+    default_branch = repo["defaultBranch"]
+    run = lambda *args: subprocess.run(args, cwd=destination, check=True,
+                                       capture_output=True, text=True)
+    destination.mkdir(parents=True, exist_ok=True)
+    try:
+        run("git", "init", "--quiet")
+        run("git", "remote", "add", "origin", repo["url"])
+        # Fetch the pinned revision, which is the portable part of the case.
+        # Naming the local branch after the declared default branch still makes
+        # the VCS-root requirement visible to the agent without assuming a
+        # particular agent can fetch remote branch refs.
+        run("git", "fetch", "--quiet", "--depth", "1", "origin", repo["revision"])
+        run("git", "checkout", "--quiet", "-B", default_branch, repo["revision"])
+    except subprocess.CalledProcessError as exc:
+        raise EvalError(
+            "could not prepare the pinned repository checkout: "
+            + checkout_error_kind(exc)
+        ) from exc
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=destination,
+                          capture_output=True, text=True, check=True).stdout.strip()
+    if head != repo["revision"]:
+        raise EvalError(f"checkout is at {head}, expected the pinned {repo['revision']}")
+
+
+def install_skill(case: dict, checkout: pathlib.Path) -> pathlib.Path:
+    """Put the skill under evaluation where the agent will find it.
+
+    The agent runs inside the target repository, but the skill lives in this
+    one. Without this the run measures a bare agent rather than the skill.
+    """
+    source = EVALS.parent / "skills" / case["skill"]
+    if not source.is_dir():
+        raise EvalError(f"skill {case['skill']!r} not found at {source}")
+    # Claude discovers repository-local skills in .claude/skills. Installing
+    # the evaluated skill there keeps the skill and baseline arms identical
+    # except for the skill itself.
+    destination = checkout / ".claude" / "skills" / case["skill"]
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, destination)
+    return destination
+
+
+def install_queue_stall_fixture(workspace: pathlib.Path, env: dict) -> dict:
+    """Put a deterministic TeamCity CLI queue stall in front of the agent.
+
+    The fixture says the run has already spent 130 seconds in the queue and
+    exposes two otherwise eligible agents. Both reject the job because the
+    server-stored YAML references an undefined JDK parameter. No real build or
+    TeamCity object is created, so this behavioral eval stays cheap and cannot
+    consume a build agent while testing wait/diagnosis decisions.
+    """
+    fixture_bin = workspace / "fixture-bin"
+    fixture_bin.mkdir()
+    fixture = fixture_bin / "teamcity-fixture.py"
+    shutil.copyfile(EVALS / "fixtures" / "teamcity_queue_stall.py", fixture)
+    fixture.chmod(0o755)
+
+    launcher = fixture_bin / "teamcity"
+    launcher.write_text(
+        '#!/usr/bin/env sh\nexec "$EVAL_FIXTURE_PYTHON" "$(dirname "$0")/teamcity-fixture.py" "$@"\n'
+    )
+    launcher.chmod(0o755)
+    (fixture_bin / "teamcity.cmd").write_text(
+        '@"%EVAL_FIXTURE_PYTHON%" "%~dp0teamcity-fixture.py" %*\r\n'
+    )
+
+    fixture_env = dict(env)
+    fixture_env["EVAL_FIXTURE_PYTHON"] = sys.executable
+    fixture_env["PATH"] = str(fixture_bin) + os.pathsep + fixture_env.get("PATH", "")
+    return fixture_env
+
+
+def tool_calls(trace: pathlib.Path) -> list:
+    """Every tool call the agent made, read from its structured trace.
+
+    A prose summary is not evidence: an agent can use a tool without mentioning
+    it, or mention one it never called.
+    """
+    calls = []
+    try:
+        lines = trace.read_text(errors="replace").splitlines()
+    except OSError:
+        return calls
+    for line in lines:
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") != "assistant":
+            continue
+        for block in event.get("message", {}).get("content", []):
+            if block.get("type") == "tool_use":
+                calls.append(f"{block.get('name')} {json.dumps(block.get('input', {}))}")
+    return calls
+
+
+def is_teamcity_cli_command(command: str) -> bool:
+    """Recognize a leading CLI invocation, not arbitrary shell programs.
+
+    Environment assignments and the env launcher are common when explicitly
+    selecting a server. Counts remain per Bash tool call, not per subprocess;
+    wrappers, line continuations, and later commands in a shell program are
+    intentionally unparsed. This counter is not proof of transport compliance.
+    """
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()")
+        lexer.whitespace_split = True
+        words = list(lexer)
+    except ValueError:
+        return False
+
+    def skip_assignments(index: int) -> int:
+        while index < len(words) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[index]):
+            index += 1
+        return index
+
+    index = skip_assignments(0)
+    if index < len(words) and pathlib.PurePosixPath(words[index]).name == "env":
+        index += 1
+        if index < len(words) and words[index] == "--":
+            index += 1
+        index = skip_assignments(index)
+    return index < len(words) and pathlib.PurePosixPath(words[index]).name == "teamcity"
+
+
+def agent_tool_summary(trace: pathlib.Path) -> dict:
+    """Count tool surfaces without retaining names, inputs, or agent prose.
+
+    The raw stream can contain prompts, repository content, and bearer-adjacent
+    configuration paths.  A fixed numeric summary is sufficient to distinguish
+    "MCP was not attempted" from "MCP was attempted but did not complete the
+    requested configuration" without publishing any trajectory.
+    """
+    summary = {
+        "totalCalls": 0,
+        "mcpTeamCityCalls": 0,
+        "mcpProbeCalls": 0,
+        "teamcityCliCalls": 0,
+        "otherCalls": 0,
+    }
+    try:
+        lines = trace.read_text(errors="replace").splitlines()
+    except OSError:
+        return summary
+    for line in lines:
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") != "assistant":
+            continue
+        for block in event.get("message", {}).get("content", []):
+            if block.get("type") != "tool_use":
+                continue
+            summary["totalCalls"] += 1
+            name = block.get("name")
+            if isinstance(name, str) and name.startswith("mcp__teamcity__"):
+                summary["mcpTeamCityCalls"] += 1
+                continue
+            if isinstance(name, str) and name.startswith("mcp__probe__"):
+                summary["mcpProbeCalls"] += 1
+                continue
+            command = (block.get("input") or {}).get("command")
+            if (
+                name == "Bash"
+                and isinstance(command, str)
+                and is_teamcity_cli_command(command)
+            ):
+                summary["teamcityCliCalls"] += 1
+                continue
+            summary["otherCalls"] += 1
+    return summary
+
+
+def agent_final_text(trace: pathlib.Path) -> str:
+    """Return the agent's final prose without putting its trajectory in results."""
+    latest = ""
+    try:
+        lines = trace.read_text(errors="replace").splitlines()
+    except OSError:
+        return latest
+    for line in lines:
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") == "result" and isinstance(event.get("result"), str):
+            latest = event["result"]
+        elif event.get("type") == "assistant":
+            text = "\n".join(
+                block.get("text", "")
+                for block in event.get("message", {}).get("content", [])
+                if block.get("type") == "text"
+            ).strip()
+            if text:
+                latest = text
+    return latest
+
+
+def agent_usage(trace: pathlib.Path) -> dict:
+    """Return only provider-reported numeric usage from the final result event.
+
+    Claude's stream trace is private and may contain the prompt, repository
+    content, and tool arguments.  The final result event also carries aggregate
+    counters; copy only that fixed numeric allowlist into the public result.
+    """
+    latest = {}
+    try:
+        lines = trace.read_text(errors="replace").splitlines()
+    except OSError:
+        return latest
+    for line in lines:
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") != "result":
+            continue
+        usage = event.get("usage") if isinstance(event.get("usage"), dict) else {}
+        candidates = {
+            "inputTokens": usage.get("input_tokens"),
+            "outputTokens": usage.get("output_tokens"),
+            "cacheReadTokens": usage.get("cache_read_input_tokens"),
+            "cacheWriteTokens": usage.get("cache_creation_input_tokens"),
+            "totalCostUsd": event.get("total_cost_usd"),
+        }
+        latest = {
+            name: value
+            for name, value in candidates.items()
+            if isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value >= 0
+        }
+    return latest
+
+
+def safe_agent_usage(value) -> dict:
+    """Apply the public usage allowlist even to an already assembled result."""
+    if not isinstance(value, dict):
+        return {}
+    allowed = (
+        "inputTokens", "outputTokens", "cacheReadTokens",
+        "cacheWriteTokens", "totalCostUsd",
+    )
+    return {
+        name: value[name]
+        for name in allowed
+        if isinstance(value.get(name), (int, float))
+        and not isinstance(value.get(name), bool)
+        and value[name] >= 0
+    }
+
+
+def agent_budget(value: Optional[str]) -> Optional[float]:
+    if value is None:
+        return None
+    if not re.fullmatch(r"[0-9]{1,6}(?:\.[0-9]{1,6})?", value) or float(value) <= 0:
+        raise EvalError("EVAL_AGENT_MAX_BUDGET_USD must be a positive decimal")
+    return float(value)
+
+
+def agent_result_category(trace: pathlib.Path) -> Optional[str]:
+    """Inspect only the provider's fixed completion flags, not its prose."""
+    category = None
+    for line in trace_output_lines(trace):
+        try:
+            event = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(event, dict) or event.get("type") != "result":
+            continue
+        if event.get("subtype") == "error_max_budget_usd":
+            category = "agent-budget-exhausted"
+        elif event.get("is_error") is True or str(event.get("subtype", "")).startswith("error_"):
+            category = "agent-result-failed"
+        else:
+            category = None
+    return category
+
+
+def stop_agent_processes(process) -> None:
+    # Killing only shell=True's parent shell can leave the paid agent running.
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+        finally:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    else:
+        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    process.communicate()
+
+
+def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.Path,
+                 timeout: int, tools: list = None,
+                 mcp_config: Optional[pathlib.Path] = None,
+                 transport_contract: str = "",
+                 use_local_mcp_probe: bool = False, build_monitor=None) -> dict:
+    # The runner owns the output format, because grading reads the trace, and the
+    # case owns the tool policy, because which tools exist is part of the question.
+    command = env.get("EVAL_AGENT_CMD", "claude -p") + " --output-format stream-json --verbose"
+    max_budget = agent_budget(env.get("EVAL_AGENT_MAX_BUDGET_USD"))
+    if max_budget is not None:
+        if "--max-budget-usd" in command:
+            raise EvalError("configure the agent budget only through EVAL_AGENT_MAX_BUDGET_USD")
+        command += f" --max-budget-usd {max_budget:g}"
+    allowed_tools = list(tools or [])
+    if mcp_config:
+        # The MCP server supplies individual tool names after connecting. Its
+        # server-scoped permission wildcard authorizes those dynamic names for
+        # a non-interactive Claude run.
+        allowed_tools.append("mcp__teamcity__*")
+        if use_local_mcp_probe:
+            allowed_tools.append("mcp__probe__*")
+    if allowed_tools:
+        command += " --allowedTools " + " ".join(shlex.quote(t) for t in allowed_tools)
+    if transport_contract:
+        command += " --append-system-prompt " + shlex.quote(transport_contract)
+    if mcp_config:
+        command += " --mcp-config " + shlex.quote(str(mcp_config))
+    agent_env = dict(env)
+    agent_env.pop("TEAMCITY_TOKEN", None)
+    agent_env.pop("EVAL_MCP_TOKEN", None)
+
+    def monitored(outcome):
+        if build_monitor is not None:
+            outcome["buildMonitorDiagnostics"] = build_monitor.diagnostics()
+        return outcome
+
+    with trace.open("w") as sink:
+        sink.write(f"$ {command}\n--- prompt ---\n{prompt}\n--- output ---\n")
+        sink.flush()
+        process = subprocess.Popen(
+            command, shell=True, cwd=checkout, stdin=subprocess.PIPE, text=True,
+            stdout=sink, stderr=subprocess.STDOUT, env=agent_env,
+            start_new_session=(os.name == "posix"),
+        )
+        try:
+            if build_monitor is None:
+                process.communicate(input=prompt, timeout=timeout)
+            else:
+                deadline = time.monotonic() + timeout
+                pending_input = prompt
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(command, timeout)
+                    try:
+                        process.communicate(input=pending_input, timeout=min(
+                            remaining, build_monitor.interval_seconds
+                        ))
+                        break
+                    except subprocess.TimeoutExpired:
+                        # communicate retains partially sent stdin; do not resend it.
+                        pending_input = None
+                        if time.monotonic() >= deadline:
+                            raise
+                        category = build_monitor.checkpoint(deadline)
+                        if time.monotonic() >= deadline:
+                            raise subprocess.TimeoutExpired(command, timeout)
+                        if category == STOP_CATEGORY and process.poll() is None:
+                            stop_agent_processes(process)
+                            build_monitor.mark_stopped()
+                            print("[eval-build-monitor] stopped agent: " + STOP_CATEGORY,
+                                  file=sys.stderr, flush=True)
+                            return monitored({
+                                "exitCode": process.returncode,
+                                "timedOut": False, "timeoutSeconds": timeout,
+                                "failureCategory": STOP_CATEGORY,
+                            })
+        except subprocess.TimeoutExpired:
+            stop_agent_processes(process)
+            sink.write(f"\n--- runner ---\nAgent timed out after {timeout}s.\n")
+            sink.flush()
+            return monitored({"exitCode": 124, "timedOut": True, "timeoutSeconds": timeout})
+        except BaseException:
+            stop_agent_processes(process)
+            raise
+    return monitored({"exitCode": process.returncode, "timedOut": False, "timeoutSeconds": timeout,
+                      "failureCategory": agent_result_category(trace)})
+
+
+def set_graded_status(result: dict, agent_run: dict) -> None:
+    """Preserve check outcomes without promoting an abnormal agent exit."""
+    result["gradeStatus"] = (
+        "passed" if all(check["passed"] for check in result["checks"].values()) else "failed"
+    )
+    if agent_run["timedOut"]:
+        result["status"] = "errored"
+        result["errorCategory"] = "agent-timeout"
+        result["error"] = f"agent exceeded the {agent_run['timeoutSeconds']}s timeout"
+    elif agent_run.get("failureCategory"):
+        result["status"] = "errored"
+        result["errorCategory"] = agent_run["failureCategory"]
+        result["error"] = "agent did not complete successfully"
+    elif agent_run["exitCode"] != 0:
+        result["status"] = "errored"
+        result["errorCategory"] = result.get("errorCategory") or "agent-exit-failed"
+        result["error"] = "agent exited unsuccessfully"
+    else:
+        result["status"] = result["gradeStatus"]
+
+
+def trace_tail(trace: pathlib.Path, lines: int = 40) -> list:
+    """Read the agent-output tail for local classification, never publishing it."""
+    return trace_output_lines(trace)[-lines:]
+
+
+def trace_output_lines(trace: pathlib.Path) -> list:
+    """Read only the captured process output, never the prompt header."""
+    try:
+        captured = trace.read_text(errors="replace").splitlines()
+    except OSError:
+        return []
+    try:
+        output_start = len(captured) - 1 - captured[::-1].index("--- output ---")
+        captured = captured[output_start + 1:]
+    except ValueError:
+        pass
+    return captured
+
+
+def trace_error_category(trace: pathlib.Path) -> Optional[str]:
+    """Classify a known agent failure without publishing trace contents."""
+    tail = "\n".join(trace_tail(trace)).lower()
+    if "requires approval" in tail or "permission_denied" in tail:
+        return "agent-permission-failure"
+    return None
+
+
+def permission_failure_surface(trace: pathlib.Path) -> Optional[str]:
+    """Classify only the surface of a known permission denial.
+
+    The runner retains neither the denied operation nor the surrounding agent
+    output. The three fixed outcomes make an approval deadlock actionable.
+    """
+    tail = "\n".join(trace_tail(trace)).lower()
+    if "requires approval" not in tail and "permission_denied" not in tail:
+        return None
+    if re.search(r"(?:mcp|teamcity).{0,160}(?:approval|permission)|"
+                 r"(?:approval|permission).{0,160}(?:mcp|teamcity)", tail, re.S):
+        return "mcp"
+    if re.search(r"(?:bash|write|edit|file).{0,160}(?:approval|permission)|"
+                 r"(?:approval|permission).{0,160}(?:bash|write|edit|file)", tail, re.S):
+        return "workspace"
+    return "unknown"
+
+
+def mcp_runtime(trace: pathlib.Path) -> dict:
+    """Summarize MCP initialization from non-assistant structured events only.
+
+    The trace contains private prompts, agent prose and tool arguments. The
+    startup/error events can safely answer whether TeamCity MCP tools became
+    available, and reduce failures to a fixed category without retaining the
+    event itself.
+    """
+    status = "unknown"
+    teamcity_tools_advertised = False
+    local_probe_tools_advertised = False
+    patterns = (
+        (
+            "sideload-flags-disabled",
+            ("disablesideloadflags forbids --mcp-config",),
+        ),
+        (
+            "enterprise-managed-config",
+            ("enterprise mcp config", "managed-mcp.json", "exclusive control over mcp"),
+        ),
+        (
+            "enterprise-policy-blocked",
+            ("blocked by enterprise policy", "deniedmcpservers", "allowedmcpservers",
+             "mcp server blocked by enterprise policy"),
+        ),
+        (
+            "approval-required",
+            ("pending approval", "approval required", "requires approval"),
+        ),
+        (
+            "authentication-failed",
+            ("unauthorized", "authentication failed", "http 401", "status 401"),
+        ),
+        (
+            "access-denied",
+            ("forbidden", "http 403", "status 403", "permission_denied"),
+        ),
+        (
+            "connection-failed",
+            ("failed to connect", "connection refused", "network error", "fetch failed"),
+        ),
+        (
+            "initialization-failed",
+            ("failed to initialize", "not connected", "server unavailable"),
+        ),
+    )
+    try:
+        lines = trace_output_lines(trace)
+    except OSError:
+        lines = []
+    for line in lines:
+        line = line.strip()
+        plain = line.lower()
+        if not line.startswith("{"):
+            if "mcp" in plain and status == "unknown":
+                for candidate, markers in patterns:
+                    if any(marker in plain for marker in markers):
+                        status = candidate
+                        break
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") not in ("system", "error"):
+            continue
+        encoded = json.dumps(event, separators=(",", ":")).lower()
+        if "mcp" not in encoded:
+            continue
+        if "mcp__teamcity__" in encoded:
+            teamcity_tools_advertised = True
+        if "mcp__probe__" in encoded:
+            local_probe_tools_advertised = True
+        if status != "unknown":
+            continue
+        for candidate, markers in patterns:
+            if any(marker in encoded for marker in markers):
+                status = candidate
+                break
+    if status == "unknown" and (teamcity_tools_advertised or local_probe_tools_advertised):
+        status = "tools-advertised"
+    return {
+        "connectionStatus": status,
+        "teamcityToolsAdvertised": teamcity_tools_advertised,
+        "localProbeToolsAdvertised": local_probe_tools_advertised,
+    }
+
+
+def mcp_configuration_error_category(
+    tool_mode: str, checks: dict, summary: dict, runtime: Optional[dict] = None,
+    use_local_mcp_probe: bool = False,
+) -> Optional[str]:
+    """Classify a failed pure-MCP configuration run from safe aggregates only."""
+    if tool_mode != "mcp-only":
+        return None
+    if (checks.get("forbiddenCliToolUse") or {}).get("passed") is False:
+        return "mcp-cli-invoked"
+    connection = (runtime or {}).get("connectionStatus")
+    categories = {
+        "sideload-flags-disabled": "mcp-sideload-flags-disabled",
+        "enterprise-managed-config": "mcp-enterprise-managed-config",
+        "enterprise-policy-blocked": "mcp-enterprise-policy-blocked",
+        "approval-required": "mcp-approval-required",
+        "authentication-failed": "mcp-authentication-failed",
+        "access-denied": "mcp-access-denied",
+        "connection-failed": "mcp-connection-failed",
+        "initialization-failed": "mcp-initialization-failed",
+    }
+    if use_local_mcp_probe:
+        if (checks.get("requiredLocalMcpProbeUse") or {}).get("passed") is False:
+            return categories.get(connection, "mcp-local-probe-not-invoked")
+        if (checks.get("requiredMcpToolUse") or {}).get("passed") is False:
+            if connection in categories:
+                return categories[connection]
+            if not (runtime or {}).get("teamcityToolsAdvertised", False):
+                return "mcp-teamcity-tools-not-advertised"
+            return "mcp-teamcity-tools-not-used-after-local-probe"
+    elif (checks.get("requiredMcpToolUse") or {}).get("passed") is False:
+        if connection in categories:
+            return categories[connection]
+        if connection == "tools-advertised":
+            return "mcp-agent-did-not-use-available-tool"
+        return "mcp-not-invoked"
+    configured = (checks.get("configurationValidated") or {}).get("passed")
+    if configured is not False:
+        return None
+    return "mcp-no-configuration"
+
+
+def safe_agent_tool_summary(value: object) -> dict:
+    """Keep only the fixed numeric tool-surface counters in public results."""
+    if not isinstance(value, dict):
+        return {}
+    names = (
+        "totalCalls", "mcpTeamCityCalls", "mcpProbeCalls",
+        "teamcityCliCalls", "otherCalls",
+    )
+    return {
+        name: value[name]
+        for name in names
+        if isinstance(value.get(name), int)
+        and not isinstance(value.get(name), bool)
+        and value[name] >= 0
+    }
+
+
+def safe_mcp_runtime(value: object) -> dict:
+    """Allowlist fixed non-sensitive MCP initialization signals."""
+    if not isinstance(value, dict):
+        return {}
+    allowed_statuses = {
+        "unknown", "tools-advertised", "sideload-flags-disabled",
+        "enterprise-managed-config", "enterprise-policy-blocked",
+        "approval-required", "authentication-failed", "access-denied",
+        "connection-failed", "initialization-failed",
+    }
+    result = {}
+    if value.get("connectionStatus") in allowed_statuses:
+        result["connectionStatus"] = value["connectionStatus"]
+    if isinstance(value.get("teamcityToolsAdvertised"), bool):
+        result["teamcityToolsAdvertised"] = value["teamcityToolsAdvertised"]
+    if isinstance(value.get("localProbeToolsAdvertised"), bool):
+        result["localProbeToolsAdvertised"] = value["localProbeToolsAdvertised"]
+    return result
+
+
+def safe_phase_timings(value: object) -> dict:
+    """Publish only finite durations under fixed phase names."""
+    if not isinstance(value, dict):
+        return {}
+    fields = ("bootstrapSeconds", *PHASE_FIELDS.values(), "totalSeconds")
+    return {
+        name: round(value[name], 3)
+        for name in fields
+        if isinstance(value.get(name), (int, float))
+        and not isinstance(value.get(name), bool)
+        and math.isfinite(value[name])
+        and value[name] >= 0
+    }
+
+
+def publishable_result(result: dict) -> dict:
+    """Return the minimal result safe to publish as a build artifact."""
+    fields = (
+        "caseId",
+        "caseStatus",
+        "caseVersion",
+        "arm",
+        "toolMode",
+        "agentConfigId",
+        "agentVersion",
+        "runId",
+        "status",
+        "gradeStatus",
+        "agentExitCode",
+        "agentTimedOut",
+        "agentTimeoutSeconds",
+        "errorCategory",
+        "queueWaitReason",
+        "evaluationEnvironment",
+        "temporaryObjectsRemoved",
+        "cleanupDeferred",
+    )
+    published = {name: result[name] for name in fields if name in result}
+    if "queueWaitReason" in published:
+        published["queueWaitReason"] = safe_queue_wait_reason(published["queueWaitReason"])
+    if published.get("evaluationEnvironment") not in ("simulated", "live"):
+        published.pop("evaluationEnvironment", None)
+    revision = result.get("harnessRevision")
+    if isinstance(revision, str) and SAFE_REVISION.fullmatch(revision):
+        published["harnessRevision"] = revision
+    usage = safe_agent_usage(result.get("agentUsage"))
+    if usage:
+        published["agentUsage"] = usage
+    tool_summary = safe_agent_tool_summary(result.get("agentToolSummary"))
+    if tool_summary:
+        published["agentToolSummary"] = tool_summary
+    if result.get("permissionFailureSurface") in ("mcp", "workspace", "unknown"):
+        published["permissionFailureSurface"] = result["permissionFailureSurface"]
+    runtime = safe_mcp_runtime(result.get("mcpRuntime"))
+    if runtime:
+        published["mcpRuntime"] = runtime
+    timings = safe_phase_timings(result.get("phaseTimings"))
+    if timings:
+        published["phaseTimings"] = timings
+    fixture_diagnostics = safe_fixture_diagnostics(result.get("queueRecoveryDiagnostics"))
+    if fixture_diagnostics:
+        published["queueRecoveryDiagnostics"] = fixture_diagnostics
+    verification = safe_verification_diagnostics(result.get("verificationDiagnostics"))
+    if verification:
+        published["verificationDiagnostics"] = verification
+    monitor = safe_monitor_diagnostics(result.get("buildMonitorDiagnostics"))
+    if monitor:
+        published["buildMonitorDiagnostics"] = monitor
+    configuration = safe_script_diagnostics(result.get("configurationDiagnostics"))
+    if configuration:
+        published["configurationDiagnostics"] = configuration
+    verification_error = safe_verification_error(result.get("verificationErrorCategory"))
+    if verification_error:
+        published["verificationErrorCategory"] = verification_error
+    build_timeout = result.get("buildTimeoutSeconds")
+    if type(build_timeout) is int and build_timeout > 0:
+        published["buildTimeoutSeconds"] = build_timeout
+    max_budget = result.get("agentMaxBudgetUsd")
+    if type(max_budget) in (int, float) and math.isfinite(max_budget) and max_budget > 0:
+        published["agentMaxBudgetUsd"] = max_budget
+    published["checks"] = {
+        name: {"passed": check.get("passed")}
+        for name, check in (result.get("checks") or {}).items()
+        if isinstance(check, dict)
+    }
+    return published
+
+
+def harness_revision() -> Optional[str]:
+    """Get the exact revision of the checked-out evaluation harness."""
+    completed = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD"],
+        cwd=EVALS.parent,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    revision = completed.stdout.strip() if completed.returncode == 0 else ""
+    return revision if SAFE_REVISION.fullmatch(revision) else None
+
+
+def wait_for_build(
+    tc: TeamCity, project_id: str, timeout: int, poll: int = 15,
+    queue_check_after: int = 120, queue_stall_timeout: int = 600,
+    case: dict = None, checkout: pathlib.Path = None,
+    no_build_timeout: int = None,
+) -> dict:
+    """Freeze one verification head and wait for its entire dependency DAG."""
+    deadline = time.time() + timeout
+    no_build_deadline = time.time() + (timeout if no_build_timeout is None else no_build_timeout)
+    if timeout <= 0:
+        raise NoBuildQueued("no verification head observed within the wait budget")
+    definitions = {key: tc.pipeline_definition(key) for key in tc.pipeline_ids(project_id)}
+    if not definitions:
+        raise NoBuildQueued("the agent created no pipeline in the temporary project",
+                            "verification-no-pipeline")
+    source = None
+    source_path = (case or {}).get("requestedConfiguration", {}).get("sourcePath")
+    if checkout and source_path:
+        import yaml
+        path = (checkout / source_path).resolve()
+        if checkout.resolve() not in path.parents:
+            raise EvidenceError("verification-pipeline-ambiguous")
+        if path.is_file():
+            try:
+                source = yaml.safe_load(path.read_text())
+            except (OSError, yaml.YAMLError):
+                raise EvidenceError("verification-pipeline-ambiguous") from None
+            if not isinstance(source, dict):
+                raise EvidenceError("verification-pipeline-ambiguous")
+    pipeline_id, selection = select_pipeline(definitions, source)
+    # Stored YAML, not virtual job metadata, is authoritative for script fields.
+    # Check only the selected verification pipeline; unrelated probes are not
+    # evidence about it. Fail before querying builds or sleeping in the queue.
+    configuration_diagnostics = validate_pipeline_scripts(definitions[pipeline_id])
+    latest, attempts = None, 0
+    queued = {}
+    while time.time() < deadline:
+        if latest is None:
+            candidates = [item for item in tc.builds(project_id, pipeline_id)
+                          if item.get("buildTypeId") == pipeline_id]
+            attempts = len(candidates)
+            if candidates:
+                latest = max(candidates, key=lambda item: item["id"])
+            elif time.time() >= no_build_deadline:
+                raise NoBuildQueued("the agent queued no verification head")
+        if latest is not None:
+            nodes = chain_nodes(tc.build_tree(latest["id"]), latest["id"], pipeline_id)
+            if all(node["state"] == "finished" for node in nodes):
+                if len(nodes) < 2:
+                    raise EvidenceError("verification-chain-incomplete")
+                return {**latest, "state": "finished", "nodes": nodes,
+                        "configurationDiagnostics": configuration_diagnostics,
+                        "pipelineId": pipeline_id, "selection": selection, "attempts": attempts,
+                        "status": "SUCCESS" if all(node["status"] == "SUCCESS" for node in nodes)
+                        else "FAILURE"}
+            for node in nodes:
+                if node["state"] != "queued":
+                    queued.pop(node["id"], None)
+                    continue
+                state = queued.setdefault(node["id"], {"since": time.time(), "reason": None})
+                elapsed = time.time() - state["since"]
+                if elapsed >= queue_check_after and state["reason"] is None:
+                    state["reason"] = tc.queue_wait_reason(node)
+                    if state["reason"] in ("no-compatible-agents", "unresolved-parameters"):
+                        raise BuildQueueStalled(state["reason"])
+                if elapsed >= queue_stall_timeout:
+                    raise BuildQueueStalled(state["reason"] or tc.queue_wait_reason(node))
+        time.sleep(poll)
+    if latest is None:
+        raise NoBuildQueued("the agent queued no build in the temporary project")
+    raise BuildWaitTimeout(f"build {latest['id']} did not finish within {timeout}s")
+
+
+def run(
+    case_path: pathlib.Path,
+    dry_run: bool,
+    keep: bool,
+    arm: str,
+    tool_mode: str,
+    lifecycle_token: Optional[str] = None,
+) -> dict:
+    case = json.loads(case_path.read_text())
+    if case["kind"] not in (
+        "first-green-build", "pipeline-configuration", "queue-stall-diagnosis", "queue-recovery"
+    ):
+        raise EvalError(f"kind {case['kind']!r} is not executable by this runner")
+
+    tool_mode = resolve_tool_mode(tool_mode)
+    env = dict(os.environ)
+    use_local_mcp_probe = local_mcp_probe(
+        tool_mode, env.get("EVAL_MCP_LOCAL_PROBE")
+    )
+    environment_token = env.pop("TEAMCITY_TOKEN", None)
+    # The runner uses this token directly. Remove it from this process before
+    # any checkout-controlled agent can inspect inherited environments.
+    os.environ.pop("TEAMCITY_TOKEN", None)
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
+    run_id = f"{stamp}-{secrets.token_hex(3)}"
+    project_name = f"eval-{arm}-{case['id'][:40]}-{run_id}"
+
+    result = {
+        "caseId": case["id"],
+        "caseStatus": case.get("status", "active"),
+        "caseVersion": hashlib.sha256(case_path.read_bytes()).hexdigest(),
+        "arm": arm,
+        "toolMode": tool_mode,
+        "runId": run_id,
+        "status": "errored",
+        "checks": {},
+        "build": None,
+    }
+    revision = harness_revision()
+    if revision:
+        result["harnessRevision"] = revision
+    agent_config_id = safe_agent_metadata(env.get("EVAL_AGENT_CONFIG_ID"))
+    agent_version = safe_agent_metadata(env.get("EVAL_AGENT_VERSION"))
+    if agent_config_id:
+        result["agentConfigId"] = agent_config_id
+    if agent_version:
+        result["agentVersion"] = agent_version
+    max_budget = agent_budget(env.get("EVAL_AGENT_MAX_BUDGET_USD"))
+    if max_budget is not None:
+        result["agentMaxBudgetUsd"] = max_budget
+
+    if dry_run:
+        prompt = PLACEHOLDER.sub(
+            lambda m: f"<{m.group(1)}>",
+            agent_task_prompt(case, "{{teamcity.server}}", "{{teamcity.targetProject}}"),
+        )
+        result.update(status="dry-run", prompt=prompt, projectName=project_name)
+        return result
+
+
+    fixture_case = case["kind"] in ("queue-stall-diagnosis", "queue-recovery")
+    recovery_case = case["kind"] == "queue-recovery"
+    recovery_fixture = None
+    if fixture_case and tool_mode == "mcp-only":
+        raise EvalError("queue-stall-diagnosis needs the CLI fixture; mcp-only is unsupported")
+    mcp_config = mcp_config_for_mode(env, tool_mode, use_local_mcp_probe)
+    if fixture_case:
+        # A reserved, non-routable host prevents a baseline arm from touching
+        # the real TeamCity server if it ignores the first-class CLI fixture.
+        url, token = "https://teamcity.queue-fixture.invalid", None
+        env["TEAMCITY_URL"] = url
+        env.pop("TEAMCITY_TOKEN", None)
+    else:
+        url, token = env.get("TEAMCITY_URL"), lifecycle_token or environment_token
+        if not url or not token:
+            raise EvalError("TEAMCITY_URL and TEAMCITY_TOKEN must be set")
+
+    cli_path = None
+    if not fixture_case:
+        cli_name = env.get("TEAMCITY_EVAL_CLI", "teamcity")
+        cli_path = shutil.which(cli_name, path=env.get("PATH"))
+        if not cli_path:
+            raise EvalError(f"TeamCity CLI executable not found: {cli_name}")
+    tc = None if fixture_case else TeamCity(cli_path, url, token, env)
+    parent = env.get("EVAL_PARENT_PROJECT", "_Root")
+    workspace = pathlib.Path(tempfile.mkdtemp(prefix="eval-"))
+    checkout = workspace / "checkout"
+    # Keep raw agent output in the disposable workspace by default. It may hold
+    # repository content or credentials and is never an artifact or result field.
+    trace_dir = pathlib.Path(env["EVAL_TRACE_DIR"]) if env.get("EVAL_TRACE_DIR") else workspace
+    trace = trace_dir / f"agent-trace-{run_id}.log"
+    trace.parent.mkdir(parents=True, exist_ok=True)
+    project_id = None
+    target_project = None
+    phases = PhaseMonitor()
+    phases.enter("preparation")
+
+    try:
+      try:
+        if fixture_case:
+            target_project = "QueueRecoveryFixture" if recovery_case else "QueueCompatibilityFixture"
+            result["fixture"] = case.get("scenario", "queued-no-compatible-agent")
+        else:
+            project_id = tc.create_project(project_name, parent)
+            target_project = project_id
+            result["projectId"] = project_id
+            try:
+                tc.mark_temporary_project(
+                    project_id, float(env.get("EVAL_PROJECT_TTL_HOURS", "6"))
+                )
+                result["temporaryProjectMarked"] = True
+            except (EvalError, ValueError) as exc:
+                # The eval itself can still produce useful evidence, but the
+                # missing lifecycle marker must remain visible for cleanup.
+                result["temporaryProjectMarked"] = False
+                result.setdefault("warnings", []).append(
+                    f"could not set temporary-project lifecycle markers: {exc}"
+                )
+
+        checkout_repository(case, checkout)
+        # The baseline arm withholds the skill; everything else is identical, so
+        # any difference in the checks is attributable to the skill alone.
+        result["skillInstalledAt"] = (
+            str(install_skill(case, checkout).relative_to(checkout))
+            if arm == "skill" else None
+        )
+
+        prompt = agent_task_prompt(case, url, target_project)
+        transport_contract = transport_prompt_contract(
+            tool_mode, use_local_mcp_probe
+        )
+        if fixture_case:
+            phases.enter("agent")
+            if recovery_case:
+                with QueueRecoveryFixture(case["scenario"], workspace, checkout, env) as recovery_fixture:
+                    agent_run = invoke_agent(
+                        prompt, checkout, recovery_fixture.agent_environment(env), trace,
+                        int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
+                        case.get("agentTools"), mcp_config, transport_contract,
+                        use_local_mcp_probe,
+                    )
+            else:
+                agent_run = invoke_agent(
+                    prompt, checkout, install_queue_stall_fixture(workspace, env), trace,
+                    int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
+                    case.get("agentTools"), mcp_config, transport_contract,
+                    use_local_mcp_probe,
+                )
+            phases.enter("observation")
+        else:
+            try:
+                uses_cli = tool_mode in ("cli-only", "cli+mcp")
+                if uses_cli:
+                    cli_name = env.get("TEAMCITY_EVAL_CLI", "teamcity")
+                    cli_path = shutil.which(cli_name, path=env.get("PATH"))
+                    if not cli_path:
+                        raise EvalError(f"TeamCity CLI executable not found: {cli_name}")
+                    bridge_context = TeamCityCliBridge(
+                        cli=cli_path,
+                        server_url=url,
+                        token=token,
+                        workspace=workspace,
+                        checkout=checkout,
+                        target_project=project_id,
+                        allow_build_writes=case["kind"] == "first-green-build",
+                        pipeline_ids=lambda: tc.pipeline_ids(project_id),
+                        job_ids=lambda: [item["id"] for item in tc.build_types(project_id)],
+                        base_env=env,
+                    )
+                else:
+                    bridge_context = contextlib.nullcontext()
+                with bridge_context as bridge:
+                    agent_env = (
+                        bridge.agent_environment(env)
+                        if uses_cli else agent_environment_without_cli(env, url)
+                    )
+                    phases.enter("agent")
+                    monitor = None
+                    if case["kind"] == "first-green-build":
+                        monitor = LiveBuildMonitor(
+                            TeamCity(tc.cli, url, token, env, command_timeout=10),
+                            project_id, checkout,
+                            case.get("requestedConfiguration", {}).get("sourcePath"),
+                        )
+                    agent_run = invoke_agent(
+                        prompt, checkout, agent_env, trace,
+                        int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
+                        case.get("agentTools"), mcp_config, transport_contract,
+                        use_local_mcp_probe,
+                        build_monitor=monitor,
+                    )
+                    phases.enter("observation")
+            except BridgeError as exc:
+                raise EvalError(f"could not provide scoped TeamCity CLI access: {exc}") from exc
+        agent_exit = agent_run["exitCode"]
+        result["agentExitCode"] = agent_exit
+        result["agentTimedOut"] = agent_run["timedOut"]
+        result["agentTimeoutSeconds"] = agent_run["timeoutSeconds"]
+        if "buildMonitorDiagnostics" in agent_run:
+            result["buildMonitorDiagnostics"] = agent_run["buildMonitorDiagnostics"]
+        usage = agent_usage(trace)
+        if usage:
+            result["agentUsage"] = usage
+        result["errorCategory"] = (
+            "agent-timeout" if agent_run["timedOut"] else
+            agent_run.get("failureCategory") or trace_error_category(trace)
+        )
+        permission_surface = permission_failure_surface(trace)
+        if permission_surface:
+            result["permissionFailureSurface"] = permission_surface
+        result["agentToolSummary"] = agent_tool_summary(trace)
+        if mcp_config:
+            result["mcpRuntime"] = mcp_runtime(trace)
+
+        # Bound discovery after an abnormal exit. A chain already queued still
+        # gets the full (unpaid) build wait rather than an early partial grade.
+        budget = int(env.get("EVAL_BUILD_TIMEOUT", "3600"))
+        result["buildTimeoutSeconds"] = budget
+        if agent_run.get("failureCategory") == STOP_CATEGORY:
+            # The paid process has stopped. Preserve the incident, do not grade
+            # partial output, wait for another build, repair a target or retry.
+            result["status"] = "errored"
+            result["verificationErrorCategory"] = STOP_CATEGORY
+            result["verificationDiagnostics"] = {
+                "terminalChain": result["buildMonitorDiagnostics"].get("lastChain", {}),
+            }
+            raise _Graded
+        no_build_budget = budget
+        if agent_exit != 0 or agent_run.get("failureCategory"):
+            no_build_budget = min(budget, int(env.get("EVAL_FAILED_AGENT_GRACE", "120")))
+        allowed = [".claude/"]
+        if "requestedConfiguration" in case:
+            allowed.extend([case["requestedConfiguration"]["sourcePath"], ".teamcity/"])
+
+        if fixture_case:
+            phases.enter("grading")
+            if recovery_case:
+                calls = tool_calls(trace)
+                result["checks"] = recovery_fixture.grade(
+                    source_mutations(checkout, allowed), forbidden_queue_transport(calls)
+                )
+                result["evaluationEnvironment"] = "simulated"
+                result["queueRecoveryDiagnostics"] = recovery_fixture.diagnostics()
+                set_graded_status(result, agent_run)
+                raise _Graded
+            calls = tool_calls(trace)
+            observed = {
+                "toolCalls": calls,
+                "finalText": agent_final_text(trace),
+                "mutations": source_mutations(checkout, allowed),
+            }
+            result["diagnosticCallCount"] = len(calls)
+            result["checks"] = grade_queue_stall(case, observed)
+            set_graded_status(result, agent_run)
+            raise _Graded
+
+        if case["kind"] == "pipeline-configuration":
+            # No build is run: the case asks what the agent configured, which is
+            # answerable in minutes and without a build agent.
+            phases.enter("grading")
+            observed = {
+                "jobs": tc.jobs(project_id),
+                "mutations": source_mutations(checkout, allowed),
+                "toolCalls": tool_calls(trace),
+            }
+            result["toolCalls"] = observed["toolCalls"]
+            result["jobs"] = observed["jobs"]
+            result["configurationDiagnostics"] = script_step_diagnostics(observed["jobs"])
+            result["checks"] = grade_configuration(case, observed)
+            add_transport_checks(
+                result["checks"], tool_mode, result["agentToolSummary"],
+                use_local_mcp_probe,
+            )
+            set_graded_status(result, agent_run)
+            if result.get("errorCategory") is None:
+                result["errorCategory"] = mcp_configuration_error_category(
+                    tool_mode, result["checks"], result["agentToolSummary"],
+                    result.get("mcpRuntime"), use_local_mcp_probe,
+                )
+            raise _Graded
+
+        phases.enter("buildWait")
+        try:
+            build = wait_for_build(
+                tc, project_id, budget,
+                queue_check_after=int(env.get("EVAL_QUEUE_CHECK_AFTER", "120")),
+                queue_stall_timeout=int(env.get("EVAL_QUEUE_STALL_TIMEOUT", "600")),
+                case=case, checkout=checkout,
+                no_build_timeout=no_build_budget,
+            )
+        except NoBuildQueued as exc:
+            result["verificationErrorCategory"] = exc.category
+            result["errorCategory"] = result.get("errorCategory") or "build-not-queued"
+            raise
+        except BuildQueueStalled as exc:
+            result["verificationErrorCategory"] = "build-queue-stalled"
+            result["errorCategory"] = result.get("errorCategory") or "build-queue-stalled"
+            result["queueWaitReason"] = exc.reason
+            raise
+        except BuildWaitTimeout:
+            result["verificationErrorCategory"] = "build-wait-timeout"
+            result["errorCategory"] = result.get("errorCategory") or "build-wait-timeout"
+            raise
+        except EvalError:
+            result["verificationErrorCategory"] = "verification-observation-failed"
+            raise
+        result["configurationDiagnostics"] = build["configurationDiagnostics"]
+        phases.enter("grading")
+        # How many builds it took to get green is a quality signal in itself:
+        # green on the first attempt and green on the sixth are not the same
+        # work, and the graded checks alone cannot tell them apart.
+        try:
+            chain_observed, result["verificationDiagnostics"] = observe_chain(
+                tc, project_id, build, case["expected"]["toolchain"]["jdk"]
+            )
+        except EvalError:
+            result["verificationErrorCategory"] = "verification-observation-failed"
+            raise
+        observed = {
+            **chain_observed,
+            "buildTypeCount": len(tc.build_types(project_id)),
+            "buildStatus": build.get("status"),
+            "statusText": build.get("statusText"),
+            "mutations": source_mutations(checkout, allowed),
+        }
+        result["buildAttempts"] = build["attempts"]
+        result["build"] = {
+            "id": build["id"], "status": build.get("status"),
+            "webUrl": build.get("webUrl"), "personal": build.get("personal", False),
+            "testsReported": observed["testCount"],
+            "artifacts": observed["artifacts"],
+            "sourceMutations": observed["mutations"],
+        }
+        result["checks"] = grade(case, observed)
+        set_graded_status(result, agent_run)
+        terminal = result["verificationDiagnostics"].get("terminalChain", {})
+        if terminal.get("requiresInvestigation") and terminal.get("problemEvidence") == "unavailable":
+            # Also cover agents that finish before the first live checkpoint.
+            # Keep their completed grade and primary error, but expose the gap.
+            result["verificationErrorCategory"] = STOP_CATEGORY
+
+      except _Graded:
+        pass
+      except ScriptConfigurationError as exc:
+        result["configurationDiagnostics"] = exc.diagnostics
+        result["verificationErrorCategory"] = exc.category
+        result["errorCategory"] = result.get("errorCategory") or exc.category
+        result["error"] = exc.category
+      except EvidenceError as exc:
+        result["verificationErrorCategory"] = exc.category
+        result["errorCategory"] = result.get("errorCategory") or exc.category
+        result["error"] = exc.category
+      except EvalError as exc:
+        # Report the error alongside everything already observed; a bare error
+        # string hides how far the run actually got.
+        if result.get("error"):
+            result["error"] += f"; {exc}"
+        else:
+            result["error"] = str(exc)
+
+    finally:
+        phases.enter("cleanup")
+        if project_id and not keep:
+            # Temporary project deletion is disabled while the target server
+            # does not complete the project DELETE request. Keep the project
+            # ID only in the private in-memory result for lifecycle tooling;
+            # publishable_result strips it from eval-result.json.
+            result["temporaryObjectsRemoved"] = False
+            result["cleanupDeferred"] = True
+        if not keep:
+            shutil.rmtree(workspace, ignore_errors=True)
+        else:
+            result["workspace"] = str(workspace)
+        result["phaseTimings"] = phases.finish()
+        bootstrap = env.get("EVAL_WRAPPER_BOOTSTRAP_SECONDS", "")
+        if re.fullmatch(r"[0-9]{1,6}", bootstrap):
+            result["phaseTimings"]["bootstrapSeconds"] = int(bootstrap)
+
+    return result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--case", required=True, type=pathlib.Path,
+                        help="path to the case JSON")
+    parser.add_argument("--result", type=pathlib.Path,
+                        help="write the result JSON here as well as to stdout")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="resolve the case without touching the server")
+    parser.add_argument("--keep", action="store_true",
+                        help="leave the temporary project and checkout in place for debugging")
+    parser.add_argument(
+        "--teamcity-token-fd", type=int,
+        help="read and close the lifecycle token descriptor before agent execution",
+    )
+    parser.add_argument("--arm", choices=("skill", "baseline"),
+                        default=os.environ.get("EVAL_ARM", "skill"),
+                        help="'baseline' withholds the skill, to measure its effect")
+    parser.add_argument(
+        "--tool-mode", choices=TOOL_MODES,
+        default=os.environ.get("EVAL_TOOL_MODE", "cli-only"),
+        help="agent transport profile: cli-only, mcp-only, or cli+mcp",
+    )
+    args = parser.parse_args()
+
+    keep = args.keep or os.environ.get("EVAL_KEEP", "") not in ("", "0", "false")
+    lifecycle_token = None
+    if args.teamcity_token_fd is not None:
+        try:
+            with os.fdopen(args.teamcity_token_fd, encoding="utf-8") as token_file:
+                lifecycle_token = token_file.read().strip()
+        except OSError as exc:
+            parser.error(f"could not read lifecycle token: {exc}")
+        if not lifecycle_token:
+            parser.error("lifecycle token descriptor is empty")
+    try:
+        result = run(
+            args.case, args.dry_run, keep, args.arm, args.tool_mode, lifecycle_token
+        )
+    except EvalError as exc:
+        result = {
+            "caseId": args.case.stem,
+            "arm": args.arm,
+            "toolMode": args.tool_mode,
+            "status": "errored",
+            "error": str(exc),
+        }
+
+    rendered = json.dumps(publishable_result(result), indent=2)
+    print(rendered)
+    if args.result:
+        args.result.write_text(rendered + "\n")
+
+    if result["status"] in ("passed", "dry-run"):
+        return 0
+    if result["status"] == "failed" and result.get("caseStatus") == "aspirational":
+        print(f"\n{result['caseId']} is aspirational; its failure does not gate.", file=sys.stderr)
+        return 0
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

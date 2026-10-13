@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "assistedRuns": [
+    {
+      "runId": 9505871,
+      "caseId": "tdd-spring-maven",
+      "harnessRevision": "eba480c026f5b662f77f30b94c18f480c5534bf0",
+      "reason": "manual-agent-selector-repair"
+    }
+  ]
+}
