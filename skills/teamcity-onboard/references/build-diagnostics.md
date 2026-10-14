@@ -72,45 +72,43 @@ successfully on the intended sources.
 
 ## Diagnose A Build That Remains Queued
 
-For a run that stays queued after two observations or 60--120 seconds, stop
-waiting and read the run and queue details, including the specific wait reason.
-If the request already reports that duration, treat the threshold as reached:
-run these checks before another status poll.
-Then:
+After two observations or 120 seconds in the queue, find the runnable queued
+job in the chain (a waiting head is not the cause) and read its wait reason.
+Then, before another poll:
 
-1. List enabled, authorized agents and applicable cloud images or hosted
-   selectors.
-2. Query the job against candidate agents so TeamCity reports unmet
-   requirements, missing versions, pool restrictions, or unresolved
-   parameters.
-3. Pull the server-stored Pipeline YAML and verify that every `%name%`
-   substitution is declared or inherited.
+1. List the enabled, authorized agents in the target pool and the applicable
+   cloud images or hosted selectors.
+2. Check the exact job against each candidate with
+   `teamcity agent jobs <agent-id> --incompatible --json`, or with an MCP
+   Pipeline compatibility check when one exists. Count compatible candidates
+   and group the unmet requirements and unresolved parameters. Do not infer
+   compatibility from an agent's name or from the queue message.
+3. Pull the stored Pipeline YAML and match its `runs-on` requirements and
+   every `%name%` substitution to the reported reasons.
 
-Perform these checks immediately when the reason says **no compatible agents**
-or **unresolved parameters**. Treat **no idle compatible agents** as ambiguous
-until the job result distinguishes busy capacity from zero compatible agents.
-If an unmet `os-family teamcity.agent.jvm.os.family equals Linux` requirement
-uses a key absent from the candidate agent, replace it with an observed,
-relevant parameter; changing the value's case cannot make the key exist.
+Treat **no idle compatible agents** like **no compatible agents**: it does not
+distinguish busy capacity from zero matches. A generated job absent from both
+CLI lists, or a `permission_denied` on the check, is unverified, not
+compatible; see "Check compatibility before queueing" in
+[Agents, JDK, and compatibility](agents-and-jdk.md).
 
-For an unresolved host-JDK parameter such as `env.JDK_25`, report a
-pre-dispatch blocker. A build step cannot download JDK 25 because it has not
-started. For a Linux container-safe job, replace the host-JDK requirement with
-Docker capability and run the job in a pinned JDK 25 image. Native work needs
-an agent or image that already provides JDK 25.
+Typical causes: a requirement key no agent has (`os-family`), an architecture
+label that differs from the agent's `teamcity.agent.jvm.os.arch` value
+(`x86_64` versus `amd64`), or an unresolved host-JDK parameter such as
+`env.JDK_25`, which no build step can install because the build never
+starts; run such a job in a pinned JDK container instead.
 
-If the evidence proves zero compatible agents or images, stop polling. Do not
-queue a duplicate or retry unchanged. Make at most one correction directly
-supported by the evidence, validate it, and retry only after the compatibility
-result changes. If the evidence does not prove a stable blocker, continue
-monitoring the accepted run at a maximum 60-second interval for at least ten
-minutes from queueing and report progress at least once a minute.
+Make at most one correction the evidence supports, validate, and requeue; no
+duplicate runs and no unchanged retries. Without a proven blocker, keep
+watching the accepted run at most every 60 seconds and report progress.
 
-If a compatibility operation returns `permission_denied`, record compatibility
-as unverified. Do not infer it from a generic wait reason, agent inventory, or
-manual UI confirmation. Use another permitted machine-readable TeamCity
-operation when available; otherwise report the missing permission as the
-blocker.
+## When The Log Is Not Readable
+
+A denied `run log` or `run download` is not a reason to create a probe
+pipeline. Read `run view <id>`, `run tests <id> --failed`, and
+`run log <head-id> --failed --json`; for the rest, add a first script step to
+the deliverable job that prints `"$JAVA_HOME/bin/java" -version` and ends with
+a `##teamcity[buildStatus ...]` message, which `run view` shows.
 
 ## Diagnose Branch And VCS Access Failures
 
@@ -119,7 +117,8 @@ revisions, inspect the VCS roots attached to the pipeline, their default
 branches and branch specifications, and the mapping from the requested Git
 branch to TeamCity's logical branch. The usual cause is naming the default
 branch explicitly (`--branch main`) when the specification does not list it;
-queue the default branch without `--branch`. A red head with this problem and
+queue with the logical `--branch '<default>'`, particularly when pinning a
+revision. A red head with this problem and
 green jobs is a branch binding error, not a step failure, and is not a green
 build. Do not switch to `main`/`master` or widen
 branch filters merely to suppress the error. Retry only after correcting a
