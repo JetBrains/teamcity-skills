@@ -18,6 +18,7 @@ run_case = load_module("run_case_configuration_test", "run_case.py")
 TOOL_USE_CASE = EVALS / "pipeline-configuration/cases/teamcity-cli-not-curl.json"
 CLEAN_SPRING_CASE = EVALS / "pipeline-configuration/cases/clean-spring-boot-maven-pipeline.json"
 SPRING_DEMO_CASE = EVALS / "pipeline-configuration/cases/spring-boot-demo-gradle-testcontainers-pipeline.json"
+BAZEL_CASE = EVALS / "pipeline-configuration/cases/onboard-jetbrains-bazel.json"
 
 
 CASE = {
@@ -65,6 +66,7 @@ def job(job_id, name, runs_on, steps, artifacts=""):
         "steps": steps,
         "artifactRules": artifacts,
         "agentRequirements": [runs_on],
+        "jobProperties": {},
     }
 
 
@@ -91,6 +93,22 @@ def observed_jobs():
 
 
 class ConfigurationGraderTest(unittest.TestCase):
+    def test_bazel_artifact_rule_accepts_direct_and_staged_binary(self):
+        case = json.loads(BAZEL_CASE.read_text())
+        observed = {
+            "jobs": [job("build", "Build", "Linux", [step("script")], "bazel-bin/src/bazel")],
+            "mutations": [],
+            "toolCalls": [],
+        }
+        self.assertTrue(run_case.grade_configuration(case, observed)["requiredArtifactRules"]["passed"])
+
+        for rule in ("artifacts/bazel-*-linux-x86_64", "artifacts/*"):
+            observed["jobs"][0]["artifactRules"] = rule
+            self.assertTrue(run_case.grade_configuration(case, observed)["requiredArtifactRules"]["passed"])
+
+        observed["jobs"][0]["artifactRules"] = "target/app.jar"
+        self.assertFalse(run_case.grade_configuration(case, observed)["requiredArtifactRules"]["passed"])
+
     def test_toolchain_accepts_exact_jdk_container_image(self):
         jobs = [
             job(
@@ -346,6 +364,27 @@ class ConfigurationGraderTest(unittest.TestCase):
 
         self.assertTrue(checks["requiredMcpToolUse"]["passed"])
         self.assertTrue(checks["forbiddenCliToolUse"]["passed"])
+
+    def test_job_properties_require_cache_and_parallel_tests(self):
+        case = {"expected": {
+            "configurationValidated": True,
+            "sourceMutations": "none",
+            "minimumJobs": 1,
+            "requiredJobProperties": [
+                {"property": "enable-dependency-cache", "value": True},
+                {"property": "parallelism", "value": 3},
+            ],
+        }}
+        observed = observed_jobs()
+        observed["jobs"][0]["jobProperties"] = {
+            "enable-dependency-cache": True,
+            "parallelism": 3,
+        }
+
+        self.assertTrue(run_case.grade_configuration(case, observed)["requiredJobProperties"]["passed"])
+
+        observed["jobs"][0]["jobProperties"]["parallelism"] = 2
+        self.assertFalse(run_case.grade_configuration(case, observed)["requiredJobProperties"]["passed"])
 
 
 if __name__ == "__main__":

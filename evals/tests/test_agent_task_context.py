@@ -37,6 +37,8 @@ class AgentTaskContextTest(unittest.TestCase):
         for public_value in ("https://example.invalid", "SyntheticProject", "development",
                              "yaml", "ci/final.yml"):
             self.assertIn(public_value, prompt)
+        self.assertIn("trigger the default branch without an explicit branch name", prompt)
+        self.assertIn("Check the pipeline head for invalid_branch_name", prompt)
         self.assertNotIn("private-", prompt)
         self.assertNotIn("{{", prompt)
         # No hidden part of the case changes the task received by either arm.

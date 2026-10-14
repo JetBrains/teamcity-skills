@@ -6,6 +6,24 @@ set -euo pipefail
 
 eval_wrapper_started_epoch=$(date +%s)
 case_path=${1:?case path is required}
+
+# The checkout may be reused by TeamCity. Never publish logs left by a prior
+# build, and never follow a symlink while clearing this dedicated artifact dir.
+agent_log_artifact_dir=.teamcity/evaluation-agent-logs
+if [ -L .teamcity ] || [ -L "$agent_log_artifact_dir" ]; then
+  echo "The agent log artifact directory must not be a symlink." >&2
+  exit 2
+fi
+if [ -e "$agent_log_artifact_dir" ]; then
+  if [ ! -d "$agent_log_artifact_dir" ]; then
+    echo "The agent log artifact path must be a directory." >&2
+    exit 2
+  fi
+  rm -rf -- "$agent_log_artifact_dir"
+fi
+mkdir -m 700 -p "$agent_log_artifact_dir"
+export EVAL_AGENT_LOG_ARTIFACT_DIR="$agent_log_artifact_dir"
+
 . evals/bootstrap-teamcity-cli.sh
 
 # A generated MCP config contains a server-provided bearer token. Keep its

@@ -26,12 +26,15 @@ Configuration comes from the environment, never from the case:
     EVAL_BUILD_TIMEOUT     seconds to wait for the build (default 3600)
     EVAL_QUEUE_CHECK_AFTER seconds before checking a queued build (default 120)
     EVAL_QUEUE_STALL_TIMEOUT seconds to allow a queued build (default 600)
-    EVAL_AGENT_TIMEOUT     seconds to wait for the agent (default 3600)
+    EVAL_AGENT_TIMEOUT     optional agent limit in seconds; first-green-build
+                           has no default limit (0 disables an explicit limit)
     EVAL_AGENT_MAX_BUDGET_USD optional positive Claude API spending limit
     EVAL_KEEP              set to 1 to leave the temporary project and checkout
                            in place, the same as --keep
     EVAL_TRACE_DIR         protected directory for the agent trace (default:
                            the disposable evaluation workspace)
+    EVAL_AGENT_LOG_ARTIFACT_DIR optional TeamCity-only directory for copies of
+                           the current Claude/Codex system session logs
     EVAL_FAILED_AGENT_GRACE  seconds to still wait for a build after the agent
                            exited non-zero (default 120)
     EVAL_ARM               "skill" (default) or "baseline". The baseline arm
@@ -67,6 +70,7 @@ import secrets
 import shlex
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -78,6 +82,9 @@ EVALS = pathlib.Path(__file__).parent
 PLACEHOLDER = re.compile(r"\{\{teamcity\.(server|targetProject)\}\}")
 SAFE_AGENT_METADATA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SAFE_REVISION = re.compile(r"^[a-fA-F0-9]{40}$")
+SAFE_SESSION_ID = re.compile(
+    r"^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$"
+)
 TOOL_MODES = ("cli-only", "mcp-only", "cli+mcp")
 sys.path.insert(0, str(EVALS))
 from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
@@ -111,6 +118,10 @@ class NoBuildQueued(EvalError):
 
 class BuildWaitTimeout(EvalError):
     """An agent-queued build did not finish during the wait window."""
+
+    def __init__(self, message: str, reason: str = "unavailable"):
+        self.reason = reason
+        super().__init__(message)
 
 
 class BuildQueueStalled(EvalError):
@@ -246,7 +257,11 @@ def agent_task_prompt(case: dict, server: str, target_project: str) -> str:
         prompt += (
             "\n\nRepository context: the checked-out default branch is "
             f"{case['repository']['defaultBranch']!r} at the pinned revision. "
-            "Ensure the VCS root monitors that branch before triggering a build."
+            "Ensure the VCS root monitors that branch before triggering a build. "
+            "If it is the VCS root's default branch and no branch specification "
+            "includes it separately, trigger the default branch without an "
+            "explicit branch name. Check the pipeline head for invalid_branch_name "
+            "even when its child jobs succeed."
         )
     requested = case.get("requestedConfiguration")
     if requested:
@@ -551,6 +566,11 @@ class TeamCity:
                     "parameters": jdk_selectors({
                         **(parsed.get("parameters") or {}), **(job.get("parameters") or {}),
                     }, parameter=True),
+                    "jobProperties": {
+                        name: job[name]
+                        for name in ("enable-dependency-cache", "parallelism")
+                        if name in job
+                    },
                 })
         return collected
 
@@ -579,8 +599,8 @@ class TeamCity:
         return [{"name": test["name"], "status": test.get("status"),
                  "ignored": test.get("ignored", False) is not False} for test in records]
 
-    def artifacts(self, build_id: int, path: str = "") -> list:
-        """Every artifact returned by the first-class CLI, walked recursively."""
+    def artifacts(self, build_id: int, path: str = "", in_archive: bool = False) -> list:
+        """Walk published artifacts, including TeamCity's parallel-batch archive."""
         command = ["run", "artifacts", str(build_id), "--json"]
         if path:
             command.extend(["--path", path])
@@ -590,11 +610,14 @@ class TeamCity:
             if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
                 continue
             name = entry["name"]
-            full = f"{path}/{name}".lstrip("/")
+            separator = "!/" if in_archive and path.endswith(".shared_files.zip") else "/"
+            full = f"{path}{separator}{name}" if path else name
             if "children" in entry:
-                collected.extend(self.artifacts(build_id, full))
+                collected.extend(self.artifacts(build_id, full, in_archive))
             else:
                 collected.append(full)
+                if name == ".shared_files.zip" and not in_archive:
+                    collected.extend(self.artifacts(build_id, full, in_archive=True))
         return collected
 
 
@@ -882,6 +905,21 @@ def grade_configuration(case: dict, observed: dict) -> dict:
             "expected": True,
             "observed": not missing,
             "detail": f"missing {missing} in {rules!r}" if missing else f"rules: {rules!r}",
+        }
+
+    if "requiredJobProperties" in expected:
+        missing = [
+            f"{want['property']}={want['value']!r}"
+            for want in expected["requiredJobProperties"]
+            if not any(
+                job.get("jobProperties", {}).get(want["property"]) == want["value"]
+                for job in jobs
+            )
+        ]
+        checks["requiredJobProperties"] = {
+            "expected": True,
+            "observed": not missing,
+            "detail": f"missing {missing}" if missing else "all present",
         }
 
     if "requiredAgentRequirements" in expected:
@@ -1456,6 +1494,15 @@ def agent_budget(value: Optional[str]) -> Optional[float]:
     return float(value)
 
 
+def agent_timeout_seconds(value: Optional[str], case_kind: str) -> Optional[int]:
+    """Leave first-green agents unbounded unless a limit is explicitly set."""
+    if value is None or value == "":
+        return None if case_kind == "first-green-build" else 3600
+    if not re.fullmatch(r"[0-9]{1,9}", value):
+        raise EvalError("EVAL_AGENT_TIMEOUT must be a non-negative integer")
+    return int(value) or None
+
+
 def agent_result_category(trace: pathlib.Path) -> Optional[str]:
     """Inspect only the provider's fixed completion flags, not its prose."""
     category = None
@@ -1498,7 +1545,7 @@ def stop_agent_processes(process) -> None:
 
 
 def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.Path,
-                 timeout: int, tools: list = None,
+                 timeout: Optional[int], tools: list = None,
                  mcp_config: Optional[pathlib.Path] = None,
                  transport_contract: str = "",
                  use_local_mcp_probe: bool = False, build_monitor=None) -> dict:
@@ -1545,7 +1592,8 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
             if build_monitor is None:
                 process.communicate(input=prompt, timeout=timeout)
             else:
-                deadline = time.monotonic() + timeout
+                deadline = (time.monotonic() + timeout
+                            if timeout is not None else float("inf"))
                 pending_input = prompt
                 while True:
                     remaining = deadline - time.monotonic()
@@ -1624,6 +1672,137 @@ def trace_output_lines(trace: pathlib.Path) -> list:
     except ValueError:
         pass
     return captured
+
+
+def agent_log_provider(command: str) -> Optional[str]:
+    """Only known CLI entry points have a supported system-session layout."""
+    try:
+        executable = shlex.split(command)[0].replace("\\", "/").rsplit("/", 1)[-1].lower()
+    except (ValueError, IndexError):
+        return None
+    if executable in ("claude", "claude.cmd", "claude.exe"):
+        return "claude"
+    if executable in ("codex", "codex.cmd", "codex.exe"):
+        return "codex"
+    return None
+
+
+def agent_log_session_id(trace: pathlib.Path, provider: str) -> Optional[str]:
+    """Bind system logs to the structured session started by this invocation."""
+    session_ids = set()
+    fallback_ids = set()
+    for line in trace_output_lines(trace):
+        try:
+            event = json.loads(line)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(event, dict):
+            continue
+        if provider == "claude" and (
+            event.get("type"), event.get("subtype")
+        ) == ("system", "init"):
+            session_id = event.get("session_id")
+            selected = session_ids
+        elif provider == "claude" and event.get("type") == "result":
+            session_id = event.get("session_id")
+            selected = fallback_ids
+        elif provider == "codex" and event.get("type") == "thread.started":
+            session_id = event.get("thread_id")
+            selected = session_ids
+        else:
+            continue
+        if isinstance(session_id, str) and SAFE_SESSION_ID.fullmatch(session_id):
+            selected.add(session_id.lower())
+    selected = session_ids or fallback_ids
+    return next(iter(selected)) if len(selected) == 1 else None
+
+
+def agent_config_root(env: dict, provider: str, checkout: pathlib.Path) -> pathlib.Path:
+    configured = env.get("CLAUDE_CONFIG_DIR" if provider == "claude" else "CODEX_HOME")
+    if configured:
+        root = pathlib.Path(configured)
+        return root if root.is_absolute() else checkout / root
+    home = env.get("HOME") or env.get("USERPROFILE")
+    home_path = pathlib.Path(home) if home else pathlib.Path.home()
+    if not home_path.is_absolute():
+        home_path = pathlib.Path.home()
+    return home_path / (".claude" if provider == "claude" else ".codex")
+
+
+def copy_agent_log(source: pathlib.Path, root: pathlib.Path,
+                   destination: pathlib.Path, started_at: float) -> bool:
+    """Copy a fresh regular file, refusing symlinks and path escapes."""
+    try:
+        relative = source.relative_to(root)
+        candidate = root
+        for part in relative.parts:
+            candidate /= part
+            if candidate.is_symlink():
+                return False
+        source.resolve().relative_to(root.resolve())
+        if source.stat().st_mtime < started_at - 2:
+            return False
+        source_fd = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except (OSError, ValueError):
+        return False
+    try:
+        if not stat.S_ISREG(os.fstat(source_fd).st_mode):
+            return False
+        destination.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+        with os.fdopen(source_fd, "rb") as content:
+            source_fd = -1
+            with os.fdopen(os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                                   0o600), "wb") as output:
+                shutil.copyfileobj(content, output)
+        return True
+    finally:
+        if source_fd != -1:
+            os.close(source_fd)
+
+
+def collect_agent_logs(trace: pathlib.Path, checkout: pathlib.Path, env: dict,
+                       command: str, destination: pathlib.Path,
+                       started_at: float) -> dict:
+    """Publish only this Claude/Codex session, never a shared home or auth file."""
+    if destination.is_symlink():
+        raise OSError("agent log artifact directory is a symlink")
+    destination.mkdir(parents=True, mode=0o700, exist_ok=True)
+    provider = agent_log_provider(command)
+    session_id = agent_log_session_id(trace, provider) if provider else None
+    copied = 0
+    status = "no-session-id" if provider and not session_id else "unsupported-agent"
+    if session_id:
+        root = agent_config_root(env, provider, checkout)
+        if provider == "claude":
+            main = list((root / "projects").glob(f"*/{session_id}.jsonl"))
+            logs = [(root / "debug" / f"{session_id}.txt",
+                     destination / "claude" / "debug.txt")]
+            if len(main) == 1:
+                logs.insert(0, (main[0], destination / "claude" / "session.jsonl"))
+                subagents = main[0].with_suffix("") / "subagents"
+                logs.extend((source, destination / "claude" / "subagents" / source.name)
+                            for source in subagents.glob("*.jsonl"))
+            else:
+                status = "ambiguous-session" if main else "session-not-found"
+        else:
+            sessions = root / "sessions"
+            main = list(sessions.glob(f"*/*/*/rollout-*-{session_id}.jsonl"))
+            main.extend(sessions.glob(f"rollout-*-{session_id}.jsonl"))
+            logs = [(main[0], destination / "codex" / "rollout.jsonl")] if len(main) == 1 else []
+            if len(main) != 1:
+                status = "ambiguous-session" if main else "session-not-found"
+        for source, target in logs:
+            if copy_agent_log(source, root, target, started_at):
+                copied += 1
+        if logs:
+            if copied:
+                status = "copied"
+            elif status != "ambiguous-session":
+                status = "session-not-found"
+    manifest = {"provider": provider or "unknown", "status": status,
+                "copiedFiles": copied}
+    (destination / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    return manifest
 
 
 def trace_error_category(trace: pathlib.Path) -> Optional[str]:
@@ -1974,8 +2153,15 @@ def wait_for_build(
                         "pipelineId": pipeline_id, "selection": selection, "attempts": attempts,
                         "status": "SUCCESS" if all(node["status"] == "SUCCESS" for node in nodes)
                         else "FAILURE"}
+            by_id = {node["id"]: node for node in nodes}
             for node in nodes:
-                if node["state"] != "queued":
+                # A head or downstream job waiting for another queued job is
+                # not the source of the queue delay. Inspect runnable jobs.
+                runnable = (node["state"] == "queued" and all(
+                    by_id[dependency]["state"] == "finished"
+                    for dependency in node["dependencies"]
+                ))
+                if not runnable:
                     queued.pop(node["id"], None)
                     continue
                 state = queued.setdefault(node["id"], {"since": time.time(), "reason": None})
@@ -1984,12 +2170,15 @@ def wait_for_build(
                     state["reason"] = tc.queue_wait_reason(node)
                     if state["reason"] in ("no-compatible-agents", "unresolved-parameters"):
                         raise BuildQueueStalled(state["reason"])
-                if elapsed >= queue_stall_timeout:
+                if (elapsed >= queue_stall_timeout
+                        and state["reason"] != "no-idle-compatible-agents"):
                     raise BuildQueueStalled(state["reason"] or tc.queue_wait_reason(node))
         time.sleep(poll)
     if latest is None:
         raise NoBuildQueued("the agent queued no build in the temporary project")
-    raise BuildWaitTimeout(f"build {latest['id']} did not finish within {timeout}s")
+    reason = next((state["reason"] for state in queued.values()
+                   if state["reason"] and state["reason"] != "unavailable"), "unavailable")
+    raise BuildWaitTimeout(f"build {latest['id']} did not finish within {timeout}s", reason)
 
 
 def run(
@@ -2008,6 +2197,9 @@ def run(
 
     tool_mode = resolve_tool_mode(tool_mode)
     env = dict(os.environ)
+    log_artifact_dir = env.pop("EVAL_AGENT_LOG_ARTIFACT_DIR", None)
+    if log_artifact_dir:
+        log_artifact_dir = pathlib.Path(log_artifact_dir).absolute()
     use_local_mcp_probe = local_mcp_probe(
         tool_mode, env.get("EVAL_MCP_LOCAL_PROBE")
     )
@@ -2051,7 +2243,7 @@ def run(
         result.update(status="dry-run", prompt=prompt, projectName=project_name)
         return result
 
-
+    agent_timeout = agent_timeout_seconds(env.get("EVAL_AGENT_TIMEOUT"), case["kind"])
     fixture_case = case["kind"] in ("queue-stall-diagnosis", "queue-recovery")
     recovery_case = case["kind"] == "queue-recovery"
     recovery_fixture = None
@@ -2086,6 +2278,7 @@ def run(
     trace.parent.mkdir(parents=True, exist_ok=True)
     project_id = None
     target_project = None
+    agent_started_at = None
     phases = PhaseMonitor()
     phases.enter("preparation")
 
@@ -2125,18 +2318,19 @@ def run(
         )
         if fixture_case:
             phases.enter("agent")
+            agent_started_at = time.time()
             if recovery_case:
                 with QueueRecoveryFixture(case["scenario"], workspace, checkout, env) as recovery_fixture:
                     agent_run = invoke_agent(
                         prompt, checkout, recovery_fixture.agent_environment(env), trace,
-                        int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
+                        agent_timeout,
                         case.get("agentTools"), mcp_config, transport_contract,
                         use_local_mcp_probe,
                     )
             else:
                 agent_run = invoke_agent(
                     prompt, checkout, install_queue_stall_fixture(workspace, env), trace,
-                    int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
+                    agent_timeout,
                     case.get("agentTools"), mcp_config, transport_contract,
                     use_local_mcp_probe,
                 )
@@ -2169,6 +2363,7 @@ def run(
                         if uses_cli else agent_environment_without_cli(env, url)
                     )
                     phases.enter("agent")
+                    agent_started_at = time.time()
                     monitor = None
                     if case["kind"] == "first-green-build":
                         monitor = LiveBuildMonitor(
@@ -2178,7 +2373,7 @@ def run(
                         )
                     agent_run = invoke_agent(
                         prompt, checkout, agent_env, trace,
-                        int(env.get("EVAL_AGENT_TIMEOUT", "3600")),
+                        agent_timeout,
                         case.get("agentTools"), mcp_config, transport_contract,
                         use_local_mcp_probe,
                         build_monitor=monitor,
@@ -2189,7 +2384,8 @@ def run(
         agent_exit = agent_run["exitCode"]
         result["agentExitCode"] = agent_exit
         result["agentTimedOut"] = agent_run["timedOut"]
-        result["agentTimeoutSeconds"] = agent_run["timeoutSeconds"]
+        if agent_run["timeoutSeconds"] is not None:
+            result["agentTimeoutSeconds"] = agent_run["timeoutSeconds"]
         if "buildMonitorDiagnostics" in agent_run:
             result["buildMonitorDiagnostics"] = agent_run["buildMonitorDiagnostics"]
         usage = agent_usage(trace)
@@ -2291,9 +2487,10 @@ def run(
             result["errorCategory"] = result.get("errorCategory") or "build-queue-stalled"
             result["queueWaitReason"] = exc.reason
             raise
-        except BuildWaitTimeout:
+        except BuildWaitTimeout as exc:
             result["verificationErrorCategory"] = "build-wait-timeout"
             result["errorCategory"] = result.get("errorCategory") or "build-wait-timeout"
+            result["queueWaitReason"] = exc.reason
             raise
         except EvalError:
             result["verificationErrorCategory"] = "verification-observation-failed"
@@ -2354,6 +2551,16 @@ def run(
 
     finally:
         phases.enter("cleanup")
+        if log_artifact_dir and agent_started_at is not None:
+            try:
+                collect_agent_logs(
+                    trace, checkout, env, env.get("EVAL_AGENT_CMD", "claude -p"),
+                    log_artifact_dir, agent_started_at,
+                )
+            except OSError:
+                # Raw diagnostic paths must not leak to the build log or mask
+                # the scored outcome if artifact collection fails.
+                print("[eval-agent-logs] could not copy session logs", file=sys.stderr)
         if project_id and not keep:
             # Temporary project deletion is disabled while the target server
             # does not complete the project DELETE request. Keep the project

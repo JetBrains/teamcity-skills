@@ -202,7 +202,7 @@ class BuildMonitorTest(unittest.TestCase):
 
 
 class AgentInterventionTest(unittest.TestCase):
-    def invoke(self, process, monitor, **patches):
+    def invoke(self, process, monitor, timeout=7200, **patches):
         with tempfile.TemporaryDirectory() as folder, contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(runner.subprocess, "Popen", return_value=process))
             stop = stack.enter_context(mock.patch.object(runner, "stop_agent_processes"))
@@ -210,7 +210,7 @@ class AgentInterventionTest(unittest.TestCase):
             for name, value in patches.items():
                 stack.enter_context(mock.patch.object(runner.time, name, **value))
             root = pathlib.Path(folder)
-            result = runner.invoke_agent("synthetic", root, {}, root / "synthetic-trace", 7200,
+            result = runner.invoke_agent("synthetic", root, {}, root / "synthetic-trace", timeout,
                                          build_monitor=monitor)
             return result, stop
 
@@ -240,6 +240,18 @@ class AgentInterventionTest(unittest.TestCase):
         self.assertEqual("synthetic", process.communicate.call_args_list[0].kwargs["input"])
         self.assertIsNone(process.communicate.call_args_list[1].kwargs["input"])
         self.assertEqual(0, result["exitCode"])
+        stop.assert_not_called()
+
+    def test_unbounded_agent_keeps_monitoring_without_timeout(self):
+        process = mock.Mock(returncode=0)
+        process.communicate.side_effect = [subprocess.TimeoutExpired("synthetic", 60), (None, None)]
+        monitor = self.monitor(None)
+        result, stop = self.invoke(process, monitor, timeout=None)
+
+        self.assertEqual(0, result["exitCode"])
+        self.assertFalse(result["timedOut"])
+        self.assertIsNone(result["timeoutSeconds"])
+        self.assertEqual(float("inf"), monitor.checkpoint.call_args.args[0])
         stop.assert_not_called()
 
     def test_agent_deadline_wins_without_extra_checkpoint(self):

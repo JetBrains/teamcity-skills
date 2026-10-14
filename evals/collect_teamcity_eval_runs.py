@@ -85,6 +85,7 @@ SAFE_CHECK_NAMES = {
     "artifactsPublished", "toolchain", "sourceMutations",
     "requiredMcpToolUse", "forbiddenCliToolUse", "requiredLocalMcpProbeUse",
     "minimumJobs", "jobCount", "requiredStepTypes", "requiredStepProperties",
+    "requiredJobProperties",
     "forbiddenStepProperties", "requiredArtifactRules", "requiredAgentRequirements",
     "requiredJobs", "requiredTests", "jobResults", "toolUse",
     "compatibilityCheckpoint", "statusCheckLimit",
