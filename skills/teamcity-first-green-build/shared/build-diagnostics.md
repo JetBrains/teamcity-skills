@@ -75,7 +75,8 @@ successfully on the intended sources.
 For a run that stays queued after two observations or 60--120 seconds, stop
 waiting and read the run and queue details, including the specific wait reason.
 If the request already reports that duration, treat the threshold as reached:
-run these checks before another status poll.
+run these checks before another status poll. Diagnose by 120 seconds in the
+queue; do not extend blind polling past two minutes.
 Then:
 
 1. List enabled, authorized agents and applicable cloud images or hosted
@@ -85,10 +86,19 @@ Then:
    parameters.
 3. Pull the server-stored Pipeline YAML and verify that every `%name%`
    substitution is declared or inherited.
+4. Inspect each queued job's `runs-on` against the current hosted images or
+   self-hosted capabilities on this server and in the target project. Compare
+   the saved selector with the original YAML. Check whether an agent changed
+   it to a legacy image name only to satisfy `pipeline validate`. If so,
+   follow [Hosted-image schema mismatch](../workflows/configure-and-validate.md#hosted-image-schema-mismatch).
+   Restore or select a server-confirmed compatible value; a name appearing in
+   the validator's enum is not compatibility evidence.
 
 Perform these checks immediately when the reason says **no compatible agents**
-or **unresolved parameters**. Treat **no idle compatible agents** as ambiguous
-until the job result distinguishes busy capacity from zero compatible agents.
+or **unresolved parameters**. Distinguish zero compatible agents from busy
+capacity or cloud provisioning. **No idle compatible agents**, a successful
+validation, or two minutes in the queue alone proves neither compatibility
+nor incompatibility.
 If an unmet `os-family teamcity.agent.jvm.os.family equals Linux` requirement
 uses a key absent from the candidate agent, replace it with an observed,
 relevant parameter; changing the value's case cannot make the key exist.

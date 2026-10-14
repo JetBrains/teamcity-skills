@@ -54,6 +54,28 @@ checkout. Apply the Script Parameter Gate from
 [Build-step selection](../shared/build-step-selection.md) to local and stored
 Pipeline YAML.
 
+### Hosted-image schema mismatch
+
+Some CLI/server schema versions reject current JetBrains-hosted `runs-on`
+values such as `Ubuntu-24.04-*` while accepting only legacy image names
+([TW-104680](https://youtrack.jetbrains.com/issue/TW-104680)). These are examples,
+not a fixed list of available images. Never replace a server-confirmed
+selector with a legacy value solely to make `pipeline validate` pass.
+
+- Record the installed CLI version and the exact validation errors. Check
+  `pipeline validate --help`; use `--refresh-schema` when supported and
+  revalidate. A refreshed schema can still contain an outdated enum.
+- Confirm the exact image and job compatibility on the target server and
+  project. For an existing pipeline, validate its unchanged server-stored
+  YAML as a diagnostic baseline. Compare error paths and rejected values
+  with the proposed YAML; equal error counts alone do not establish the
+  same failure.
+- Keep the confirmed selector and resolve other validation errors. If the
+  enum mismatch persists, use another supported semantic validator when
+  available. Otherwise report a validation-tooling limitation separately
+  from agent incompatibility. Do not claim validation passed or bypass the
+  validation gate. A successful `pipeline push` is not compatibility proof.
+
 ## Check compatibility before queueing
 
 Inspect the live schema, enabled and authorized agents, cloud images, runtime
