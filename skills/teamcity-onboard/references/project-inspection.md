@@ -1,8 +1,9 @@
 # Project Inspection
 
-Before creating or changing TeamCity CI, inspect the project so the first
-configuration is small, idiomatic, and likely to build. The build files are the
-ground truth; existing CI shows how the team already runs them.
+Before you create or change TeamCity CI, inspect the project so the first
+configuration is small, follows the project's conventions, and is likely to
+build. Trust the build files first. Existing CI shows how the team already
+runs them.
 
 ## Inspect Locally
 
@@ -20,10 +21,9 @@ Identify:
 
 ## Inspect GitHub Actions Workflows
 
-When `.github/workflows/` exists, read every workflow before designing the
+When `.github/workflows/` exists, read every workflow before you design the
 pipeline. The workflows record the exact commands, tool versions, secrets,
-services, and job order the team already trusts. Reuse that knowledge instead
-of inferring it again from the build files.
+services, and job order the team already trusts. Reuse that knowledge.
 
 For each workflow, record:
 
@@ -40,7 +40,7 @@ For each workflow, record:
 ### Choose The Workflow To Reuse
 
 Migrate one workflow first. A small green pipeline proves more than a large
-red one; add the rest after the first build is green.
+red one. Add the rest after the first build is green.
 
 - One workflow: use it.
 - Several workflows, one of them a classic build, test, and publish or package
@@ -51,14 +51,14 @@ red one; add the rest after the first build is green.
   a job graph that becomes a chain.
 - No workflows: design the pipeline from the local inspection alone.
 
-Skip workflows that only make sense on GitHub and list them in the report:
+Skip workflows that are specific to GitHub, and list them in the report:
 CodeQL and other security scanning actions, Dependabot, GitHub Pages
 deployment, release-only or tag-only workflows, and labeler or stale bots.
 
 ### Translate The Workflow Into A Pipeline
 
 Keep the job graph, the shell commands, the tool versions, and the artifact
-paths. Replace what GitHub provides with the TeamCity equivalent; TeamCity
+paths. Replace what GitHub provides with the TeamCity equivalent. TeamCity
 does not run GitHub Actions.
 
 | GitHub Actions | TeamCity |
@@ -77,27 +77,14 @@ does not run GitHub Actions.
 | Other `uses:` actions | The shell commands from the action's `action.yml` |
 
 Some workflow settings have no place in Pipeline YAML. Record them as manual
-follow-up rather than approximating them: `on:` triggers and branch filters,
-`if:` conditions, `concurrency:`, `timeout-minutes:`, and notifications.
+follow-up: `on:` triggers and branch filters, `if:` conditions,
+`concurrency:`, `timeout-minutes:`, and notifications.
 
 Leave deploy, publish, and release steps out of the first pipeline. A first
-verification build must not mutate anything outside TeamCity. Report them as
+verification build must not change anything outside TeamCity. Report them as
 follow-up work.
 
 Read [Build-step selection](build-step-selection.md) to choose the runner for
-each translated step and to add meaningful build status.
-
-## Inspect TeamCity
-
-Use available TeamCity access to check:
-
-- Existing projects and build configurations.
-- Build configurations already connected to the same repository.
-- Existing VCS roots and branch specifications.
-- Available pipeline support and write permissions.
-
-## Avoid Duplicate CI
-
-Before creating a new TeamCity configuration, search for existing build
-configurations related to the same repository. Prefer updating or reusing an
-existing configuration when it matches the user's intent.
+each translated step and to add meaningful build status. The TeamCity side
+of the inspection, including existing pipelines for the same repository, is
+in [Discover and connect](discover-and-connect.md).
