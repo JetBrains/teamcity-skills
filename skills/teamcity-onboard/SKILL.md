@@ -14,11 +14,10 @@ not work without that step.
 
 ## Before the first command
 
-Load the `teamcity-cli` skill: through the Skill tool when it is available,
-otherwise by reading `../teamcity-cli/SKILL.md`; if it is not installed, run
-`teamcity skill install`. It owns command syntax, output formats, run and
-watch, failure investigation, and the pipeline pull, validate, push loop. Do
-not guess a flag it documents.
+Load the `teamcity-cli` skill: through the Skill tool when it is available; 
+if it is not installed, run `teamcity skill install`. It owns command syntax, 
+output formats, run and watch, failure investigation, and the pipeline pull, 
+validate, push loop. Do not guess a flag it documents.
 
 Read [TeamCity tool policy](references/teamcity-tool-policy.md) and
 [Token safety](references/token-safety.md). Where this skill and the CLI
