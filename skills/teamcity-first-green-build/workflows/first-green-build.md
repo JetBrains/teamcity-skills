@@ -31,8 +31,8 @@ with a green verification build or a proven external blocker.
   and technology.
 - [Build-step selection](../shared/build-step-selection.md) — runner choice,
   scripts, JVMs, outputs, and status messages.
-- [JDK selection](../shared/jdk-selection.md) — a job that requires a specific
-  JDK on an agent or in a container.
+- [JDK selection](../shared/jdk-selection.md) — installed JDKs, build-local
+  downloads, container fallback, and runtime verification.
 - [KMP and mobile](../shared/kmp-mobile.md) — Kotlin Multiplatform, Android,
   Compose, or iOS.
 - [Token safety](../shared/token-safety.md) — credentials.

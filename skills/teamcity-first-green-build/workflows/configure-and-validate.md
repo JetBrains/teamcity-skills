@@ -31,7 +31,7 @@ PR handling. A successful ordinary-branch build is not proof that a
 For a branch-only pipeline, do not enable PR triggers as incidental setup.
 
 When a job requires a specific JDK, read [JDK selection](../shared/jdk-selection.md)
-before configuring its agent requirement, runner, or container.
+before configuring its agent requirement, JDK setup step, runner, or container.
 
 Keep independent jobs from the repository. Keep mobile work in a KMP pipeline.
 Use meaningful TeamCity status messages.
