@@ -67,17 +67,14 @@ Read the root's default branch and branch specification from the `vcs view`
 output. The web step created the root, so its default branch may not be the
 branch that is checked out. Then:
 
-- When the checked-out branch is the root's default branch, queue without
-  `--branch`. Naming the default branch (`main`, `master`, a release branch)
-  fails with `invalid_branch_name` whenever the specification does not list
-  it, and TeamCity then builds default-branch revisions under a red head.
+- When the checked-out branch is the root's default branch, queue with
+  `--branch '<default>'`, especially when pinning `--revision`. Naming the
+  literal branch (`main`, `master`, or a release name) fails with
+  `invalid_branch_name` whenever the specification does not list it.
 - For any other branch, pass `--branch` with a logical name the
-  specification accepts. The literal Git ref is not always one. The accepted
-  names are visible in `teamcity run list --job <job-id>` once a build ran, or
-  derive them from the specification: `+:refs/heads/*` names `feature/x` as
+  specification accepts. The literal Git ref is not always one. Derive the
+  name from the specification: `+:refs/heads/*` names `feature/x` as
   `feature/x`.
-- Do not pin a revision without `--branch`; it can resolve to `<unspecified>`
-  and fail checkout.
 
 After queueing, read back the run's branch and revision before waiting on it.
 A red head whose problem is `invalid_branch_name` while every job is green is
@@ -95,7 +92,8 @@ Access Failures" in [Build diagnostics](build-diagnostics.md).
 When the root exists but the branch or the latest commit is not pushed, run a
 personal build from the local checkout instead of waiting for a push:
 `run start --local-changes=git --no-push --personal` with the chosen
-`--branch`, as in the CLI skill's "Personal Builds" section. A remote run gives early evidence; the pipeline still needs the root for
+`--branch`, as in the CLI skill's "Personal Builds" section. A remote run
+gives early evidence; the pipeline still needs the root for
 ordinary runs. For a missing custom-patch permission, use
 [Manual prerequisites](manual-prerequisites.md). For a change-collection
 failure before checkout, read [Build diagnostics](build-diagnostics.md).

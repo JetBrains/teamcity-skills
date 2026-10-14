@@ -16,25 +16,46 @@ TEAMCITY_URL=<server> teamcity agent jobs <agent-id> --incompatible --json
 
 The schema gives the `runs-on` enum; the agent list gives the connected
 agents; the incompatibility query explains why an agent rejects a job (the
-CLI skill's agents workflow has the fields). These reads are the only way to
-learn about agents. Do not create a probe or diagnostic pipeline, job, or
-script to inspect them: every pipeline you create is a deliverable the user
-will see in their project.
+CLI skill's agents workflow has the fields). For generated jobs absent from
+the CLI compatibility lists, use the permitted Pipeline compatibility helper
+described in [Build diagnostics](build-diagnostics.md). Do not create a probe
+or diagnostic pipeline, job, or script to inspect agents: every pipeline you
+create is a deliverable the user will see in their project.
 
 ## Choose `runs-on`
 
-- Use a hosted selector from the schema's `runs-on` enum, or a capability
-  observed on a connected agent. Never a GitHub label, a selector from
-  another server, or a transient VM name.
+- Least requirement first: the bare selector the server is known to dispatch,
+  with no sub-requirement. Add one requirement only after a build proved its
+  absence; each `os-family`, `arch`, Docker, or custom key risks zero matches.
+- Use a hosted selector from the schema's `runs-on` enum only when TeamCity
+  confirms a compatible image, or a capability observed on a connected agent.
+  Never use a GitHub label, a selector from another server, or a transient VM
+  name.
 - Add no OS, JDK, Docker, or parameter requirement the workflow did not need.
   Each one shrinks the set of compatible agents. An `os-family` or similar
   key must exist on an observed agent; changing a value's case cannot make a
-  key exist.
+  key exist. A bare parameter name in `self-hosted` is not a custom
+  requirement: use `requirement`, `parameter`, and `value` from the schema.
 - Match the agents' CPU architecture to the images the build pulls, including
   Testcontainers images. An amd64-only image on an arm64 agent fails with
-  `exec format error`. Pin `x86_64` when the images are not multi-arch.
-- Count the compatible agents. Each parallel test batch needs one at the same
-  time; `parallelism` above that count only queues.
+  `exec format error`. Select a verified x86-capable agent for such an image;
+  if you add an architecture requirement, use the agent's exact
+  `teamcity.agent.jvm.os.arch` value, not the workflow's `x86_64` label. An
+  x86 agent may advertise `amd64`.
+- Count compatible agents and cloud images for the exact job. Each parallel
+  test batch needs one agent at the same time to achieve a speedup. A queued
+  batch with compatible but busy agents is a capacity wait, not proof of an
+  invalid requirement.
+
+For every custom requirement, check both its parameter name and its value on
+the candidate set. A Linux agent may advertise
+`teamcity.agent.jvm.os.name=Linux` but have no
+`teamcity.agent.jvm.os.family` parameter; an `os-family=Linux` requirement on
+the absent key cannot schedule. Likewise, do not assume
+`docker.server.osType` exists merely because the job needs Docker: use a
+confirmed Docker-capable selector or parameter, then run `docker info` in the
+job. Treat the compatibility helper's unresolved parameters as dispatch
+blockers, not as build-step problems.
 
 ## Select the JDK
 
@@ -74,8 +95,16 @@ the stored configuration and validate again.
 ## Check compatibility before queueing
 
 Pull the stored YAML and verify that each `%name%` substitution is declared
-or inherited. Run the incompatibility query against the candidate agents for
-every job. Zero compatible agents is a defect to fix now, not to wait out.
+or inherited. Check the exact job against every candidate agent and cloud
+image with the permitted Pipeline helper when the CLI does not include generated
+jobs. Read its unmet requirements and unresolved parameters for every job,
+including jobs with dependencies. Zero compatible candidates is a defect to
+fix now, not to wait out, even if TeamCity says "no idle compatible agents".
+After changing the stored YAML, repeat the check before queueing. A generated
+job absent from the CLI's compatible and incompatible lists has unverified
+compatibility, not a pass. Then dispatch is the test: if the job is still
+queued after two minutes, strip it to the bare selector, push, and requeue
+with `--rebuild-deps`. Ten minutes in the queue is the ceiling.
 When compatibility access is denied, record it as unverified and use
 [Manual prerequisites](manual-prerequisites.md) if no other read works.
 

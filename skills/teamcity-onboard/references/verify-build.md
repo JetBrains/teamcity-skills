@@ -18,13 +18,17 @@ is proven.
 
 ## Decide what a failure means
 
-**Queued for 60–120 seconds** means blocked, not slow. Read the wait reason
-with `teamcity queue list --job <job-id>`, then follow "Diagnose A Build That
-Remains Queued" in [Build diagnostics](build-diagnostics.md): one
-correction the evidence supports, validate, requeue. Never requeue unchanged,
-add a requirement, or switch branches to hide an error. "No idle compatible
-agents" with compatible agents confirmed and test batches queued means the
-pipeline wants more agents than exist: lower `parallelism`, push, requeue.
+**A runnable job queued for two observations or 120 seconds** needs its exact
+wait reason from `teamcity queue list --job <job-id>` and the candidate check
+in [Build diagnostics](build-diagnostics.md). Zero compatible candidates or
+unresolved parameters need a supported correction. "No idle compatible
+agents" with compatible candidates confirmed means busy capacity; continue
+watching the accepted run. Do not requeue unchanged, add a requirement, or
+switch branches to hide an error. Lower `parallelism` for a later run only
+when evidence shows the available capacity cannot provide the planned split.
+When compatibility cannot be verified, remove the sub-requirements down to
+the bare selector. After any requirement change start the run with
+`--rebuild-deps`; otherwise the head reuses the stale queued job build.
 
 **A red head with green jobs** and the problem `invalid_branch_name` is a
 branch binding error. Fix the branch selection as
@@ -54,9 +58,11 @@ corrections. A successful child does not make a failed head green.
 
 ## Show the speedup
 
-After the first green run, run the pipeline two more times on the same
-revision. The first run gives TeamCity the test history; the later runs split
-the tests into batches. Compare them with
+The first green run completes the deliverable. Run the pipeline two more
+times on the same revision only when the test job took a minute or more and
+less than 40 minutes have passed since your first command; otherwise give the
+user the command for the two runs. The first run gives TeamCity the test
+history; the later runs split the tests into batches. Compare them with
 `teamcity run list --job <job-id> --json=id,status,startDate,finishDate`.
 
 Report only what you observed. If the test job takes under a minute, say that

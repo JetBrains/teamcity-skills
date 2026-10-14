@@ -28,8 +28,8 @@ skill differ, this skill wins:
   no saved default server, no `teamcity auth login`, no `teamcity api`;
 - no repository source edits, skipped tests, or disabled steps to get green;
 - no connections, triggers, or pull-request handling; and
-- no probe or diagnostic pipelines: every pipeline you create is a
-  deliverable.
+- no probe or diagnostic pipelines, even when build logs are unreadable:
+  every pipeline you create is a deliverable.
 
 The hand-over context supplies the server URL, the parent project ID, the
 checked-out repository with its remote URL and branch, and the VCS root ID
@@ -51,7 +51,12 @@ List everything dropped as not migrated.
 
 [Agents, JDK, and compatibility](references/agents-and-jdk.md) decides
 `runs-on`, the JDK, and the CPU architecture from the server's own evidence,
-before any YAML is written.
+before any YAML is written. Before queueing, check the stored pipeline's exact
+jobs against every candidate agent and cloud image. Zero compatible candidates
+is a configuration blocker even when the queue says "no idle compatible
+agents"; correct the requirement and check again before running. Start from
+the least restrictive selector; add a requirement only after a build proved
+its absence.
 
 ## 3. Write the pipeline
 
@@ -72,7 +77,8 @@ VCS root, as the CLI skill's pipelines workflow shows. The root, the
 
 [Verify a build](references/verify-build.md) queues the run, tells a blocked
 queue, a branch binding error, a batch-only test failure, and a repository
-failure apart, and then runs the pipeline twice more to show the split.
+failure apart, and then, when time and tests allow, runs the pipeline twice
+more to show the split.
 
 ## Report
 
