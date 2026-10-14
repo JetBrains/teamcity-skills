@@ -1,21 +1,35 @@
-# IDE
+# IDE and local notes
 .idea/
 *.iml
 .ai/
+drafts/
 
 # macOS
 .DS_Store
 
-# Gradle / build output
-# Left over from the retired skill-composer prototype; a stray `git add -A`
-# otherwise sweeps several hundred compiled artifacts into a commit.
+# Local environments and credentials
+.env
+.env.*
+*.env
+*.env.*
+!*.env.example
+!*.env.*.example
+
+# Build output
 .gradle/
 build/
 */build/
 out/
-
-# Go
 *.test
 
-# Local ticket/PR notes, never published
-drafts/
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Eval output and agent telemetry
+eval-result.json
+agent-trace-*.log
+cleanup-report.json
+.teamcity/evaluation-report/
+.teamcity/jcp-central/

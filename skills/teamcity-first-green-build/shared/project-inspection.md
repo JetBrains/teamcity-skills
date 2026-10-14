@@ -23,7 +23,6 @@ Use available TeamCity access to check:
 - Existing projects and build configurations.
 - Build configurations already connected to the same repository.
 - Existing VCS roots and branch specifications.
-- Recent builds, failures, and successful baseline builds.
 - Available pipeline support and write permissions.
 
 ## Avoid Duplicate CI
