@@ -1,22 +1,21 @@
 # Discover and connect
 
 Read [TeamCity tool policy](teamcity-tool-policy.md) first. This guide
-establishes the target, the repository facts, and the VCS root that the
+confirms the target and the repository facts, and finds the VCS root that the
 pipeline will use. In the onboarding flow the target and the repository are
-already resolved; the work here is to confirm them and to find the root. The
-`teamcity-cli` skill's "Project connections & VCS roots" and "Working with
-pipelines" workflows give the commands.
+already resolved. The `teamcity-cli` skill's "Project connections & VCS
+roots" and "Working with pipelines" workflows give the commands.
 
 ## Confirm the target
 
-The hand-over context names the TeamCity server and the parent project ID.
-Do not resolve a project by name, do not ask for either value, and do not take
-the server from the saved CLI default. `_Root` is never the parent.
+Take the TeamCity server and the parent project ID from the hand-over
+context. Use them as given: no project lookup by name, no saved CLI default.
+`_Root` is never the parent.
 
-Confirm the authenticated identity once with `teamcity auth status`. Do not
-run `teamcity auth login`; the flow authenticated the CLI before this skill
-started. Keep tokens, keys, passwords, and authorization headers out of
-commands, logs, configuration, and reports.
+Confirm the authenticated identity once with `teamcity auth status`. The flow
+authenticated the CLI before this skill started. Do not run
+`teamcity auth login`. Keep tokens, keys, passwords, and authorization
+headers out of commands, logs, configuration, and reports.
 
 ## Inspect the repository
 
@@ -24,15 +23,15 @@ Read [Project inspection](project-inspection.md) for the workflow choice and
 the translation table. Then find the smallest build and test commands that
 prove the project works. Record:
 
-- the required JDK or runtime from build files, the workflow's `setup-*`
+- the required JDK or runtime, from build files, the workflow's `setup-*`
   steps, and repository documentation;
 - test report paths and the packaged output;
-- required services, environment variables, and credentials the build and
-  test jobs cannot do without; and
-- checked-in TeamCity YAML or Kotlin DSL, which means CI already exists and
-  the onboarding should reuse it rather than add a second pipeline.
+- required services, environment variables, and credentials that the build
+  and test jobs cannot do without;
+- checked-in TeamCity YAML or Kotlin DSL. This means CI already exists.
+  Reuse it.
 
-Treat a command from the workflow as a candidate; verify it against the build
+Treat a command from the workflow as a candidate. Verify it against the build
 files. Do not run `teamcity migrate`: it recreates the whole workflow, and
 this skill recreates only its build and test core.
 
@@ -40,60 +39,62 @@ this skill recreates only its build and test core.
 
 On the confirmed server, list the parent project's pipelines and VCS roots,
 the connected agents, and the Pipeline schema (`pipeline list`,
-`project vcs list`, `agent list`, `pipeline schema --refresh`). If a pipeline for this repository already exists, update it instead of
-creating another. The agent inventory and the schema decide `runs-on`; see
-"Choose where it runs" in the skill.
+`project vcs list`, `agent list`, `pipeline schema --refresh`). If a pipeline
+for this repository already exists, update it. One repository, one pipeline.
+The agent inventory and the schema decide `runs-on`; see "Choose where it
+runs" in the skill.
 
 ## Find the VCS root
 
-Use the VCS root ID from the hand-over context. Without one, list the roots in
-the parent project and its ancestors and reuse the one whose URL matches the
-repository. Follow the CLI skill's required sequence: `project vcs list`, then
-`project vcs view <id>` for URL, default branch, and auth. Do not guess an ID.
+Use the VCS root ID from the hand-over context. Without one, list the roots
+in the parent project and its ancestors. Reuse the one whose URL matches the
+repository. Follow the CLI skill's required sequence: `project vcs list`,
+then `project vcs view <id>` for URL, default branch, and auth. The ID comes
+from that output only.
 
 - A matching authorized root: use it.
 - No root and a public repository: create one with `--auth anonymous` and
   `--branch refs/heads/<checked-out-branch>`, so the root's default branch is
-  the branch in the checkout; the CLI otherwise assumes `main`. This is the
-  only root this skill creates.
+  the branch in the checkout. Without `--branch`, the CLI assumes `main`.
+  This is the only root this skill creates.
 - No authorized root and a private repository: the pipeline cannot read the
-  sources. Report a [manual prerequisite](manual-prerequisites.md) naming the
-  web step's repository authorization. Do not create a connection, do not
-  create a token-based root, and do not ask for a token.
+  sources. Report a [manual prerequisite](manual-prerequisites.md) that names
+  the web step's repository authorization. Then stop. Connections,
+  token-based roots, and token requests are out of scope.
 
 ## Choose the branch
 
 Read the root's default branch and branch specification from the `vcs view`
-output. The web step created the root, so its default branch may not be the
-branch that is checked out. Then:
+output. The web step created the root, so its default branch may differ from
+the checked-out branch. Then:
 
 - When the checked-out branch is the root's default branch, queue with
-  `--branch '<default>'`, especially when pinning `--revision`. Naming the
-  literal branch (`main`, `master`, or a release name) fails with
-  `invalid_branch_name` whenever the specification does not list it.
+  `--branch '<default>'`, especially when you pin `--revision`. The literal
+  name (`main`, `master`, or a release name) fails with `invalid_branch_name`
+  whenever the specification does not list it.
 - For any other branch, pass `--branch` with a logical name the
-  specification accepts. The literal Git ref is not always one. Derive the
-  name from the specification: `+:refs/heads/*` names `feature/x` as
-  `feature/x`.
+  specification accepts. Derive the name from the specification:
+  `+:refs/heads/*` names `feature/x` as `feature/x`.
 
-After queueing, read back the run's branch and revision before waiting on it.
-A red head whose problem is `invalid_branch_name` while every job is green is
-a branch binding error, not a step failure: fix the branch selection, do not
-touch the steps, and do not report that run as green.
+After queueing, read back the run's branch and revision before you wait on
+it. A red head with the problem `invalid_branch_name` and green jobs is a
+branch binding error. Fix the branch selection. The steps stay unchanged, and
+that run is not green.
 
-If the checked-out branch is not covered by the specification, report a
+If the specification does not cover the checked-out branch, report a
 [manual prerequisite](manual-prerequisites.md) for the root's branch
-specification. Do not switch to `main` or `master` to make the error go away.
-For `invalid_branch_name` on a queued run, read "Diagnose Branch And VCS
-Access Failures" in [Build diagnostics](build-diagnostics.md).
+specification. A switch to `main` or `master`, or a wider branch
+specification, only hides the error and is forbidden. For
+`invalid_branch_name` on a queued run, read "Diagnose Branch And VCS Access
+Failures" in [Build diagnostics](build-diagnostics.md).
 
 ## Remote run as the fallback
 
 When the root exists but the branch or the latest commit is not pushed, run a
-personal build from the local checkout instead of waiting for a push:
+personal build from the local checkout:
 `run start --local-changes=git --no-push --personal` with the chosen
 `--branch`, as in the CLI skill's "Personal Builds" section. A remote run
-gives early evidence; the pipeline still needs the root for
-ordinary runs. For a missing custom-patch permission, use
+gives early evidence. The pipeline still needs the root for ordinary runs.
+For a missing custom-patch permission, use
 [Manual prerequisites](manual-prerequisites.md). For a change-collection
 failure before checkout, read [Build diagnostics](build-diagnostics.md).

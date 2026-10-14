@@ -13,15 +13,15 @@ the Script Parameter Gate, and status messages.
 ## Parallel tests
 
 `parallelism: <n>` on the job whose tests run through a Gradle, Maven, or
-.NET runner. Use 3, or the number of compatible agents if that is smaller, and
-leave it out below 2. TeamCity splits the tests into that many batches once it
-has test history, so the first run collects history and later runs show the
-split.
+.NET runner. Use 3, or the number of compatible agents if that is smaller.
+Below 2, leave `parallelism` out. TeamCity splits the tests into that many
+batches once it has test history, so the first run collects history and later
+runs show the split.
 
 Keep packaging out of that job, because every batch runs the whole job. A
-coverage gate above zero also fails in every batch, since each batch sees only
-part of the tests; keep such a gate out of the batched job or choose a module
-without one.
+coverage gate above zero also fails in every batch, because each batch sees
+only part of the tests. Keep such a gate out of the batched job, or choose a
+module without one.
 
 ## Test reports
 
@@ -66,5 +66,5 @@ jobs:
         tasks: test
 ```
 
-Use `runs-on` and `JAVA_HOME` values from
-[Agents, JDK, and compatibility](agents-and-jdk.md), not the ones above.
+Take the `runs-on` and `JAVA_HOME` values from
+[Agents, JDK, and compatibility](agents-and-jdk.md).

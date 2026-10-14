@@ -6,78 +6,94 @@ description: Use inside the TeamCity onboarding flow, after the web step created
 
 # TeamCity Onboard
 
-Show a team leaving GitHub Actions what their build looks like on TeamCity:
-one workflow's build and test core, native runners, parallel tests, and a
-green pipeline with a visible speedup. The web step before this skill created
-the instance and, when it could, an authenticated VCS root. This skill does
-not work without that step.
+Show a team that leaves GitHub Actions what their build looks like on
+TeamCity:
+
+- the build and test core of one workflow;
+- native runners;
+- parallel tests;
+- a green pipeline with a visible speedup.
+
+The web step before this skill created the instance and, when it could, an
+authenticated VCS root. This skill needs that step.
 
 ## Before the first command
 
-Load the `teamcity-cli` skill: through the Skill tool when it is available; 
-if it is not installed, run `teamcity skill install`. It owns command syntax, 
-output formats, run and watch, failure investigation, and the pipeline pull, 
-validate, push loop. Do not guess a flag it documents.
+Load the `teamcity-cli` skill through the Skill tool. If it is not installed,
+run `teamcity skill install`. The CLI skill owns command syntax, output
+formats, run and watch, failure investigation, and the pipeline pull,
+validate, push loop. Use only the flags it documents.
 
 Read [TeamCity tool policy](references/teamcity-tool-policy.md) and
 [Token safety](references/token-safety.md). Where this skill and the CLI
 skill differ, this skill wins:
 
-- every command carries `TEAMCITY_URL=<server>` from the hand-over context;
-  no saved default server, no `teamcity auth login`, no `teamcity api`;
-- no repository source edits, skipped tests, or disabled steps to get green;
-- no connections, triggers, or pull-request handling; and
-- no probe or diagnostic pipelines, even when build logs are unreadable:
-  every pipeline you create is a deliverable.
+- Every command carries `TEAMCITY_URL=<server>` from the hand-over context.
+  A saved default server, `teamcity auth login`, and `teamcity api` are
+  forbidden.
+- The repository sources stay unchanged. Skipped tests and disabled steps
+  are not a way to get green.
+- Connections, triggers, and pull-request handling are out of scope.
+- Every pipeline you create is a deliverable. Probe and diagnostic pipelines
+  are forbidden, even when build logs are unreadable.
 
-The hand-over context supplies the server URL, the parent project ID, the
-checked-out repository with its remote URL and branch, and the VCS root ID
-when one exists. Never ask for these. If one is missing, stop and name it.
+The hand-over context supplies:
+
+- the server URL;
+- the parent project ID;
+- the checked-out repository with its remote URL and branch;
+- the VCS root ID, when one exists.
+
+Never ask for these. If one is missing, stop and name it.
 
 ## 1. Read the repository
 
-[Discover and connect](references/discover-and-connect.md) confirms the
-target, inspects the server, and finds the VCS root and the branch.
-[Project inspection](references/project-inspection.md) chooses the workflow:
-prefer the classic build, test, and publish flow; otherwise the one that
-others depend on or that suits TeamCity best. Record the choice and the
-reason. A repository without workflows is designed from its build files.
+Read [Discover and connect](references/discover-and-connect.md). Confirm the
+target, inspect the server, and find the VCS root and the branch.
 
-Keep only the jobs that build and test, one matrix combination, Linux first.
-List everything dropped as not migrated.
+Read [Project inspection](references/project-inspection.md). Choose the
+workflow. Prefer the classic build, test, and publish flow. Otherwise choose
+the one that others depend on, or the one that suits TeamCity best. Record
+the choice and the reason. For a repository without workflows, design the
+pipeline from its build files.
+
+Keep only the jobs that build and test. Keep one matrix combination, Linux
+first. List everything dropped as not migrated.
 
 ## 2. Choose where it runs
 
-[Agents, JDK, and compatibility](references/agents-and-jdk.md) decides
-`runs-on`, the JDK, and the CPU architecture from the server's own evidence,
-before any YAML is written. Before queueing, check the stored pipeline's exact
-jobs against every candidate agent and cloud image. Zero compatible candidates
-is a configuration blocker even when the queue says "no idle compatible
-agents"; correct the requirement and check again before running. Start from
-the least restrictive selector; add a requirement only after a build proved
-its absence.
+Read [Agents, JDK, and compatibility](references/agents-and-jdk.md) before
+you write any YAML. Decide `runs-on`, the JDK, and the CPU architecture from
+the server's own evidence. Start from the least restrictive selector. Add a
+requirement only after a build proved its absence.
+
+Before queueing, check the stored pipeline's exact jobs against every
+candidate agent and cloud image. Zero compatible candidates is a
+configuration blocker. Correct the requirement and check again before you
+run.
 
 ## 3. Write the pipeline
 
-[Build-step selection](references/build-step-selection.md) picks dedicated
-runners; a script step is for glue only.
-[Pipeline features](references/pipeline-features.md) adds the dependency
+Read [Build-step selection](references/build-step-selection.md). Pick
+dedicated runners. A script step is for glue only.
+
+Read [Pipeline features](references/pipeline-features.md). Add the dependency
 cache, parallel tests, test reports, and artifacts, even if the workflow had
 none. Validate the file and check compatibility as the agents guide says.
 
 ## 4. Create the pipeline
 
 Create it with `teamcity pipeline create` against the parent project and the
-VCS root, as the CLI skill's pipelines workflow shows. The root, the
-`--branch` value, and the remote-run fallback for an unpushed commit come from
+VCS root, as the CLI skill's pipelines workflow shows. Take the root, the
+`--branch` value, and the remote-run fallback for an unpushed commit from
 [Discover and connect](references/discover-and-connect.md).
 
 ## 5. Run it until green, then show the speedup
 
-[Verify a build](references/verify-build.md) queues the run, tells a blocked
-queue, a branch binding error, a batch-only test failure, and a repository
-failure apart, and then, when time and tests allow, runs the pipeline twice
-more to show the split.
+Read [Verify a build](references/verify-build.md). Queue the run. Classify
+each failure: blocked queue, branch binding error, batch-only test failure,
+or repository failure. When time and tests allow, run the pipeline twice more
+to show the split.
 
 ## Report
 
