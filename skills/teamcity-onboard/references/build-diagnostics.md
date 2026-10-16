@@ -20,7 +20,7 @@ Read its "Investigate a build failure" workflow first for:
 
 Then use this guide to interpret that evidence. If the workflow's command
 syntax conflicts with remembered syntax, the `teamcity-cli` reference wins.
-Use a matching first-class CLI or MCP operation for every read; see
+Use a matching first-class CLI operation for every read; see
 [TeamCity tool policy](teamcity-tool-policy.md).
 
 ## Investigation Order
@@ -80,8 +80,8 @@ cause. Then, before another poll:
 1. List the enabled, authorized agents in the target pool and the applicable
    cloud images or hosted selectors.
 2. Check the exact job against each candidate with
-   `teamcity agent jobs <agent-id> --incompatible --json`, or with an MCP
-   Pipeline compatibility check when one exists. Count compatible candidates.
+   `teamcity agent jobs <agent-id> --incompatible --json`. Count compatible
+   candidates.
    Group the unmet requirements and unresolved parameters. Compatibility
    comes from this check only; an agent's name and the queue message prove
    nothing.
@@ -122,9 +122,10 @@ revisions, inspect:
 - their default branches and branch specifications;
 - the mapping from the requested Git branch to TeamCity's logical branch.
 
-The usual cause is the default branch named literally (`--branch main`) when
-the specification does not list it. Queue with the logical
-`--branch '<default>'`, especially when you pin a revision. The meaning of a
+The usual cause is a `--branch` value the specification does not list, or a
+bare `--revision <sha>` that TeamCity binds to the default branch. Pin with
+the CLI skill's form, `--revision <root-id>=<sha>@<branch>`, which carries
+the branch with the commit. The meaning of a
 red head with green jobs is in "Choose the branch" of
 [Discover and connect](discover-and-connect.md). Retry only after you
 corrected a demonstrated mismatch.

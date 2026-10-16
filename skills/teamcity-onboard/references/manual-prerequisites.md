@@ -1,6 +1,6 @@
 # Manual prerequisites
 
-Use this guide when the available CLI and MCP tools cannot complete a
+Use this guide when the CLI cannot complete a
 required operation safely. Give a specific request. "Configure the
 connection" and "grant access" are too vague.
 
@@ -9,7 +9,7 @@ For each prerequisite, give:
 1. **Owner**: role or team with the required permission.
 2. **Scope**: exact TeamCity server and project. State the exact project
    level. The change usually belongs in the child project.
-3. **Action**: TeamCity UI path or supported CLI or MCP command. Use known
+3. **Action**: TeamCity UI path or supported CLI command. Use known
    labels. When a label is unknown, name the setting and the object. Do not
    invent a field name.
 4. **Values**: known IDs, URLs, branch, connection, agent image, and parameter

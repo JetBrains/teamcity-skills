@@ -12,14 +12,7 @@ that credential as access to production infrastructure.
 - Switch from a restricted token to an admin token only when the user
   explicitly asks and understands the impact.
 - Keep tokens out of repository files.
-- Use first-class CLI fields for build and queue reads. When they are not
-  enough:
-  1. Find the TeamCity MCP tools in the current environment.
-  2. Read their guide and schemas.
-  3. Verify the target server.
-  4. Use a dedicated read operation.
-- A generic MCP read is acceptable only when its schema explicitly permits a
-  selection of a few named fields for one known object. Do not dump a full
+- Use first-class CLI fields for build and queue reads. Do not dump a full
   object or request its `properties` collection. It can contain inherited
   parameters, and a server may return a value that should be masked.
 - If a tool returns a response that contains a secret, do not repeat it in
