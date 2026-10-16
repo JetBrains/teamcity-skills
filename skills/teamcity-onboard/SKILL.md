@@ -1,7 +1,7 @@
 ---
 name: teamcity-onboard
 version: 0.1.0
-description: Use when onboarding a project to TeamCity and the task hands over a server URL and a repository. Recreates the build and test core as a pipeline with native runners and parallel tests, and runs it until green.
+description: Use when onboarding a project to TeamCity and the task hands over a server URL and a repository. Recreates one workflow, complete except deploy, publish, and release, as a pipeline with native runners, parallel tests, and a live build status, and runs it until green.
 ---
 
 # TeamCity Onboard
@@ -9,9 +9,10 @@ description: Use when onboarding a project to TeamCity and the task hands over a
 Show a team that leaves GitHub Actions what their build looks like on
 TeamCity:
 
-- the build and test core of one workflow;
+- one workflow, complete except deploy, publish, and release;
 - native runners;
 - parallel tests;
+- a live build status and HTML reports;
 - a green pipeline with a visible speedup.
 
 The web step before this skill created the instance and, when it could, an
@@ -58,8 +59,9 @@ the one that others depend on, or the one that suits TeamCity best. Record
 the choice and the reason. For a repository without workflows, design the
 pipeline from its build files.
 
-Keep only the jobs that build and test. Keep one matrix combination, Linux
-first.
+Keep every job of the chosen workflow that needs no secret and changes
+nothing outside TeamCity. Leave out deploy, publish, and release. UI and
+end-to-end jobs stay. Keep one matrix combination, Linux first.
 
 ## 2. Choose where it runs
 
@@ -76,11 +78,13 @@ run.
 ## 3. Write the pipeline
 
 Read [Build-step selection](references/build-step-selection.md). Pick
-dedicated runners. A script step is for glue only.
+dedicated runners. A script step is for glue and for the status step.
 
 Read [Pipeline features](references/pipeline-features.md). Add the dependency
-cache, parallel tests, test reports, and artifacts, even if the workflow had
-none. Validate the file and check compatibility as the agents guide says.
+cache, test reports, artifacts, and a status step, even if the
+workflow had none. Parallel tests come after the first green run, when the
+suite is long enough. Validate the file and check compatibility as the
+agents guide says.
 
 ## 4. Create the pipeline
 
@@ -93,14 +97,16 @@ VCS root, as the CLI skill's pipelines workflow shows. Take the root, the
 
 Read [Verify a build](references/verify-build.md). Queue the run. Classify
 each failure: blocked queue, branch binding error, batch-only test failure,
-or repository failure. When time and tests allow, run the pipeline twice more
-to show the split.
+or repository failure. When the test job took a minute or more and time
+allows, add `parallelism`, push, and run the pipeline twice more to show the
+split.
 
 ## Report
 
 Lead with the pipeline URL from `teamcity pipeline view <id> --web`. Then:
 
 - the workflow chosen and why;
+- the workflow's test tasks per module and the job that runs each;
 - each job with its runner type, the features added, and what each feature
   buys the team;
 - the runs: ID, state, duration, number of test batches, and the speedup

@@ -128,7 +128,9 @@ complete result needs no further build or discovery.
 
 Every generated or modified pipeline, build step, and build script must
 report a live, meaningful status. A generic "Running" in the builds overview
-is incomplete.
+is incomplete. Dedicated runners emit no service messages, so each job ends
+with a script step named `Status` that echoes the `buildStatus` line below
+with the job's summary.
 
 - Give every dedicated runner step an explicit, human-readable `name`.
   TeamCity shows the running step in the overview.

@@ -66,16 +66,18 @@ corrections. A successful child does not make a failed head green.
 
 ## Show the speedup
 
-The first green run completes the deliverable. Run the pipeline two more
-times on the same revision only when both are true:
+The first green run completes the deliverable and runs unsplit. Add
+`parallelism` as [Pipeline features](pipeline-features.md) describes, push,
+and run the pipeline two more times on the same revision only when both are
+true:
 
 - the test job took a minute or more;
 - less than 40 minutes have passed since your first command.
 
-Otherwise give the user the command for the two runs. The first run gives
-TeamCity the test history. The later runs split the tests into batches.
-Compare them with
+When only time was short, give the user the YAML change and the command for
+the two runs. The first run gave TeamCity the test history. The later runs
+split the tests into batches. Compare them with
 `teamcity run list --job <job-id> --json=id,status,startDate,finishDate`.
 
-Report only what you observed. If the test job takes under a minute, say
-that parallel tests give no gain yet.
+Report only what you observed. If the test job took under a minute, leave
+`parallelism` out and say the suite is too short to split.
