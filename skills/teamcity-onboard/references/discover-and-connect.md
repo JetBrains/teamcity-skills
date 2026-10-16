@@ -10,7 +10,7 @@ roots" and "Working with pipelines" workflows give the commands.
 
 Take the TeamCity server and the parent project ID from the hand-over
 context. Use them as given: no project lookup by name, no saved CLI default.
-`_Root` is never the parent.
+Without a parent project ID, the parent is `_Root`.
 
 Confirm the authenticated identity once with `teamcity auth status`. The flow
 authenticated the CLI before this skill started. Do not run
@@ -68,10 +68,10 @@ Read the root's default branch and branch specification from the `vcs view`
 output. The web step created the root, so its default branch may differ from
 the checked-out branch. Then:
 
-- When the checked-out branch is the root's default branch, queue with
-  `--branch '<default>'`, especially when you pin `--revision`. The literal
-  name (`main`, `master`, or a release name) fails with `invalid_branch_name`
-  whenever the specification does not list it.
+- To pin the checked-out commit, use the CLI skill's form
+  `--revision <root-id>=<sha>@<branch>`, which binds the commit to its
+  branch. A bare `--revision <sha>` or a literal `--branch main` fails with
+  `invalid_branch_name` whenever the specification does not list the branch.
 - For any other branch, pass `--branch` with a logical name the
   specification accepts. Derive the name from the specification:
   `+:refs/heads/*` names `feature/x` as `feature/x`.

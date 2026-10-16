@@ -1,7 +1,7 @@
 ---
 name: teamcity-onboard
 version: 0.1.0
-description: Use inside the TeamCity onboarding flow, after the web step created the instance and handed over its context. Reads a checked-out repository and its GitHub Actions workflow, recreates the build and test core as a TeamCity pipeline with native runners and parallel tests, and runs it until green.
+description: Use when onboarding a project to TeamCity and the task hands over a server URL and a repository. Recreates the build and test core as a pipeline with native runners and parallel tests, and runs it until green.
 ---
 
 # TeamCity Onboard
@@ -29,8 +29,7 @@ Read [TeamCity tool policy](references/teamcity-tool-policy.md) and
 skill differ, this skill wins:
 
 - Every command carries `TEAMCITY_URL=<server>` from the hand-over context.
-  A saved default server, `teamcity auth login`, and `teamcity api` are
-  forbidden.
+  A saved default server and `teamcity auth login` are forbidden.
 - The repository sources stay unchanged. Skipped tests and disabled steps
   are not a way to get green.
 - Connections, triggers, and pull-request handling are out of scope.
@@ -39,12 +38,14 @@ skill differ, this skill wins:
 
 The hand-over context supplies:
 
-- the server URL;
-- the parent project ID;
-- the checked-out repository with its remote URL and branch;
+- the server URL. Without it, stop and name it;
+- the parent project ID. Without it, work in `_Root`;
+- the checked-out repository with its remote URL and branch. Without it,
+  use the repository this skill runs in: `git remote get-url origin` and
+  `git branch --show-current`;
 - the VCS root ID, when one exists.
 
-Never ask for these. If one is missing, stop and name it.
+Never ask for these.
 
 ## 1. Read the repository
 
@@ -52,13 +53,13 @@ Read [Discover and connect](references/discover-and-connect.md). Confirm the
 target, inspect the server, and find the VCS root and the branch.
 
 Read [Project inspection](references/project-inspection.md). Choose the
-workflow. Prefer the classic build, test, and publish flow. Otherwise choose
+workflow. Prefer the classic build and test flow. Otherwise, choose
 the one that others depend on, or the one that suits TeamCity best. Record
 the choice and the reason. For a repository without workflows, design the
 pipeline from its build files.
 
 Keep only the jobs that build and test. Keep one matrix combination, Linux
-first. List everything dropped as not migrated.
+first.
 
 ## 2. Choose where it runs
 
@@ -99,8 +100,10 @@ to show the split.
 
 Lead with the pipeline URL from `teamcity pipeline view <id> --web`. Then:
 
-- the workflow chosen and why, and the jobs not migrated;
-- each job with its runner type and the features added;
-- the runs: ID, state, duration, number of test batches;
+- the workflow chosen and why;
+- each job with its runner type, the features added, and what each feature
+  buys the team;
+- the runs: ID, state, duration, number of test batches, and the speedup
+  when measured;
 - each manual prerequisite, in the form
   [Manual prerequisites](references/manual-prerequisites.md) requires.
