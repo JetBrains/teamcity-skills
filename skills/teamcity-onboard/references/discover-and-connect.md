@@ -8,9 +8,9 @@ roots" and "Working with pipelines" workflows give the commands.
 
 ## Confirm the target
 
-Take the TeamCity server and the parent project ID from the hand-over
-context. Use them as given: no project lookup by name, no saved CLI default.
-Without a parent project ID, the parent is `_Root`.
+Take the TeamCity server from the hand-over context and use it as given: no
+saved CLI default. The parent project is always `_Root`; no project ID is
+handed over or looked up.
 
 Confirm the authenticated identity once with `teamcity auth status`. The flow
 authenticated the CLI before this skill started. Do not run
@@ -37,7 +37,7 @@ skill builds the basic build only.
 
 ## Inspect TeamCity
 
-On the confirmed server, list the parent project's pipelines and VCS roots,
+On the confirmed server, list the `_Root` project's pipelines and VCS roots,
 the connected agents, and the Pipeline schema (`pipeline list`,
 `project vcs list`, `agent list`, `pipeline schema --refresh`). If a pipeline
 for this repository already exists, update it. One repository, one pipeline.
@@ -47,7 +47,7 @@ runs" in the skill.
 ## Find the VCS root
 
 Use the VCS root ID from the hand-over context. Without one, list the roots
-in the parent project and its ancestors. Reuse the one whose URL matches the
+in `_Root`. Reuse the one whose URL matches the
 repository. Follow the CLI skill's required sequence: `project vcs list`,
 then `project vcs view <id>` for URL, default branch, and auth. The ID comes
 from that output only.
