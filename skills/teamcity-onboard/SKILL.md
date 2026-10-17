@@ -41,7 +41,6 @@ skill differ, this skill wins:
 The hand-over context supplies:
 
 - the server URL. Without it, stop and name it;
-- the parent project ID. Without it, work in `_Root`;
 - the checked-out repository with its remote URL and branch. Without it,
   use the repository this skill runs in: `git remote get-url origin` and
   `git branch --show-current`;
@@ -87,7 +86,7 @@ and check compatibility as the agents guide says.
 
 ## 4. Create the pipeline
 
-Create it with `teamcity pipeline create` against the parent project and the
+Create it with `teamcity pipeline create` in `_Root` and against the
 VCS root, as the CLI skill's pipelines workflow shows. Take the root, the
 `--branch` value, and the remote-run fallback for an unpushed commit from
 [Discover and connect](references/discover-and-connect.md).
