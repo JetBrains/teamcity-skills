@@ -1,26 +1,24 @@
 ---
 name: teamcity-onboard
 version: 0.1.0
-description: Use when onboarding a project to TeamCity and the task hands over a server URL and a repository. Recreates one workflow, complete except deploy, publish, and release, as a pipeline with native runners, parallel tests, and a live build status, and runs it until green.
+description: Use when onboarding a project to TeamCity and the task hands over a server URL and a repository. Gets the repository to its first basic green build with native runners, parallel tests, and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
 # TeamCity Onboard
 
-Show a team that leaves GitHub Actions what their build looks like on
-TeamCity:
-
-- one workflow, complete except deploy, publish, and release;
-- native runners;
-- parallel tests;
-- a live build status and HTML reports;
-- a green pipeline with a visible speedup.
-
-The web step before this skill created the instance and, when it could, an
-authenticated VCS root. This skill needs that step.
+Get a new TeamCity user from the hand-over to the first basic green build,
+fast. That green build is the goal; everything else is secondary. This is a
+quick start, not a migration:
+- a basic build. What basic means depends on the stack. A good one
+  compiles, runs the tests, and packages the output, but none of those is
+  required;
+- native runners in a chain of jobs;
+- parallel tests and a live build status;
+- a green run with a link to watch, and nothing committed to the repository.
 
 ## Before the first command
 
-Load the `teamcity-cli` skill through the Skill tool. If it is not installed,
+Load the `teamcity-cli` skill. If it is not installed,
 run `teamcity skill install`. The CLI skill owns command syntax, output
 formats, run and watch, failure investigation, and the pipeline pull,
 validate, push loop. Use only the flags it documents.
@@ -33,9 +31,12 @@ skill differ, this skill wins:
   A saved default server and `teamcity auth login` are forbidden.
 - The repository sources stay unchanged. Skipped tests and disabled steps
   are not a way to get green.
-- Connections, triggers, and pull-request handling are out of scope.
 - Every pipeline you create is a deliverable. Probe and diagnostic pipelines
   are forbidden, even when build logs are unreadable.
+- Nothing is written to or committed in the user's repository. The pipeline
+  lives on the server; your working YAML lives outside the checkout.
+- No secret value is ever asked for or accepted. See
+  [Token safety](references/token-safety.md).
 
 The hand-over context supplies:
 
@@ -53,15 +54,13 @@ Never ask for these.
 Read [Discover and connect](references/discover-and-connect.md). Confirm the
 target, inspect the server, and find the VCS root and the branch.
 
-Read [Project inspection](references/project-inspection.md). Choose the
-workflow. Prefer the classic build and test flow. Otherwise, choose
-the one that others depend on, or the one that suits TeamCity best. Record
-the choice and the reason. For a repository without workflows, design the
-pipeline from its build files.
-
-Keep every job of the chosen workflow that needs no secret and changes
-nothing outside TeamCity. Leave out deploy, publish, and release. UI and
-end-to-end jobs stay. Keep one matrix combination, Linux first.
+Read [Project inspection](references/project-inspection.md). Read the build
+files, the README, and `.github/workflows/` as signals of how the team
+builds. Design the basic build from them. A good one compiles, runs the
+tests, and packages the output; include whichever of those the project has,
+as a chain of jobs when there is more than one. One matrix combination,
+Linux first. Deploy, publish, release, and any job that needs a secret are
+follow-ups, not part of the first build.
 
 ## 2. Choose where it runs
 
@@ -81,10 +80,10 @@ Read [Build-step selection](references/build-step-selection.md). Pick
 dedicated runners. A script step is for glue and for the status step.
 
 Read [Pipeline features](references/pipeline-features.md). Add the dependency
-cache, test reports, artifacts, and a status step, even if the
-workflow had none. Parallel tests come after the first green run, when the
-suite is long enough. Validate the file and check compatibility as the
-agents guide says.
+cache, test reports, artifacts, a status step, and a report tab when the
+schema has one. Parallel tests come after the first green run, when the
+suite is long enough. Keep the YAML file outside the checkout. Validate it
+and check compatibility as the agents guide says.
 
 ## 4. Create the pipeline
 
@@ -93,20 +92,29 @@ VCS root, as the CLI skill's pipelines workflow shows. Take the root, the
 `--branch` value, and the remote-run fallback for an unpushed commit from
 [Discover and connect](references/discover-and-connect.md).
 
-## 5. Run it until green, then show the speedup
+## 5. Run it until green
 
-Read [Verify a build](references/verify-build.md). Queue the run. Classify
-each failure: blocked queue, branch binding error, batch-only test failure,
-or repository failure. When the test job took a minute or more and time
-allows, add `parallelism`, push, and run the pipeline twice more to show the
-split.
+Read [Verify a build](references/verify-build.md). Start the first run at
+once, without asking. Every time you start a run, tell the user why, say
+that it runs remotely with nothing committed, and give the run's `webUrl`:
+"here it is, if you want to watch". Classify each failure: blocked queue,
+branch binding error, batch-only test failure, or repository failure. A
+repository failure is reported and offered as a follow-up, not fixed.
 
-## Report
+## 6. Improve with the evidence
 
-Lead with the pipeline URL from `teamcity pipeline view <id> --web`. Then:
+After the first green run, as [Verify a build](references/verify-build.md)
+describes: add `parallelism` when the test job is long enough and run twice
+more to show the split; read the run's CPU and memory use and propose a
+cheaper or stronger `runs-on` when the evidence shows one. Say why before
+each run.
 
-- the workflow chosen and why;
-- the workflow's test tasks per module and the job that runs each;
+## 7. Report and offer follow-ups
+
+Lead with the green run's `webUrl`. Then:
+
+- the commands chosen and where they came from;
+- each test task per module and the job that runs it;
 - each job with its runner type, the features added, and what each feature
   buys the team;
 - the runs: ID, state, duration, number of test batches, and the speedup

@@ -25,8 +25,8 @@ test job's duration:
 
 Keep packaging out of that job, because every batch runs the whole job. A
 coverage gate above zero also fails in every batch, because each batch sees
-only part of the tests. Keep such a gate out of the batched job, or choose a
-module without one.
+only part of the tests. Move such a gate to a non-batched job. Removing a
+module or a test task is forbidden.
 
 ## Test reports
 
@@ -40,6 +40,15 @@ test step has to stay a script, add an `xml-report` job feature with
 the application JAR or package the build produces. Every path is a file or a
 glob such as `**/target/*.jar` or `**/surefire-reports/*.xml`. A bare
 directory fails the publish step and turns a green job red.
+
+## Report tab
+
+Pipelines can show a custom HTML tab on a job. Check
+`teamcity pipeline schema` for the job-level report tab field. When it
+exists, let the `Status` step write a one-page HTML summary of what the job
+built and tested, publish it with `files-publication`, and attach it as the
+tab. When the schema has no such field, skip the tab and name it as a
+follow-up.
 
 ## Shape
 

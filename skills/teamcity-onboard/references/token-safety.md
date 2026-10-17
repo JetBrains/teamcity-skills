@@ -12,6 +12,11 @@ that credential as access to production infrastructure.
 - Switch from a restricted token to an admin token only when the user
   explicitly asks and understands the impact.
 - Keep tokens out of repository files.
+- Never ask the user for a secret value and never accept one in chat. When a
+  job needs a secret, give the link to the pipeline's secrets settings page,
+  name the parameter, and say what to store there. A TeamCity secure
+  parameter stays out of the repository, the build log, and this
+  conversation.
 - Use first-class CLI fields for build and queue reads. Do not dump a full
   object or request its `properties` collection. It can contain inherited
   parameters, and a server may return a value that should be masked.

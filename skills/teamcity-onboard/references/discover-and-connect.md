@@ -20,8 +20,8 @@ headers out of commands, logs, configuration, and reports.
 ## Inspect the repository
 
 Read [Project inspection](project-inspection.md) for the workflow choice and
-the translation table. Then find the build and test commands that
-prove the project works. Record:
+the translation table. Then find the commands that prove the project works.
+Record:
 
 - the required JDK or runtime, from build files, the workflow's `setup-*`
   steps, and repository documentation;
@@ -32,7 +32,8 @@ prove the project works. Record:
   Reuse it.
 
 Treat a command from the workflow as a candidate. Verify it against the build
-files. Do not run `teamcity migrate`. Skill recreates only its build and test core.
+files. Do not run `teamcity migrate`: it converts the whole workflow, and this
+skill builds the basic build only.
 
 ## Inspect TeamCity
 
