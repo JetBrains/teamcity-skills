@@ -19,43 +19,25 @@ Identify:
 - Test commands and artifact outputs.
 - Required services, environment variables, caches, and credentials.
 
-## Inspect GitHub Actions Workflows
+## Read GitHub Actions As A Signal
 
-When `.github/workflows/` exists, read every workflow before you design the
-pipeline. The workflows record the exact commands, tool versions, secrets,
-services, and job order the team already trusts. Reuse that knowledge.
+When `.github/workflows/` exists, read it for the commands, tool versions,
+services, and job order the team already trusts. It is a signal next to the
+build files and the README, not the source to translate. The first pipeline
+is the basic build, not the workflow.
 
-For each workflow, record:
+Take from it:
 
-- Triggers under `on:`: push, pull request, schedule, manual dispatch, tags.
-- Jobs, their `needs:` graph, and their `runs-on` operating systems.
-- Each step: shell commands under `run:`, actions under `uses:` with their
-  inputs, working directories, and conditions under `if:`.
-- Matrix strategies and which combinations matter.
-- Secrets, environment variables, services, containers, caches, and uploaded
-  or downloaded artifacts.
-- Reusable workflows and composite actions the workflow calls, and workflows
-  that call this one.
+- the commands under `run:`, and the tool versions from `setup-*` steps;
+- `services:` and `container:` a test cannot run without;
+- the artifacts it uploads;
+- the `needs:` order between the kept jobs.
 
-### Choose The Workflow To Reuse
+Leave for follow-ups: deploy, publish, and release jobs; tag-only, scheduled,
+and release-only workflows; CodeQL and other GitHub-specific actions; matrix
+combinations beyond the first Linux one; and any job that needs a secret.
 
-Migrate one workflow first. A small green pipeline proves more than a large
-red one. Add the rest after the first build is green.
-
-- One workflow: use it.
-- Several workflows, one of them a classic build, test, and publish or package
-  flow that runs on push or pull request: use that one by default and say why.
-- Several workflows, none classic: propose one and give the reason. Prefer a
-  workflow that other workflows call or depend on, that runs most often, or
-  that suits TeamCity best because it has a real build, tests, artifacts, and
-  a job graph that becomes a chain.
-- No workflows: design the pipeline from the local inspection alone.
-
-Skip workflows that are specific to GitHub, and list them in the report:
-CodeQL and other security scanning actions, Dependabot, GitHub Pages
-deployment, release-only or tag-only workflows, and labeler or stale bots.
-
-### Translate The Workflow Into A Pipeline
+### Translate What You Keep
 
 Keep the job graph, the shell commands, the tool versions, and the artifact
 paths. Replace what GitHub provides with the TeamCity equivalent. TeamCity
@@ -81,8 +63,8 @@ follow-up: `on:` triggers and branch filters, `if:` conditions,
 `concurrency:`, `timeout-minutes:`, and notifications.
 
 Leave deploy, publish, and release steps out of the first pipeline. A first
-verification build must not change anything outside TeamCity. Report them as
-follow-up work.
+verification build must not change anything outside TeamCity. Offer them as
+follow-ups in the report.
 
 Read [Build-step selection](build-step-selection.md) to choose the runner for
 each translated step and to add meaningful build status. The TeamCity side

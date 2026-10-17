@@ -15,8 +15,11 @@ This guide adds what onboarding changes.
 ## Queue and watch
 
 Queue on the branch chosen in [Discover and connect](discover-and-connect.md).
-Poll. The user is waiting, and a queued run has to be noticed early. Keep
-going until the head and every job are green, or a blocker is proven.
+Each run starts without confirmation. On every start, say why this run
+happens, say that it runs remotely and commits nothing, and give the run's
+`webUrl` from `run start --json` or `run list --json=id,webUrl`.
+The user is waiting, and a queued run has to be noticed early. 
+Keep going until the head and every job are green, or a blocker is proven.
 
 ## Decide what a failure means
 
@@ -35,7 +38,7 @@ candidate check in [Build diagnostics](build-diagnostics.md).
 - Lower `parallelism` for a later run only when evidence shows the available
   capacity cannot provide the planned split.
 - After any requirement change, start the run with `--rebuild-deps`.
-  Otherwise the head reuses the queued job build from before the change.
+  Otherwise, the head reuses the queued job build from before the change.
 
 **A red head with green jobs** and the problem `invalid_branch_name` is a
 branch binding error. Fix the branch selection as
@@ -57,9 +60,9 @@ needs no diagnosis.
 **Anything else**: read [Build diagnostics](build-diagnostics.md) to
 interpret the evidence the CLI skill's investigation workflow collects. Of
 the CLI skill's fix paths, only the pipeline YAML path applies: pull the
-stored YAML, correct it, validate, push, and keep the checkout's
-`.teamcity.yml` identical to it. Code fixes and `--local-changes`
-verification of source edits are out of scope.
+stored YAML, correct it, validate, push, and keep your working copy outside
+the checkout identical to it. Code fixes and `--local-changes` verification
+of source edits are out of scope.
 
 Continue only when new evidence supports a correction. Stop after three
 corrections. A successful child does not make a failed head green.

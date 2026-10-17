@@ -5,8 +5,8 @@ TeamCity server's supported capabilities.
 
 ## Rules
 
-- Prefer a dedicated TeamCity runner for the primary build, test, and package
-  work when the schema exposes one.
+- Prefer a dedicated TeamCity runner for the primary work when the schema
+  exposes one.
 - Use a generic script step only for project-specific glue, unsupported
   operations, or shell logic that would be less clear as a dedicated runner.
 - Validate runner names, fields, and pipeline schema against the active
@@ -14,8 +14,8 @@ TeamCity server's supported capabilities.
 - Preserve checked-in CI intent. If the repository already describes
   multiple jobs or container validation, keep that structure unless you have
   a reason.
-- Prefer the smallest configuration that proves the build, tests, and
-  expected packaging or container checks work.
+- Prefer the smallest configuration that proves the project's own build
+  works.
 
 ## Technology Defaults
 
@@ -23,7 +23,7 @@ TeamCity server's supported capabilities.
 
 When the live Pipeline schema exposes `type: gradle`:
 
-- Use the Gradle runner for the primary build, test, and package tasks.
+- Use the Gradle runner for the primary tasks.
 - Set its `tasks` property from the repository's verified Gradle tasks.
 - Schema validation does not check every runner-specific property. That is
   no reason for a script step.
