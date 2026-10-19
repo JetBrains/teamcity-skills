@@ -38,16 +38,6 @@ skill differ, this skill wins:
 - No secret value is ever asked for or accepted. See
   [Token safety](references/token-safety.md).
 
-The hand-over context supplies:
-
-- the server URL. Without it, stop and name it;
-- the checked-out repository with its remote URL and branch. Without it,
-  use the repository this skill runs in: `git remote get-url origin` and
-  `git branch --show-current`;
-- the VCS root ID, when one exists.
-
-Never ask for these.
-
 ## 1. Read the repository
 
 Read [Discover and connect](references/discover-and-connect.md). Confirm the

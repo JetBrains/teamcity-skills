@@ -60,9 +60,9 @@ needs no diagnosis.
 **Anything else**: read [Build diagnostics](build-diagnostics.md) to
 interpret the evidence the CLI skill's investigation workflow collects. Of
 the CLI skill's fix paths, only the pipeline YAML path applies: pull the
-stored YAML, correct it, validate, push, and keep your working copy outside
-the checkout identical to it. Code fixes and `--local-changes` verification
-of source edits are out of scope.
+stored YAML into your working file outside the repository, correct it,
+validate, push. Code fixes and `--local-changes` verification of source
+edits are out of scope.
 
 Continue only when new evidence supports a correction. Stop after three
 corrections. A successful child does not make a failed head green.

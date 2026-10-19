@@ -89,8 +89,9 @@ Validate the file that becomes the source of truth with
 `teamcity pipeline validate <file>`; see the validation rule in
 [TeamCity tool policy](teamcity-tool-policy.md). Apply the Script Parameter
 Gate from [Build-step selection](build-step-selection.md) to local and
-stored YAML. After a server-side correction, reconcile your working copy,
-kept outside the checkout, with the stored configuration and validate again.
+stored YAML. After a server-side correction, `pipeline pull` the stored
+YAML into your working file outside the repository and validate it again.
+The repository never receives this file.
 
 ## Check compatibility before queueing
 
