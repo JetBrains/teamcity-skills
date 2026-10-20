@@ -1,86 +1,98 @@
 # Verify a build
 
-Use this guide to queue the pipeline, drive it to green, and show the
-parallel test speedup. Read [Agents, JDK, and compatibility](agents-and-jdk.md)
-first.
+Queue the pipeline, drive it to green, then show the speedup. The
+`teamcity-cli` skill's "Start, monitor & personal builds" and "Fix a failure
+& monitor until green" sections give the commands and the polling cadence
+(5, 10, 20, then 30 seconds). This guide adds what onboarding changes.
 
-The mechanics come from two `teamcity-cli` skill sections:
+## Start and poll
 
-- "Start, monitor & personal builds": start a run, read back its branch and
-  revision, report progress at 5, 10, 20, then 30 seconds.
-- "Fix a failure & monitor until green": the loop and its stop conditions.
+Queue on the branch from [Discover and connect](discover-and-connect.md).
+Each run starts without confirmation. On every start:
 
-This guide adds what onboarding changes.
+- say why this run happens;
+- say that it runs remotely and commits nothing;
+- give the run's `webUrl` from `run start --json` or
+  `run list --json=id,webUrl`: "here it is, if you want to watch";
+- note the run's `queuedDate` for the cancel guard below.
 
-## Queue and watch
+Poll `run tree <id>` and `run view <id> --json`; never `run watch`. A queued
+run has to be noticed early. Keep going until the head and every job are
+green, or a blocker is proven. A green run is checked: read every test job's
+test count. A test job with 0 tests is a silent failure. Fix the filter as
+[Build-step selection](build-step-selection.md) describes and run again.
 
-Queue on the branch chosen in [Discover and connect](discover-and-connect.md).
-Each run starts without confirmation. On every start, say why this run
-happens, say that it runs remotely and commits nothing, and give the run's
-`webUrl` from `run start --json` or `run list --json=id,webUrl`.
-The user is waiting, and a queued run has to be noticed early. 
-Keep going until the head and every job are green, or a blocker is proven.
+`execution-timeout-minutes` is behind a server toggle and may do nothing. Put
+the limit in the steps as [Build-step selection](build-step-selection.md)
+describes, and `run cancel <id>` when `queuedDate` plus the expected duration
+from [Project inspection](project-inspection.md) plus a margin has passed.
 
 ## Decide what a failure means
 
-**A runnable job queued for two observations or 120 seconds**: read its
-exact wait reason from `teamcity queue list --job <job-id>` and run the
-candidate check in [Build diagnostics](build-diagnostics.md).
+Read the evidence from the most structured to the least: build problems,
+failed tests, a filtered error view of the log, a small log window around
+each anchor. Then:
 
-- Zero compatible candidates or unresolved parameters: make a supported
-  correction.
-- Compatible candidates confirmed but busy: capacity wait. Continue watching
-  the accepted run.
-- Compatibility cannot be verified: remove the sub-requirements down to the
-  bare selector.
-- Requeue only with a change. An added requirement or a branch switch only
-  hides the error and is forbidden.
-- Lower `parallelism` for a later run only when evidence shows the available
-  capacity cannot provide the planned split.
-- After any requirement change, start the run with `--rebuild-deps`.
-  Otherwise, the head reuses the queued job build from before the change.
+**A job queued for 120 seconds.** Read its wait reason with
+`queue list --job <job-id> --json=id,waitReason,queuedDate` and run the
+candidate check from [Agents and JDK](agents-and-jdk.md). A waiting head is
+never the cause.
 
-**A red head with green jobs** and the problem `invalid_branch_name` is a
-branch binding error. Fix the branch selection as
+- Zero compatible candidates or unresolved parameters: one supported
+  correction, then requeue with `--rebuild-deps`. Typical causes: a key no
+  agent has (`os-family`), an architecture label that differs from the
+  agent's value (`x86_64` versus `amd64`), a host-JDK parameter no agent
+  advertises.
+- Compatible candidates, all busy: a capacity wait. Keep polling.
+- Compatibility cannot be verified: strip the job to the bare selector, push,
+  requeue with `--rebuild-deps`.
+- Ten minutes in the queue is the maximum. An added requirement or a branch
+  switch hides the error and is forbidden.
+
+**A red head with green jobs.** Read `run log <head-id> --failed --json` and
+its `problems` array; `run view --json` can show none. `invalid_branch_name`
+is a branch binding error: fix the branch selection as
 [Discover and connect](discover-and-connect.md) describes. The steps stay
 unchanged.
 
-**A test that fails only in a batch**, while the same class is green when the
-job runs unsplit or in a different batch, is a test isolation problem.
-Usually shared state is the cause: a reused Testcontainers container or
-static data. A retry proves nothing. Remove `parallelism` from that job,
-push, requeue, and report the test and the reason the speedup is not
-available for it.
+**A job restarted after its agent disappeared**, seen in builds of about 40
+minutes on hosted agents. TeamCity restarts it with no visible cap. Stop
+after the second identical loss: cancel the run, report it, shorten the job
+before another run.
 
-**A test that fails on its own**, in every run and with no TeamCity cause in
-the log, is a repository failure. Report the test, the assertion, and the
-build ID, and stop. A job that failed only through its snapshot dependency
-needs no diagnosis.
+**A failure before checkout** with `Repository not found`, authentication
+failed, 401, or 404, on a private repository whose root has no durable
+credential: a VCS credential blocker. A passing VCS connection test does not
+override it. Report the build ID, the root ID, and the repository URL, and
+write a [manual prerequisite](manual-prerequisites.md) for the repository
+App or a project-scoped connection. Do not invent a personal access token.
 
-**Anything else**: read [Build diagnostics](build-diagnostics.md) to
-interpret the evidence the CLI skill's investigation workflow collects. Of
-the CLI skill's fix paths, only the pipeline YAML path applies: pull the
+**A test that fails only in a batch**, green when the job runs unsplit: a
+test isolation problem, usually shared state. A retry proves nothing. Remove
+`parallelism` from that job, push, requeue, and report the test and why the
+speedup is not available for it.
+
+**A test that fails on its own**, in every run with no TeamCity cause in the
+log: a repository failure. Report the test, the assertion, and the build ID,
+and stop. A job that failed only through its dependency needs no diagnosis.
+
+**Anything else**: only the pipeline YAML path applies. `pipeline pull` the
 stored YAML into your working file outside the repository, correct it,
-validate, push. Code fixes and `--local-changes` verification of source
-edits are out of scope.
+validate, push, requeue. Code fixes are out of scope. When `run log` is
+denied, read `run view <id>` and `run tests <id> --failed`; the `Status`
+line shows in `run view`.
 
-Continue only when new evidence supports a correction. Stop after three
-corrections. A successful child does not make a failed head green.
+One correction per run; an unchanged retry is wasted. Stop after three
+corrections. A successful child does not make a failed head green. When the
+evidence does not establish one cause, report the likely causes, the
+evidence, and the next small check.
 
 ## Show the speedup
 
-The first green run completes the deliverable and runs unsplit. Add
-`parallelism` as [Pipeline features](pipeline-features.md) describes, push,
-and run the pipeline two more times on the same revision only when both are
-true:
-
-- the test job took a minute or more;
-- less than 40 minutes have passed since your first command.
-
-When only time was short, give the user the YAML change and the command for
-the two runs. The first run gave TeamCity the test history. The later runs
-split the tests into batches. Compare them with
-`teamcity run list --job <job-id> --json=id,status,startDate,finishDate`.
-
-Report only what you observed. If the test job took under a minute, leave
-`parallelism` out and say the suite is too short to split.
+The first green run runs unsplit and completes the deliverable. When the
+conditions in [Pipeline features](pipeline-features.md) hold and less than
+40 minutes have passed since your first command, add `parallelism`, push,
+and run twice more on the same revision. Compare the runs with
+`run list --job <job-id> --json=id,status,startDate,finishDate`. When only
+time was short, give the user the YAML change and the command. Report only
+what you observed.

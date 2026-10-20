@@ -1,54 +1,69 @@
 # Pipeline features
 
-Add these to every onboarding pipeline, whether or not the GitHub workflow had
-them. They are the part of the demonstration that GitHub Actions cannot show.
-Read [Build-step selection](build-step-selection.md) first for runner choice,
-the Script Parameter Gate, and status messages.
+Add these to every onboarding pipeline, whether or not the workflow had them.
+They are the part of the demonstration GitHub Actions cannot show.
 
 ## Dependency cache
 
 `enable-dependency-cache: true` on each job. It replaces `actions/cache` and
-`setup-gradle` caching.
-
-## Parallel tests
-
-Splitting pays off only when the test job is long enough. Leave
-`parallelism` out of the first pipeline. After the first green run, read the
-test job's duration:
-
-- a minute or more, and at least two compatible agents: add
-  `parallelism: <n>` to the job whose tests run through a Gradle, Maven, or
-  .NET runner. Use 3, or the number of compatible agents if that is smaller.
-  Push and run again; TeamCity splits the tests into batches from the
-  history the first run collected;
-- under a minute: leave it out and say the suite is too short to split.
-
-Keep packaging out of that job, because every batch runs the whole job. A
-coverage gate above zero also fails in every batch, because each batch sees
-only part of the tests. Move such a gate to a non-batched job. Removing a
-module or a test task is forbidden.
+`setup-gradle` caching. The key is behind a server toggle and silently does
+nothing when that is off. Look for the cache in the build log before you
+advertise it.
 
 ## Test reports
 
-A Gradle, Maven, or .NET runner imports test results by itself. Only when a
-test step has to stay a script, add an `xml-report` job feature with
-`report-type: junit` and `rules:` for the report files.
+Tests run from a script step are invisible. A Gradle, Maven, or .NET runner
+imports test results by itself. When a test step has to stay a script
+(Vitest, pytest, `go test`, bats), write JUnit XML and add an `xml-report`
+job feature with `report-type: junit` and `rules:` for the report files. A
+filter that matches nothing leaves the job green with 0 tests: a silent
+failure. [Verify a build](verify-build.md) checks the count after every run.
+
+## Parallel tests
+
+Leave `parallelism` out of the first pipeline. Add it to the job whose tests
+run through a Gradle, Maven, or .NET runner when all of these hold:
+
+- one finished run of the same job with test results exists. TeamCity splits
+  from that history; a canceled run does not count;
+- the test job took a minute or more. Under a minute, say the suite is too
+  short to split;
+- at least two compatible agents. Use `parallelism: 3`, or the number of
+  compatible agents when that is smaller;
+- the Maven step uses no `-Dtest`; see
+  [Build-step selection](build-step-selection.md).
+
+Every batch runs the whole job, so keep packaging out of it. A coverage gate
+above zero fails in every batch, because each batch sees part of the tests:
+move the gate to a job without `parallelism`. Removing a module or a test
+task is forbidden.
 
 ## Artifacts
 
 `files-publication` for the packaged output: what the workflow uploaded, or
-the application JAR or package the build produces. Every path is a file or a
-glob such as `**/target/*.jar` or `**/surefire-reports/*.xml`. A bare
-directory fails the publish step and turns a green job red.
+the JAR or package the build produces. Every path is a file or a glob such as
+`**/target/*.jar`. A bare directory fails the publish step and turns a green
+job red.
+
+Rules: `dir/**` drops the directory prefix; `=>` is rejected;
+`publish-artifact: true` puts the files under `publish/`; `share-with-jobs`
+defaults to true. Pack a directory into one archive to pass it.
+
+On TC Cloud every artifact, and the job's `.shared_files.zip` with all shared
+files together, is limited to 300 MB by default. A fat JAR or a Docker image
+does not fit; never plan to pass one between jobs. Only a system
+administrator can raise the limit. A compile-heavy project can share its
+Gradle build cache archive with downstream jobs when it fits.
 
 ## Report tab
 
-Pipelines can show a custom HTML tab on a job. Check
-`teamcity pipeline schema` for the job-level report tab field. When it
-exists, let the `Status` step write a one-page HTML summary of what the job
-built and tested, publish it with `files-publication`, and attach it as the
-tab. When the schema has no such field, skip the tab and name it as a
-follow-up.
+A custom tab is a `ReportTab` project feature on `_Root` with
+`startPage=publish/<file>.html`. There is no YAML key. The `Status` step
+writes a one-page HTML summary of what the job built and tested; publish it
+with `publish-artifact: true`. Add the feature once through `teamcity api`,
+with the property names copied from an existing `ReportTab` feature on the
+server. When there is none to copy, write a
+[manual prerequisite](manual-prerequisites.md). Give the user the tab's link.
 
 ## Shape
 
@@ -56,10 +71,10 @@ follow-up.
 jobs:
   build:
     name: Build
-    runs-on: Linux-Medium   # a value from this server's schema enum
+    runs-on: Linux-Medium              # a value this server dispatches
     enable-dependency-cache: true
     parameters:
-      env.JAVA_HOME: "%env.JDK_17_0%"   # a key observed on an agent
+      env.JAVA_HOME: "%env.JDK_17_0%"  # a key observed on an agent
     files-publication:
       - path: "**/build/libs/*.jar"
         publish-artifact: true
@@ -71,7 +86,7 @@ jobs:
     name: Test
     runs-on: Linux-Medium
     enable-dependency-cache: true
-    parallelism: 3   # only after the first green run showed a test job of a minute or more
+    parallelism: 3                     # only when the conditions above hold
     parameters:
       env.JAVA_HOME: "%env.JDK_17_0%"
     steps:
@@ -83,6 +98,3 @@ jobs:
         script-content: |-
           echo "##teamcity[buildStatus text='{build.status.text}, unit tests']"
 ```
-
-Take the `runs-on` and `JAVA_HOME` values from
-[Agents, JDK, and compatibility](agents-and-jdk.md).

@@ -1,155 +1,92 @@
-# Build Step Selection
+# Build-step selection
 
-Choose TeamCity build steps that match the project technology and the active
-TeamCity server's supported capabilities.
+Dedicated runners for the primary work when the schema exposes one. A script
+step only for glue and the `Status` step. Validate runner names and fields
+against the server's schema.
 
-## Rules
+## Gradle
 
-- Prefer a dedicated TeamCity runner for the primary work when the schema
-  exposes one.
-- Use a generic script step only for project-specific glue, unsupported
-  operations, or shell logic that would be less clear as a dedicated runner.
-- Validate runner names, fields, and pipeline schema against the active
-  server or existing configuration when they are not already known.
-- Preserve checked-in CI intent. If the repository already describes
-  multiple jobs or container validation, keep that structure unless you have
-  a reason.
-- Prefer the smallest configuration that proves the project's own build
-  works.
+- The Gradle runner with `tasks` from the repository's verified tasks.
+- Pin the JDK as [Agents and JDK](agents-and-jdk.md) describes.
+- Settings the sources must not carry, such as a test timeout or
+  `ignoreFailures` so report steps still run after failed tests, go into an
+  init script. A script step writes it on the agent; the runner passes it
+  with `--init-script`. The build still fails on the failed tests.
+- A task-graph error that says compilation consumes undeclared generator
+  outputs: run generation and compilation as two Gradle runner steps.
 
-## Technology Defaults
+## Maven
 
-### Gradle
+- The Maven runner with the repository's verified `verify`, `test`, or
+  `package` goals. `verify` runs the tests.
+- Keep the repository's Maven version or wrapper through a runner selector
+  the server supports. When the wrapper's supporting files are missing, use
+  an installed Maven version.
+- Runner arguments reach Maven without a shell, so quotes stay in the value.
+  `-Dtest='!*IntegrationTest'` matched no class and left the job green with
+  0 tests. Write `-Dtest=!*IntegrationTest`.
+- `-Dtest` overrides surefire's includes and excludes. Parallel tests hand
+  each batch its share through those excludes, so with `-Dtest` every batch
+  runs nearly the whole suite while TeamCity still shows the batches. Define
+  a subset with surefire `<excludes>`: a script step before Maven adds
+  `<excludes><exclude>**/*IntegrationTest.java</exclude></excludes>` to the
+  surefire configuration in the agent's copy of `pom.xml`. Nothing is
+  committed. A test timeout: `-Dsurefire.timeout=<seconds>`.
 
-When the live Pipeline schema exposes `type: gradle`:
+## Other stacks
 
-- Use the Gradle runner for the primary tasks.
-- Set its `tasks` property from the repository's verified Gradle tasks.
-- Schema validation does not check every runner-specific property. That is
-  no reason for a script step.
-- When the repository declares an exact JDK, use one of:
-  - a discovered server-managed installation, with job-level `env.JAVA_HOME`;
-  - a step-level official JDK container image pinned to that major version,
-    when the repository is container-safe and the server confirms compatible
-    Docker agents.
-- The container is the preferred fallback for a missing JDK on ephemeral
-  Linux agents. The host and its default Java stay untouched.
-- Host-native macOS and iOS work stays outside that fallback.
-- Use a script only for non-Gradle glue that the Gradle runner cannot
-  express.
+- Node.js: the Node.js or npm runner. Hosted agents have no pnpm;
+  `corepack enable` provides the version pinned in `package.json`. Set the
+  job parameter `env.COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'`, or Corepack's
+  download notice on stderr becomes the job's failure text and hides the real
+  error.
+- .NET: the .NET runner.
+- Docker: the Docker runner when the schema exposes one. When a build moves
+  out of a Dockerfile onto the agent, carry over every build arg and build
+  property: a server did not start without
+  `-PindexingBackend=elasticsearch8`. Match the CPU architecture as
+  [Agents and JDK](agents-and-jdk.md) describes.
+- Python, Go, Rust, and others: a dedicated runner when the server exposes
+  one. Otherwise the project's standard command in a script step, with JUnit
+  XML as [Pipeline features](pipeline-features.md) describes.
 
-### Maven
+## Script steps
 
-When the live Pipeline schema exposes `type: maven`:
-
-- Use the Maven runner for the primary lifecycle work.
-- Put the repository's verified `verify`, `test`, or `package` invocation in
-  its `goals` property.
-- Preserve the Maven version or wrapper the repository selects, through a
-  runner selector the target server supports.
-- Use a script for that lifecycle work only when the dedicated runner is
-  unavailable or cannot preserve a required wrapper or runtime. Report that
-  concrete limitation.
-
-### Other stacks
-
-- Node.js: prefer a Node.js or npm-capable runner when the schema exposes one.
-- .NET: prefer a .NET runner when available.
-- Docker: prefer a Docker runner when the schema exposes one. Otherwise keep
-  container validation as a clear script-based job. Match the agent's CPU
-  architecture to the images; see
-  [Agents, JDK, and compatibility](agents-and-jdk.md).
-- Python, Go, Rust, and other stacks: use dedicated runners when the active
-  server exposes them. Otherwise use the project's standard command in a
-  script step.
-
-## Script Parameter Gate
-
-Pipeline schema validation can accept a step's `type` without checking its
-runner-specific fields. Every `type: script` step has exactly one content
-field: **`script-content`** with non-empty inline commands, or
-**`script-file`** with a non-empty script path. The field `script` does not
-exist. For example:
+- Every `type: script` step has exactly one content field: `script-content`
+  with inline commands, or `script-file` with a path. The field `script` does
+  not exist. Schema validation does not check this; the run fails with
+  `Invalid step parameters: Script content must be specified`. Check the
+  field in your file and in the stored YAML before you queue.
+- A script without a shebang runs under `/bin/sh`, dash on Ubuntu agents.
+  Start every bash script with `#!/bin/bash`, or `set -o pipefail`, `[[ ]]`,
+  and arrays fail.
+- A long command gets `timeout <seconds> <command>`.
+- Service messages are recognized only at the start of a line on stdout.
+  `echo` each one as its own command. Escape with `|`: `|'`, `|n`, `|r`,
+  `||`, `|[`, `|]`.
 
 ```yaml
 steps:
   - type: script
     name: Check Docker
     script-content: |-
+      #!/bin/bash
       echo "##teamcity[progressMessage 'Checking Docker']"
       docker info
 ```
 
-Check these fields in the actual file before upload, then in the server-stored
-YAML before you queue or wait. A valid result from `pipeline validate` does
-not prove the script runner is usable. Virtual job step listings may be empty
-while YAML-defined steps exist. A missing or blank content field produces
-`Invalid step parameters: Script content must be specified`. Correct the
-configuration before you check agent capacity. For a file source, verify
-separately that checkout provides the file. This check does not prove shell
-syntax, parameter resolution, or runtime compatibility.
+## Meaningful build status
 
-## JVM Verification And Outputs
+A generic "Running" in the builds list is incomplete.
 
-Before queueing, read back the stored Pipeline YAML with
-`teamcity pipeline pull`. Check each job against the requested outcome, in
-addition to the schema. Confirm:
-
-- native runner types and their `goals` or `tasks`;
-- explicit JDK selection;
-- required agent capabilities;
-- the publication rules on the job that produces each output.
-
-The server's view of job settings can omit YAML-defined steps and artifacts,
-so the pulled YAML is the source for this audit.
-
-- Maven verification normally uses `verify` with tests enabled. A wrapper
-  launcher alone is not enough if its supporting files are missing; use a
-  supported installed Maven version when the repository permits it.
-- Importing JUnit results and publishing raw XML as an artifact are separate
-  operations. When both are requested, configure both. A green Tests tab or a
-  published JAR does not prove that the XML is downloadable.
-- Inspect Gradle generated-source dependencies before you combine tasks. When
-  a task-graph validation error proves that compilation consumes undeclared
-  generator outputs, and sources must stay unchanged, separate generation and
-  compilation into successive native Gradle runner invocations. Validation
-  stays enabled, and Gradle runners stay Gradle runners.
-- Testcontainers may also run during code generation. Any isolated job that
-  needs containers, including packaging when applicable, needs a durable
-  Docker-capable agent requirement and an explicit `docker info` preflight.
-  Derive the selector from this server. An OS or JDK requirement alone does
-  not prove Docker capability. Keep tests out of a requested package-only
-  job. Run them in the test job, with its own report publication.
-
-After the requested chain and outputs pass, finish with that evidence. A
-complete result needs no further build or discovery.
-
-## Meaningful Build Status
-
-Every generated or modified pipeline, build step, and build script must
-report a live, meaningful status. A generic "Running" in the builds overview
-is incomplete. Dedicated runners emit no service messages, so each job ends
-with a script step named `Status` that echoes the `buildStatus` line below
-with the job's summary.
-
-- Give every dedicated runner step an explicit, human-readable `name`.
-  TeamCity shows the running step in the overview.
-- In script steps, `echo` `##teamcity[progressMessage '<stage>']` at the
-  start of each stage. When one stage wraps several commands, use
-  `##teamcity[progressStart '<stage>']` and `progressFinish` with identical
-  text.
-- End the stage that carries the result worth seeing in the builds list with
-  `##teamcity[buildStatus text='{build.status.text}, <summary>']`. Keep
-  `{build.status.text}` so TeamCity appends the text. One short line, no log
-  excerpts.
-- TeamCity recognizes service messages only at the start of a line on
-  stdout, so `echo` each one as its own command. Escape with `|`: `|'`,
-  `|n`, `|r`, `||`, `|[`, `|]`.
-
-On Windows use `Write-Host "##teamcity[...]"` (PowerShell) or
-`echo ##teamcity[...]` (cmd).
-
-## Output
-
-In the final report, say why you chose each primary step type. Give the
-reason for every script step.
+- Give every runner step a human-readable `name`. TeamCity shows the running
+  step.
+- In script steps, `echo "##teamcity[progressMessage '<stage>']"` at the
+  start of each stage.
+- Dedicated runners emit no service messages, so each job ends with a script
+  step named `Status`:
+  `echo "##teamcity[buildStatus text='{build.status.text}, <summary>']"`.
+  Keep `{build.status.text}` so TeamCity appends its own text. One short
+  line.
+- There is no run-always step. After a failing step, the later steps,
+  `Status` included, are skipped, and TeamCity's own failure text stands.
