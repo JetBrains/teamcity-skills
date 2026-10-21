@@ -78,11 +78,13 @@ If the request already reports that duration, treat the threshold as reached:
 run these checks before another status poll.
 Then:
 
-1. List enabled, authorized agents and applicable cloud images or hosted
-   selectors.
-2. Query the job against candidate agents so TeamCity reports unmet
-   requirements, missing versions, pool restrictions, or unresolved
-   parameters.
+1. Read `teamcity run view <queued-job-build-id> --json`. CLI 1.6+ on
+   TeamCity 2026.3+ includes compatible and incompatible agents and cloud
+   images in `compatibility`.
+2. List enabled, authorized candidate agents in the job's pool. Query each
+   with `teamcity agent jobs <agent-id> --incompatible --json` and match
+   the exact job ID. The flag is required for unmet requirements; the default
+   command lists compatible jobs. A missing job is not a compatibility pass.
 3. Pull the server-stored Pipeline YAML and verify that every `%name%`
    substitution is declared or inherited.
 

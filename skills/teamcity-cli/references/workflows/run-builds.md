@@ -83,16 +83,24 @@ teamcity run watch <run-id> --json
 reads intermediate output. When a user is waiting, poll instead:
 
 ```bash
-teamcity run view <run-id> --json    # state, status, statusText, percentageComplete
+teamcity run view <run-id> --json    # queued runs include compatibility on TeamCity 2026.3+
 teamcity queue list --job <job-id> --json=id,waitReason,queuedDate
 teamcity agent list --json=name,connected,enabled,authorized
-teamcity agent jobs <agent-id> --incompatible
+teamcity agent jobs <agent-id> --incompatible --json
 ```
 
+- For a queued job, `run view --json` in CLI 1.6+ reports compatible and
+  incompatible agents and cloud images, with reasons. On older servers it
+  falls back to an agent summary. Match the exact queued job, not only the
+  pipeline head.
+- `agent jobs` lists compatible jobs by default. Use `--incompatible`
+  explicitly to get unmet requirements for an agent; match the job ID in
+  its result. An absent job is not proof of compatibility.
 - Report each stage the first time it appears, never an unchanged status. Space
   the checks out — 5s, 10s, 20s, 30s — and stop once `state` is terminal.
-- Still `queued` after a check or two means blocked, not slow: report the
-  `waitReason`.
+- Still `queued` after a check or two calls for compatibility diagnosis:
+  report the `waitReason` and distinguish zero compatibility from busy or
+  provisioning capacity.
 - Say whether a human is needed. No agent connected/enabled/authorized is a
   human action; an unmet requirement (missing tool, env var, parameter, wrong
   pool) is usually fixable in the job or DSL.

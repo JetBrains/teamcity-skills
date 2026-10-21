@@ -13,6 +13,23 @@ approval when any of these effects are possible or unclear.
 Queue a personal or isolated build when supported. Poll the pipeline head and
 jobs with bounded backoff: 5, 10, 20, then 30 seconds.
 
+For every verification run, inspect each queued job's exact compatibility as
+soon as its build ID exists. With CLI 1.6+, use
+`teamcity run view <job-build-id> --json`; on TeamCity 2026.3+ the
+`compatibility` entries cover agents and cloud images with unmet requirements.
+List candidate agents in the job's pool and explicitly query
+`teamcity agent jobs <agent-id> --incompatible --json` for each one. Match the
+generated job ID: without `--incompatible`, the command lists only jobs the
+agent can run. Repeat this check for each new verification run, even if the
+queue reason only says that no idle agent is available.
+
+An absent job in an agent's incompatible list is not proof that it can run.
+Include cloud images from the queued-run result; use another permitted
+compatibility helper if the CLI omits a candidate. Distinguish zero compatible
+resources from compatible but busy or provisioning resources before changing
+YAML or declaring an infrastructure blocker. Do not restart an unchanged run
+to diagnose capacity.
+
 After two observations or 60–120 seconds in the queue, record the ID and queue
 state. Read [Build diagnostics](../shared/build-diagnostics.md). Queue the next
 build only after a documented correction or blocker.

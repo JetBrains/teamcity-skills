@@ -1,6 +1,6 @@
 ---
 name: teamcity-cli
-version: 1.4.0
+version: 1.6.0
 description: Use when working with TeamCity CI/CD or when a user provides a TeamCity build URL — drives the `teamcity` CLI for builds, logs, jobs, queues, agents, pools, projects, and pipelines.
 ---
 
@@ -20,6 +20,7 @@ teamcity run log <id> --failed --raw    # Full failure diagnostics
 
 - **Composite builds have empty logs** — drill into child builds for the actual failure.
 - **Build chains fail bottom-up** — deepest failed dependency is the root cause. Use `teamcity run tree <id>`.
+- **Queued runs expose compatibility** — `teamcity run view <queued-id> --json` includes compatible and incompatible agents and cloud images on TeamCity 2026.3+. Use `agent jobs <agent-id> --incompatible --json` for explicit per-agent unmet requirements.
 - **`--local-changes` excludes Kotlin DSL** — push `.teamcity/` changes before running.
 - **Select a server per command with `TEAMCITY_URL`** — `TEAMCITY_URL=https://cli.teamcity.com teamcity run list` uses stored credentials for that server; set `TEAMCITY_TOKEN` to override them.
 - **Read-only mode blocks remote shells** — `TEAMCITY_RO=1` or per-server `ro: true` rejects `agent exec` and `agent term` before connecting.
