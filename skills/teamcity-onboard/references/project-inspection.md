@@ -47,11 +47,11 @@ triggers, `if:` conditions, `concurrency:`, notifications.
 | --- | --- |
 | `jobs.<id>` and `needs:` | Jobs and `dependencies:` |
 | `runs-on: ubuntu-*` | A `runs-on` value from this server; see [Agents and JDK](agents-and-jdk.md) |
-| `run:` | The matching dedicated runner, or a script step for glue |
+| `run:` | The matching dedicated runner; a script step when the schema has none |
 | `env:` | Job or pipeline `parameters:` with the `env.` prefix |
 | `actions/checkout` | Nothing. Checkout is automatic |
 | `actions/setup-java`, `setup-node`, and similar | Nothing, or an explicit runtime selection when the version matters |
-| `actions/cache`, `gradle/actions/setup-gradle` | Nothing. TeamCity manages the dependency cache |
+| `actions/cache`, `gradle/actions/setup-gradle` | Nothing. The first build runs without a cache |
 | `actions/upload-artifact`, `download-artifact` | `files-publication` on the producer, shared with dependent jobs |
 | `strategy.matrix` | One job for the first Linux combination |
 | `services:` and `container:` | A step-level container image, or Docker Compose in a script |

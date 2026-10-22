@@ -1,8 +1,8 @@
 # Build-step selection
 
 Dedicated runners for the primary work when the schema exposes one. A script
-step only for glue and the `Status` step. Validate runner names and fields
-against the server's schema.
+step when it exposes none, and for glue and the `Status` step. Validate
+runner names and fields against the server's schema.
 
 ## Gradle
 
@@ -25,22 +25,18 @@ against the server's schema.
 - Runner arguments reach Maven without a shell, so quotes stay in the value.
   `-Dtest='!*IntegrationTest'` matched no class and left the job green with
   0 tests. Write `-Dtest=!*IntegrationTest`.
-- `-Dtest` overrides surefire's includes and excludes. Parallel tests hand
-  each batch its share through those excludes, so with `-Dtest` every batch
-  runs nearly the whole suite while TeamCity still shows the batches. Define
-  a subset with surefire `<excludes>`: a script step before Maven adds
-  `<excludes><exclude>**/*IntegrationTest.java</exclude></excludes>` to the
-  surefire configuration in the agent's copy of `pom.xml`. Nothing is
-  committed. A test timeout: `-Dsurefire.timeout=<seconds>`.
+- A test timeout: `-Dsurefire.timeout=<seconds>`.
 
 ## Other stacks
 
-- Node.js: the Node.js or npm runner. Hosted agents have no pnpm;
+- Node.js: the `node-js` runner, the schema's only Node runner. The npm,
+  pnpm, or yarn commands go in `shell-script`. Hosted agents have no pnpm;
   `corepack enable` provides the version pinned in `package.json`. Set the
   job parameter `env.COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'`, or Corepack's
   download notice on stderr becomes the job's failure text and hides the real
   error.
-- .NET: the .NET runner.
+- .NET: the `dotnet-*` runners, one per command: `dotnet-build`,
+  `dotnet-test`, `dotnet-publish`.
 - Docker: the Docker runner when the schema exposes one. When a build moves
   out of a Dockerfile onto the agent, carry over every build arg and build
   property: a server did not start without

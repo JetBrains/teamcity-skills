@@ -11,9 +11,8 @@ Rules for every TeamCity operation. Command syntax comes from the
   with `?fields=`, never a `properties` collection. Its writes never replace
   `pipeline validate` and `pipeline push`. `curl`, `wget`, and other HTTP
   clients are forbidden.
-- The flow is CLI-only. The web step authenticates the CLI and nothing else.
-  MCP tools are not set up. When neither a first-class command nor
-  `teamcity api` covers an operation, write a
+- The flow is CLI-only. MCP tools are not set up. When neither a first-class
+  command nor `teamcity api` covers an operation, write a
   [manual prerequisite](manual-prerequisites.md).
 - Validate changed YAML with `teamcity pipeline validate` before you push or
   queue. `validate` is weaker than the server's parser: it rejects hosted
@@ -21,7 +20,7 @@ Rules for every TeamCity operation. Command syntax comes from the
   push error is the real validation.
 - Write YAML the server accepts: no anchors, no `=>` in `files-publication`,
   `#!/bin/bash` at the top of every bash script. `execution-timeout-minutes`
-  and `enable-dependency-cache` are behind server toggles and may do nothing.
+  is behind a server toggle and may do nothing.
 
 ## Secrets
 

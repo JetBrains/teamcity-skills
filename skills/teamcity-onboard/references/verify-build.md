@@ -1,9 +1,9 @@
 # Verify a build
 
-Queue the pipeline, drive it to green, then show the speedup. The
-`teamcity-cli` skill's "Start, monitor & personal builds" and "Fix a failure
-& monitor until green" sections give the commands and the polling cadence
-(5, 10, 20, then 30 seconds). This guide adds what onboarding changes.
+Queue the pipeline and drive it to green. The `teamcity-cli` skill's "Start,
+monitor & personal builds" and "Fix a failure & monitor until green" sections
+give the commands and the polling cadence (5, 10, 20, then 30 seconds). This
+guide adds what onboarding changes.
 
 ## Start and poll
 
@@ -17,9 +17,13 @@ Each run starts without confirmation. On every start:
 - note the run's `queuedDate` for the cancel guard below.
 
 Poll `run tree <id>` and `run view <id> --json`; never `run watch`. A queued
-run has to be noticed early. Keep going until the head and every job are
-green, or a blocker is proven. A green run is checked: read every test job's
-test count. A test job with 0 tests is a silent failure. Fix the filter as
+run has to be noticed early. After each poll that shows a change, one line:
+a job queued and its wait reason, a job started, a job finished with its
+state and test count, the head finished. After five minutes with no change,
+one line with the time elapsed and what you wait for. Keep going until the
+head and every job are green, or a blocker is proven. A green run is
+checked: read every test job's test count. A test job with 0 tests is a
+silent failure. Fix the filter as
 [Build-step selection](build-step-selection.md) describes and run again.
 
 `execution-timeout-minutes` is behind a server toggle and may do nothing. Put
@@ -67,11 +71,6 @@ override it. Report the build ID, the root ID, and the repository URL, and
 write a [manual prerequisite](manual-prerequisites.md) for the repository
 App or a project-scoped connection. Do not invent a personal access token.
 
-**A test that fails only in a batch**, green when the job runs unsplit: a
-test isolation problem, usually shared state. A retry proves nothing. Remove
-`parallelism` from that job, push, requeue, and report the test and why the
-speedup is not available for it.
-
 **A test that fails on its own**, in every run with no TeamCity cause in the
 log: a repository failure. Report the test, the assertion, and the build ID,
 and stop. A job that failed only through its dependency needs no diagnosis.
@@ -86,13 +85,3 @@ One correction per run; an unchanged retry is wasted. Stop after three
 corrections. A successful child does not make a failed head green. When the
 evidence does not establish one cause, report the likely causes, the
 evidence, and the next small check.
-
-## Show the speedup
-
-The first green run runs unsplit and completes the deliverable. When the
-conditions in [Pipeline features](pipeline-features.md) hold and less than
-40 minutes have passed since your first command, add `parallelism`, push,
-and run twice more on the same revision. Compare the runs with
-`run list --job <job-id> --json=id,status,startDate,finishDate`. When only
-time was short, give the user the YAML change and the command. Report only
-what you observed.

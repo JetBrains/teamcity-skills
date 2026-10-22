@@ -48,9 +48,8 @@ with the default `JAVA_HOME` on JDK 25, Docker 29 and Compose, Node 22 and
   `exec format error`. For an architecture requirement use the agent's exact
   `teamcity.agent.jvm.os.arch` value: an x86 agent may say `amd64` while the
   workflow says `x86_64`.
-- Count the compatible agents for the exact job. Each parallel test batch
-  needs one agent at the same time. A queued batch with compatible but busy
-  agents is a capacity wait.
+- Count the compatible agents for the exact job. A queued job with compatible
+  but busy agents is a capacity wait.
 
 ## Select the JDK
 

@@ -4,40 +4,47 @@ Confirm the server, inspect it, and find the VCS root and the branch the
 pipeline uses. Commands: the `teamcity-cli` skill's "Project connections &
 VCS roots" and "Working with pipelines" workflows.
 
-## Confirm the server
+## Confirm the server and the project
 
 The flow authenticated the CLI against the target server before this skill
-started. Confirm once with `teamcity auth status`. The parent project is
-always `_Root`.
+started. Confirm once with `teamcity auth status`. The parent project is the
+project ID from the hand-over context. Without one, run `project list` and
+ask the user which project the pipeline belongs to. Confirm the ID with
+`project view <project-id>`.
 
 ## Inspect the server
 
-List the `_Root` project's pipelines and VCS roots, the connected agents, and
-the Pipeline schema: `pipeline list`, `project vcs list`, `agent list`,
+List the project's pipelines and VCS roots, the connected agents, and the
+Pipeline schema: `pipeline list --project <project-id>`,
+`project vcs list --project <project-id>`, `agent list`,
 `pipeline schema --refresh`. When a pipeline for this repository exists,
 update it. One repository, one pipeline.
 
 ## Find the VCS root
 
 Use the VCS root ID from the hand-over context. Without one, list the roots
-in `_Root` with `project vcs list` and reuse the one whose URL matches the
-repository. Read URL, default branch, and auth with `project vcs view <id>`.
+in the project with `project vcs list --project <project-id>` and reuse the
+one whose URL matches the repository. Read URL, default branch, and auth with
+`project vcs view <id>`.
 
 - A matching authorized root: use it.
-- No root, public repository: create one with `--auth anonymous` and
+- No root, public repository: create one in the project with
+  `--project <project-id>`, `--auth anonymous`, and
   `--branch refs/heads/<checked-out-branch>`. Without `--branch` the CLI
   assumes `main`. This is the only root this skill creates.
 - No authorized root, private repository: the pipeline cannot read the
-  sources. Write a [manual prerequisite](manual-prerequisites.md) that names
-  the web step's repository authorization, then stop. Connections,
+  sources. Write a [manual prerequisite](manual-prerequisites.md) for the
+  repository App or a project-scoped connection, then stop. Connections,
   token-based roots, and token requests are out of scope.
 
 ## Choose the branch
 
-The safe setup: the default branch only, a pinned revision with `--branch`,
-no triggers. Read the root's default branch and branch specification from
-`vcs view`. The web step created the root, so its default branch may differ
-from the checked-out branch.
+The safe setup: one branch, a pinned revision with `--branch`, no triggers.
+Read the root's default branch and branch specification from `vcs view`.
+TeamCity builds the root's default branch unless the run names another one.
+When the checked-out branch is not the default, a run without `--branch`
+builds code you never inspected, and its result proves nothing. Always pass
+the pinned revision and the branch together.
 
 - Pin the checked-out commit with `--revision <root-id>=<sha>@<branch>` and
   pass `--branch` as well. Without `--branch` the checkout fails with

@@ -3,13 +3,6 @@
 Add these to every onboarding pipeline, whether or not the workflow had them.
 They are the part of the demonstration GitHub Actions cannot show.
 
-## Dependency cache
-
-`enable-dependency-cache: true` on each job. It replaces `actions/cache` and
-`setup-gradle` caching. The key is behind a server toggle and silently does
-nothing when that is off. Look for the cache in the build log before you
-advertise it.
-
 ## Test reports
 
 Tests run from a script step are invisible. A Gradle, Maven, or .NET runner
@@ -18,25 +11,6 @@ imports test results by itself. When a test step has to stay a script
 job feature with `report-type: junit` and `rules:` for the report files. A
 filter that matches nothing leaves the job green with 0 tests: a silent
 failure. [Verify a build](verify-build.md) checks the count after every run.
-
-## Parallel tests
-
-Leave `parallelism` out of the first pipeline. Add it to the job whose tests
-run through a Gradle, Maven, or .NET runner when all of these hold:
-
-- one finished run of the same job with test results exists. TeamCity splits
-  from that history; a canceled run does not count;
-- the test job took a minute or more. Under a minute, say the suite is too
-  short to split;
-- at least two compatible agents. Use `parallelism: 3`, or the number of
-  compatible agents when that is smaller;
-- the Maven step uses no `-Dtest`; see
-  [Build-step selection](build-step-selection.md).
-
-Every batch runs the whole job, so keep packaging out of it. A coverage gate
-above zero fails in every batch, because each batch sees part of the tests:
-move the gate to a job without `parallelism`. Removing a module or a test
-task is forbidden.
 
 ## Artifacts
 
@@ -57,7 +31,8 @@ Gradle build cache archive with downstream jobs when it fits.
 
 ## Report tab
 
-A custom tab is a `ReportTab` project feature on `_Root` with
+A custom tab is a `ReportTab` project feature on the project from
+[Discover and connect](discover-and-connect.md), with
 `startPage=publish/<file>.html`. There is no YAML key. The `Status` step
 writes a one-page HTML summary of what the job built and tested; publish it
 with `publish-artifact: true`. Add the feature once through `teamcity api`,
@@ -72,7 +47,6 @@ jobs:
   build:
     name: Build
     runs-on: Linux-Medium              # a value this server dispatches
-    enable-dependency-cache: true
     parameters:
       env.JAVA_HOME: "%env.JDK_17_0%"  # a key observed on an agent
     files-publication:
@@ -85,8 +59,6 @@ jobs:
   test:
     name: Test
     runs-on: Linux-Medium
-    enable-dependency-cache: true
-    parallelism: 3                     # only when the conditions above hold
     parameters:
       env.JAVA_HOME: "%env.JDK_17_0%"
     steps:
