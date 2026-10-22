@@ -1,7 +1,7 @@
 # Agents and JDK
 
 Read this before you write YAML and again before you queue. A wrong
-`runs-on` or JDK freezes an onboarding: the build queues forever because no
+`runs-on` or JDK stops the onboarding: the build queues forever because no
 agent matches. Every decision comes from the server's evidence.
 
 ## Read the server
@@ -27,7 +27,7 @@ with the default `JAVA_HOME` on JDK 25, Docker 29 and Compose, Node 22 and
 ## Choose `runs-on`
 
 - Start from the bare selector the server is known to dispatch. Add one
-  requirement only after a build proved its absence. Each `os-family`,
+  requirement only after a build failed without it. Each `os-family`,
   `arch`, Docker, or custom key risks zero matches.
 - The schema's `runs-on` enum is incomplete. The server also accepts every
   hosted image name, for example `Ubuntu-24.04-Large-Arm64`, and the form
@@ -56,16 +56,16 @@ with the default `JAVA_HOME` on JDK 25, Docker 29 and Compose, Node 22 and
 Always pin the JDK. The hosted default `JAVA_HOME` is the newest JDK (25),
 and Gradle 8.x cannot run on it.
 
-- A key such as `env.JDK_21_0` advertises an installed JDK on an agent. Take
-  the real key from the agent type's parameters. Set the step's `jdk-home` or
+- A key such as `env.JDK_21_0` shows an installed JDK on an agent. Take the
+  real key from the agent type's parameters. Set the step's `jdk-home` or
   the job's `parameters.env.JAVA_HOME` to it, for example `%env.JDK_21_0%`.
-  A key no agent advertises blocks dispatch, and no build step can install
-  the JDK because the build never starts. A hard-coded host path, a download
-  script, or `setParameter` all run too late.
-- When no agent advertises the needed JDK, run the Maven or Gradle step in a
-  pinned `docker-image` on a Linux agent with Docker. The image must contain
-  every tool the build invokes: a bare `eclipse-temurin` image has no `git`,
-  so a build with `git-commit-id` needs an image that ships git.
+  A key no agent has blocks dispatch. No build step can install the JDK,
+  because the build never starts. A hard-coded host path, a download script,
+  or `setParameter` all run too late.
+- When no agent has the needed JDK, run the Maven or Gradle step in a pinned
+  `docker-image` on a Linux agent with Docker. The image must contain every
+  tool the build runs: a bare `eclipse-temurin` image has no `git`, so a
+  build with `git-commit-id` needs an image that ships git.
 - macOS and iOS work needs a native runtime. Containers do not apply.
 
 The companion `teamcity-jdk-selection` skill, when installed, has the full
@@ -80,9 +80,9 @@ host-JDK and container decision.
    the unmet requirements and unresolved parameters for every job, dependent
    jobs included.
 3. Count the compatible candidates. Zero is a defect to fix now, even when
-   TeamCity says "no idle compatible agents": that message does not
-   distinguish busy capacity from zero matches. A `permission_denied` on the
-   check means unverified; record it and continue.
+   TeamCity says "no idle compatible agents": that message is the same for
+   busy agents and for zero matches. A `permission_denied` on the check
+   means unverified; record it and continue.
 4. After every change of the stored YAML, repeat the check.
 
 Dispatch is the final check. [Verify a build](verify-build.md) says what to

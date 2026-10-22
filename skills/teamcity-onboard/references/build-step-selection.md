@@ -8,9 +8,9 @@ runner names and fields against the server's schema.
 
 - The Gradle runner with `tasks` from the repository's verified tasks.
 - Pin the JDK as [Agents and JDK](agents-and-jdk.md) describes.
-- Settings the sources must not carry, such as a test timeout or
-  `ignoreFailures` so report steps still run after failed tests, go into an
-  init script. A script step writes it on the agent; the runner passes it
+- Settings the sources must not carry go into an init script: a test
+  timeout, or `ignoreFailures` so report steps still run after failed tests.
+  A script step writes the init script on the agent; the runner passes it
   with `--init-script`. The build still fails on the failed tests.
 - A task-graph error that says compilation consumes undeclared generator
   outputs: run generation and compilation as two Gradle runner steps.
@@ -73,13 +73,13 @@ steps:
 
 ## Meaningful build status
 
-A generic "Running" in the builds list is incomplete.
+A generic "Running" in the builds list is not enough.
 
 - Give every runner step a human-readable `name`. TeamCity shows the running
   step.
 - In script steps, `echo "##teamcity[progressMessage '<stage>']"` at the
   start of each stage.
-- Dedicated runners emit no service messages, so each job ends with a script
+- Dedicated runners send no service messages, so each job ends with a script
   step named `Status`:
   `echo "##teamcity[buildStatus text='{build.status.text}, <summary>']"`.
   Keep `{build.status.text}` so TeamCity appends its own text. One short

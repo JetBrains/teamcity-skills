@@ -2,7 +2,7 @@
 
 Queue the pipeline and drive it to green. The `teamcity-cli` skill's "Start,
 monitor & personal builds" and "Fix a failure & monitor until green" sections
-give the commands and the polling cadence (5, 10, 20, then 30 seconds). This
+give the commands and the poll intervals (5, 10, 20, then 30 seconds). This
 guide adds what onboarding changes.
 
 ## Start and poll
@@ -35,7 +35,7 @@ from [Project inspection](project-inspection.md) plus a margin has passed.
 
 Read the evidence from the most structured to the least: build problems,
 failed tests, a filtered error view of the log, a small log window around
-each anchor. Then:
+each error. Then:
 
 **A job queued for 120 seconds.** Read its wait reason with
 `queue list --job <job-id> --json=id,waitReason,queuedDate` and run the
@@ -45,8 +45,8 @@ never the cause.
 - Zero compatible candidates or unresolved parameters: one supported
   correction, then requeue with `--rebuild-deps`. Typical causes: a key no
   agent has (`os-family`), an architecture label that differs from the
-  agent's value (`x86_64` versus `amd64`), a host-JDK parameter no agent
-  advertises.
+  agent's value (the workflow says `x86_64`, the agent `amd64`), a host-JDK
+  parameter no agent has.
 - Compatible candidates, all busy: a capacity wait. Keep polling.
 - Compatibility cannot be verified: strip the job to the bare selector, push,
   requeue with `--rebuild-deps`.
@@ -65,9 +65,9 @@ after the second identical loss: cancel the run, report it, shorten the job
 before another run.
 
 **A failure before checkout** with `Repository not found`, authentication
-failed, 401, or 404, on a private repository whose root has no durable
+failed, 401, or 404, on a private repository whose root has no stored
 credential: a VCS credential blocker. A passing VCS connection test does not
-override it. Report the build ID, the root ID, and the repository URL, and
+change this. Report the build ID, the root ID, and the repository URL, and
 write a [manual prerequisite](manual-prerequisites.md) for the repository
 App or a project-scoped connection. Do not invent a personal access token.
 
@@ -83,5 +83,5 @@ line shows in `run view`.
 
 One correction per run; an unchanged retry is wasted. Stop after three
 corrections. A successful child does not make a failed head green. When the
-evidence does not establish one cause, report the likely causes, the
+evidence does not show one cause, report the likely causes, the
 evidence, and the next small check.

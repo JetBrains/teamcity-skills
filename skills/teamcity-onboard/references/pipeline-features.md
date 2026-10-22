@@ -1,7 +1,7 @@
 # Pipeline features
 
 Add these to every onboarding pipeline, whether or not the workflow had them.
-They are the part of the demonstration GitHub Actions cannot show.
+GitHub Actions cannot show them.
 
 ## Test reports
 

@@ -29,20 +29,18 @@ skill and the CLI skill differ, this skill wins:
 
 - Use the `teamcity` CLI as the flow configured it.
 - The repository stays as handed over: same branch, same commit, same files.
-  The repository sources stay unchanged. No `git checkout`, `git switch`, 
-  `git pull`, or `git push`. Nothing is written to or committed in the 
-  user's repository. The pipeline lives on the server. 
-  Your working YAML lives outside the checkout.
-- Honest red. A failure caused by the project (a bug, lint, a flaky test) is
-  reported with evidence. It is never hidden: no skipped or muted tests, no
-  `|| true`, no disabled steps. A failure caused by the pipeline is fixed. A
-  test subset planned before the first run, and declared, is not a skipped
-  test.
+  No `git checkout`, `git switch`, `git pull`, or `git push`. Nothing is
+  written to or committed in the user's repository. The pipeline lives on
+  the server. Your working YAML lives outside the checkout.
+- Honest red. Report a failure caused by the project (a bug, lint, a flaky
+  test) with evidence. Never hide it: no skipped or muted tests, no
+  `|| true`, no disabled steps. Fix a failure caused by the pipeline. A test
+  subset planned before the first run, and declared, is not a skipped test.
 - Poll runs with `run tree` and `run view`. `run watch` and `--watch` flood a
   non-interactive shell.
 - Every pipeline you create is a deliverable. Probe and diagnostic pipelines
   are forbidden.
-- No secret value is ever asked for or accepted.
+- Never ask for or accept a secret value.
 
 ## Say what you are doing
 
@@ -62,8 +60,8 @@ A long silence looks like a hang. Do not let one happen.
 
 Read [Project inspection](references/project-inspection.md). Build files, the
 README, and `.github/workflows/` show how the team builds. Design the basic
-build from them: a chain of jobs when there is more than one.
-Deploy, publish, release, and any job that needs a secret are follow-ups.
+build from them: a chain of jobs when there is more than one. Deploy,
+publish, release, and any job that needs a secret are follow-ups.
 
 Read [Discover and connect](references/discover-and-connect.md). Confirm the
 server and the project. Find the VCS root and the branch.
@@ -73,7 +71,7 @@ server and the project. Find the VCS root and the branch.
 Read [Agents and JDK](references/agents-and-jdk.md) before you write YAML.
 Take `runs-on`, the JDK, and the CPU architecture from the agent type's
 parameters. Always pin the JDK. Before you queue, check every job against the
-candidate agents. Zero compatible candidates is a blocker to fix first.
+candidate agents. Zero compatible candidates is a blocker. Fix it first.
 
 ## 3. Write the pipeline
 
@@ -81,8 +79,8 @@ Read [Build-step selection](references/build-step-selection.md) and
 [Pipeline features](references/pipeline-features.md). Dedicated runners; a
 script step when the schema has none, and for glue and the `Status` step.
 Every test visible. Add test reports, artifacts, the `Status` step, and the
-report tab. Keep the YAML file outside the checkout. Validate it, check
-compatibility, and treat a push error as the real validation.
+report tab. Keep the YAML file outside the checkout. Validate it and check
+compatibility. A push error is the real validation.
 
 ## 4. Create the pipeline
 

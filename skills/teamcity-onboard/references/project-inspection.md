@@ -16,7 +16,7 @@ Record:
   README;
 - test commands, test report paths, and the packaged output;
 - services, environment variables, and credentials the build and tests
-  cannot do without;
+  need;
 - checked-in TeamCity YAML or Kotlin DSL. CI already exists; reuse it.
 
 Verify every command from a workflow against the build files. Do not run
@@ -32,7 +32,7 @@ README. The first pipeline is the basic build.
 Take from it:
 
 - the commands under `run:` and the tool versions from `setup-*` steps;
-- `services:` and `container:` a test cannot run without;
+- `services:` and `container:` the tests need;
 - the artifacts it uploads;
 - the `needs:` order between the kept jobs;
 
