@@ -55,8 +55,8 @@ the pinned revision and the branch together.
   specification: `+:refs/heads/*` names `feature/x` as `feature/x`.
 - When the specification does not cover the checked-out branch, write a
   [manual prerequisite](manual-prerequisites.md) for the root's branch
-  specification. A switch to `main` or a wider specification hides the error
-  and is forbidden.
+  specification. A run on `main`, a local `git checkout` of another branch,
+  or a wider specification hides the error and is forbidden.
 
 After queueing, read back the run's branch and revision before you wait on
 it. A red head with `invalid_branch_name` and green jobs is a branch binding

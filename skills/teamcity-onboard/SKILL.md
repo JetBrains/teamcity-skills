@@ -28,9 +28,11 @@ Read [Tool policy and secrets](references/teamcity-tool-policy.md). Where this
 skill and the CLI skill differ, this skill wins:
 
 - Use the `teamcity` CLI as the flow configured it.
-- The repository sources stay unchanged. Nothing is written to or committed
-  in the user's repository. The pipeline lives on the server. Your working
-  YAML lives outside the checkout.
+- The repository stays as handed over: same branch, same commit, same files.
+  The repository sources stay unchanged. No `git checkout`, `git switch`, 
+  `git pull`, or `git push`. Nothing is written to or committed in the 
+  user's repository. The pipeline lives on the server. 
+  Your working YAML lives outside the checkout.
 - Honest red. A failure caused by the project (a bug, lint, a flaky test) is
   reported with evidence. It is never hidden: no skipped or muted tests, no
   `|| true`, no disabled steps. A failure caused by the pipeline is fixed. A
