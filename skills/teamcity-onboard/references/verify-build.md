@@ -22,8 +22,8 @@ a job queued and its wait reason, a job started, a job finished with its
 state and test count, the head finished. After five minutes with no change,
 one line with the time elapsed and what you wait for. Keep going until the
 head and every job are green, or a blocker is proven. A green run is
-checked: read every test job's test count. A test job with 0 tests is a
-silent failure. Fix the filter as
+checked: read every test job's test count. 0 tests in a job that should
+report them is a silent failure. Fix the filter as
 [Build-step selection](build-step-selection.md) describes and run again.
 
 `execution-timeout-minutes` is behind a server toggle and may do nothing. Put

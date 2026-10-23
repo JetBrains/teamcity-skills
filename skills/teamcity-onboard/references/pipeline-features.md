@@ -1,15 +1,20 @@
 # Pipeline features
 
-Add these to every onboarding pipeline, whether or not the workflow had them.
-GitHub Actions cannot show them.
+Add each feature below that the project can feed, whether or not the
+workflow had it. The `Status` step and the report tab fit every pipeline.
+Test reports need test output in a format TeamCity reads. Artifacts need
+packaged output. Say in the report which features were left out, and why.
 
 ## Test reports
 
 Tests run from a script step are invisible. A Gradle, Maven, or .NET runner
 imports test results by itself. When a test step has to stay a script
 (Vitest, pytest, `go test`, bats), write JUnit XML and add an `xml-report`
-job feature with `report-type: junit` and `rules:` for the report files. A
-filter that matches nothing leaves the job green with 0 tests: a silent
+job feature with `report-type: junit` and `rules:` for the report files.
+`xml-report` also reads testng, surefire, nunit, mstest, trx, vstest,
+google-test, and ctest. When the tool writes none of these, keep the tests
+in the job, and declare in the report that TeamCity shows no count for it.
+A filter that matches nothing leaves the job green with 0 tests: a silent
 failure. [Verify a build](verify-build.md) checks the count after every run.
 
 ## Artifacts

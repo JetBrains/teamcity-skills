@@ -78,9 +78,10 @@ candidate agents. Zero compatible candidates is a blocker. Fix it first.
 Read [Build-step selection](references/build-step-selection.md) and
 [Pipeline features](references/pipeline-features.md). Dedicated runners; a
 script step when the schema has none, and for glue and the `Status` step.
-Every test visible. Add test reports, artifacts, the `Status` step, and the
-report tab. Keep the YAML file outside the checkout. Validate it and check
-compatibility. A push error is the real validation.
+Every test visible. Add the features the project supports: test reports,
+artifacts, the `Status` step, and the report tab. Keep the YAML file outside
+the checkout. Validate it and check compatibility. A push error is the real
+validation.
 
 ## 4. Create the pipeline
 
