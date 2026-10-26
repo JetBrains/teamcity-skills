@@ -4,7 +4,7 @@
 
 set -eu
 
-teamcity_eval_cli_version=1.6.0
+teamcity_eval_cli_version=1.6.1
 teamcity_eval_cli_dir="${TEAMCITY_EVAL_CLI_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/teamcity-eval-cli.XXXXXX")}"
 export TEAMCITY_EVAL_CLI_DIR="$teamcity_eval_cli_dir"
 
@@ -12,32 +12,32 @@ case "$(uname -s):$(uname -m)" in
   Linux:aarch64|Linux:arm64)
     teamcity_eval_platform=linux
     teamcity_eval_arch=arm64
-    teamcity_eval_sha256=9623e57cd5a14a2a0fea6cbb10e9a1d1d0940ad8b82f3f82117058dbbab9868a
+    teamcity_eval_sha256=e42e7934d8ac1ffec156c66b455a1614a941321473842edb537690188eec7c75
     ;;
   Linux:x86_64|Linux:amd64)
     teamcity_eval_platform=linux
     teamcity_eval_arch=x86_64
-    teamcity_eval_sha256=e08ae1a47e84bd398f05356ab62066feff2d5123c60a309d30e2aa7fdb3b066f
+    teamcity_eval_sha256=de1ad9e351a0fa92771a65e43bb30663fa6663fc0e97074dddf4fd27b78ec8b6
     ;;
   Darwin:aarch64|Darwin:arm64)
     teamcity_eval_platform=darwin
     teamcity_eval_arch=arm64
-    teamcity_eval_sha256=a10e1ae82d8f43d8221205d7ed7538e0a64504fb67d63085bc66162ca7bcd6b9
+    teamcity_eval_sha256=d6cf7a8ab5aaf73ec189f5482109c7954a4e60475f8a8d582680bdb40f4857dd
     ;;
   Darwin:x86_64|Darwin:amd64)
     teamcity_eval_platform=darwin
     teamcity_eval_arch=x86_64
-    teamcity_eval_sha256=6f5abc077f353ce68356fb0719452eb1dd7c7503bab17ab70afab1b39426c677
+    teamcity_eval_sha256=3a2c7a7cc76ac00dc2494c01e494afbeb8be8e70aede53b565eec9fb6e943317
     ;;
   MINGW*:aarch64|MINGW*:arm64|MSYS*:aarch64|MSYS*:arm64|CYGWIN*:aarch64|CYGWIN*:arm64)
     teamcity_eval_platform=windows
     teamcity_eval_arch=arm64
-    teamcity_eval_sha256=901148992b54729ab98348d71aac92b0f3cd2905944f67c675704f1017a6fe20
+    teamcity_eval_sha256=68b017447b021be2f5c41253a26418a2ed990b6de5df12fc1ab7ad5357f0d928
     ;;
   MINGW*:x86_64|MINGW*:amd64|MSYS*:x86_64|MSYS*:amd64|CYGWIN*:x86_64|CYGWIN*:amd64)
     teamcity_eval_platform=windows
     teamcity_eval_arch=x86_64
-    teamcity_eval_sha256=50dbd0fcc887147a082a3b0b411797a8a3f03105b6377a1c042c50d94cf9fe59
+    teamcity_eval_sha256=def6b16ac2bb5bcc1b083711b20e9c97778cfd2427cf488222f35d7548e6ab33
     ;;
   *)
     echo "No TeamCity CLI v$teamcity_eval_cli_version release for $(uname -s) $(uname -m)." >&2
