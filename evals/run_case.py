@@ -91,6 +91,7 @@ from pipeline_validation import (
     validate_pipeline_scripts,
 )
 from build_monitor import LiveBuildMonitor, STOP_CATEGORY, safe_monitor_diagnostics
+from maven_version import maven_versions_match, observe_maven_versions
 
 
 class EvalError(RuntimeError):
@@ -454,6 +455,10 @@ class TeamCity:
     def build(self, build_id: int):
         return self._run(["run", "view", str(build_id), "--json"], json_output=True)
 
+    def build_log(self, build_id: int) -> str:
+        """Read the exact child build's full log; never publish the raw text."""
+        return self._run(["run", "log", str(build_id), "--raw"])
+
     def build_tree(self, build_id: int):
         return self._run(
             ["run", "tree", str(build_id), "--depth", "0", "--json"], json_output=True
@@ -716,6 +721,22 @@ def grade(case: dict, observed: dict) -> dict:
         checks["requiredTests"] = {
             "expected": True,
             "observed": required_tests_pass(expected, observed.get("tests", [])),
+        }
+    if expected.get("allTestsPassed"):
+        tests = observed.get("tests", [])
+        checks["allTestsPassed"] = {
+            "expected": True,
+            "observed": bool(tests) and all(test.get("status") == "SUCCESS"
+                                           and test.get("ignored", False) is False
+                                           for test in tests),
+        }
+    if "minimumMavenVersion" in expected:
+        checks["mavenVersion"] = {
+            "expected": True,
+            "observed": maven_versions_match(observed.get("mavenVersions"),
+                                             observed.get("jobs", []),
+                                             expected["minimumMavenVersion"]),
+            "detail": f"Maven {expected['minimumMavenVersion']}+ required in every native Maven build launch",
         }
     if "jobResults" in expected:
         results = observed.get("jobResults", [])
@@ -2307,6 +2328,10 @@ def run(
             chain_observed, result["verificationDiagnostics"] = observe_chain(
                 tc, project_id, build, case["expected"]["toolchain"]["jdk"]
             )
+            if "minimumMavenVersion" in case["expected"]:
+                chain_observed["mavenVersions"] = observe_maven_versions(
+                    tc, chain_observed["jobResults"], case["expected"]["minimumMavenVersion"]
+                )
         except EvalError:
             result["verificationErrorCategory"] = "verification-observation-failed"
             raise

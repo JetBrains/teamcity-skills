@@ -4,7 +4,7 @@
   "kind": "first-green-build",
   "status": "active",
   "skill": "teamcity-first-green-build",
-  "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} and get a green Maven verification build on Java 21. Inspect the repository's Maven and test setup; use a native Maven runner with verify and do not skip tests. Keep repository sources unchanged, import its JUnit XML into TeamCity, and publish both the application JAR and raw JUnit XML as downloadable build artifacts. Select Java 21 on the agent or through a suitable build container.",
+  "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} and get a green Maven 3.6+ verification build on Java 21. Inspect the repository's Maven and test setup; use a native Maven runner with verify and do not skip tests. Keep repository sources unchanged, import its JUnit XML into TeamCity, and publish both the application JAR and raw JUnit XML as downloadable build artifacts. Select Java 21 on the agent or through a suitable build container. Show the Maven version in the verification runner's normal log using -V or --show-version. All repository tests must pass without ignored tests; keep Java assertions enabled.",
   "teamcity": {
     "server": "runner-configured",
     "targetProject": "runner-configured"
@@ -18,7 +18,7 @@
   "stack": {
     "family": "spring-boot",
     "buildTool": "maven",
-    "maven": "3.x",
+    "maven": "3.6+",
     "springBoot": "3.2.5"
   },
   "requestedConfiguration": {
@@ -34,12 +34,18 @@
     "Grep"
   ],
   "verification": {
-    "command": "mvn -B -ntp clean verify",
+    "command": "mvn -V -B -ntp clean verify",
     "testReportPaths": [
       "target/surefire-reports/*.xml"
     ],
     "artifactPaths": [
-      "target/*.jar"
+      "target/*.jar",
+      "target/surefire-reports/TEST-com.kawser.cleanspringbootproject.CleanSpringBootProjectApplicationTests.xml",
+      "target/surefire-reports/TEST-com.kawser.cleanspringbootproject.api.controllers.ProductControllerTest.xml",
+      "target/surefire-reports/TEST-com.kawser.cleanspringbootproject.api.services.ProductServiceTest.xml",
+      "target/surefire-reports/TEST-com.kawser.cleanspringbootproject.auth.controllers.AuthenticationControllerTest.xml",
+      "target/surefire-reports/TEST-com.kawser.cleanspringbootproject.auth.repositories.UserRepositoryTest.xml",
+      "target/surefire-reports/TEST-com.kawser.cleanspringbootproject.auth.services.AuthenticationServiceTest.xml"
     ]
   },
   "expected": {
@@ -72,7 +78,37 @@
         {
           "stepType": "maven",
           "property": "goals",
-          "matches": "(?i)-D(?:skipTests|maven\\.test\\.skip)(?:=true)?(?=\\s|$)"
+          "matches": "(?i)(?:^|\\s)[\"']?-D\\s*(?:skipTests|maven\\.test\\.skip)(?:=[\"']?true[\"']?)?(?=[\"']?(?:\\s|$))"
+        },
+        {
+          "stepType": "maven",
+          "property": "runner-arguments",
+          "matches": "(?i)(?:^|\\s)[\"']?-D\\s*(?:skipTests|maven\\.test\\.skip)(?:=[\"']?true[\"']?)?(?=[\"']?(?:\\s|$))"
+        },
+        {
+          "stepType": "maven",
+          "property": "goals",
+          "matches": "(?i)(?:^|\\s)[\"']?-D\\s*enableAssertions=[\"']?false[\"']?(?=[\"']?(?:\\s|$))"
+        },
+        {
+          "stepType": "maven",
+          "property": "runner-arguments",
+          "matches": "(?i)(?:^|\\s)[\"']?-D\\s*enableAssertions=[\"']?false[\"']?(?=[\"']?(?:\\s|$))"
+        },
+        {
+          "stepType": "maven",
+          "property": "goals",
+          "matches": "(?i)(?:^|\\s)[\"']?-D\\s*argLine=(?:[\"']?-(?:da|disableassertions)(?=[:\\s\"']|$)|\"[^\"]*\\s-(?:da|disableassertions)(?=[:\\s\"]|$)|'[^']*\\s-(?:da|disableassertions)(?=[:\\s']|$))"
+        },
+        {
+          "stepType": "maven",
+          "property": "runner-arguments",
+          "matches": "(?i)(?:^|\\s)[\"']?-D\\s*argLine=(?:[\"']?-(?:da|disableassertions)(?=[:\\s\"']|$)|\"[^\"]*\\s-(?:da|disableassertions)(?=[:\\s\"]|$)|'[^']*\\s-(?:da|disableassertions)(?=[:\\s']|$))"
+        },
+        {
+          "stepType": "maven",
+          "property": "maven-version",
+          "matches": "bundled-3-[0-5](?!\\d)"
         }
       ],
       "requiredArtifactRules": [
@@ -80,6 +116,8 @@
         "(?i)(surefire-reports|TEST-).*\\.xml"
       ]
     },
+    "minimumMavenVersion": "3.6",
+    "allTestsPassed": true,
     "minimumTestCount": 39,
     "requiredTestNames": [
       "\\.ProductServiceTest\\.",

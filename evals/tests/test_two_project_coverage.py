@@ -141,7 +141,7 @@ class TwoProjectCoverageTest(unittest.TestCase):
                 self.assertFalse(self.grades()["requiredJobs"]["passed"])
 
     def test_maven_requires_real_suite_coverage_not_one_arbitrary_test(self):
-        self.assertEqual("mvn -B -ntp clean verify", self.maven["verification"]["command"])
+        self.assertEqual("mvn -V -B -ntp clean verify", self.maven["verification"]["command"])
         tests = [{"name": "com.kawser.cleanspringbootproject." + name + ".example",
                   "status": "SUCCESS", "ignored": False} for name in (
                       "ProductServiceTest", "ProductControllerTest", "AuthenticationServiceTest",

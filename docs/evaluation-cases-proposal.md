@@ -111,7 +111,7 @@ and is not covered by this contract.
 | `java25-agent-requirement-blocks-provisioning` (draft) | A deterministic queue stall distinguishes the pre-dispatch `env.JDK_25` requirement from installing JDK 25 after dispatch. The fixture exposes neither JDK 25 nor Docker, so the agent must inspect capabilities and explain that the requirement must change before a build-step download can run. |
 | `spring-petclinic-maven-pipeline` | The configuration-only Spring Petclinic case uses its documented Maven verification path and publishes the JAR. |
 | `clean-spring-boot-maven-pipeline` | A Maven-only Spring Boot project receives a Java 21 Maven verification job and JAR publication contract without running the target project. |
-| `clean-spring-boot-maven` | The Clean Spring project must reach a first green Maven verification build on Java 21, import its JUnit XML, and publish its JAR. |
+| `clean-spring-boot-maven` | The Clean Spring project must reach a green Maven 3.6+ verification build on Java 21, report at least 39 passing tests with none ignored or failed, and publish its JAR and all six expected test XML filenames. |
 | `spring-boot-demo-gradle-testcontainers-pipeline` | A Kotlin/Gradle Spring Boot project gets separate Java 21 build/package and Docker-backed Testcontainers test jobs. Both generate its JOOQ/OpenAPI sources; the package job must not silently run tests. |
 | `spring-boot-demo-gradle-testcontainers` | The same repository must reach a first green Java 21 build with generated sources, Docker-backed Testcontainers tests, JUnit XML, and a published JAR. |
 | `spring-boot-kotlin-gradle-java25-pipeline` | A Spring Boot 4/Gradle repository gets exactly one Gradle build job using an exact JDK 25 container and publishes its JAR even when the ephemeral host does not preinstall JDK 25. |
@@ -120,6 +120,25 @@ and is not covered by this contract.
 | `jetcaster-kmp-multi-targets` | Jetcaster preserves exactly seven independent test, Android, iOS, desktop-platform, and Wasm jobs, with each task, platform agent, and artifact checked inside the corresponding job. |
 | `kotlinconf-app-multi-targets` | KotlinConf App preserves six shared-test, Android, iOS, desktop, web, and backend jobs, and publishes each platform output from the job that produces it. |
 | `teamcity-mcp-access-permissions` | The evaluation environment is authenticated and exposes the TeamCity operations needed for first-green-build setup. It classifies an actual `401`/`403` authorization failure separately from an operation that the selected TeamCity tool surface does not provide. |
+
+The Clean Spring Maven contracts reject test-skipping flags and assertion
+disabling flags in both `goals` and `runner-arguments`. They also reject explicit
+bundled Maven selections older than 3.6. The live case requires an
+`Apache Maven <version>` banner from every native Maven build launch in the
+selected verification chain. Use `-V` or `--show-version` in that runner;
+M2_HOME, an installation path, a POM inspection probe, and a separate diagnostic
+step are insufficient. Missing version output fails the runtime check.
+The configuration-only case cannot measure the runtime version and queues no
+builds.
+
+The live case requires all imported tests to succeed without ignored tests,
+in addition to the existing minimum of 39 tests and six test-class checks.
+The artifact listing must include `TEST-<fully-qualified-class>.xml` for the
+application test, ProductControllerTest, ProductServiceTest,
+AuthenticationControllerTest, UserRepositoryTest, and AuthenticationServiceTest.
+Nested and flattened publication paths are accepted. The empty
+ProductRepositoryTest class does not require a report. XML files are neither
+downloaded nor parsed; the check establishes filename coverage only.
 
 The cases define expected behavior, not stored results. A case can therefore be
 committed before it passes; each execution publishes only its minimal verdict.
