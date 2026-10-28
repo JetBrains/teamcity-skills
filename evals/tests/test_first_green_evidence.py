@@ -157,16 +157,20 @@ class FirstGreenEvidenceTest(unittest.TestCase):
     def test_available_jdk_wrong_version_or_unconfigured_job_is_not_selection(self):
         for jobs in [[{"parameters": {"env.JDK_21_0": "/jdk-21"}}],
                      [{"parameters": {"env.JAVA_HOME": "%env.JDK_121_0%"}}],
+                     [{"parameters": {"env.JAVA_HOME": "%env.JDK_17_21%"}}],
+                     [{"environment": {"JAVA_HOME": "/opt/jdk-17.0.21"}}],
                      [{"environment": {"JAVA_HOME": "/jdk-21"}}, {}]]:
             with self.subTest(jobs=jobs):
                 self.assertFalse(evidence.jdk_evidence({}, "21", jobs)[0])
 
     def test_runtime_version_is_separate_and_overrides_declaration(self):
         jobs = [{"environment": {"JAVA_HOME": "/jdk-21"}}]
-        matched, _, diagnostic = evidence.jdk_evidence({"java.version": "17.0.1"}, "21", jobs)
-        self.assertFalse(matched)
-        self.assertTrue(diagnostic["declaredMatch"])
-        self.assertFalse(diagnostic["runtimeVerified"])
+        for version in ("17.0.1", "17.0.21"):
+            with self.subTest(version=version):
+                matched, _, diagnostic = evidence.jdk_evidence({"java.version": version}, "21", jobs)
+                self.assertFalse(matched)
+                self.assertTrue(diagnostic["declaredMatch"])
+                self.assertFalse(diagnostic["runtimeVerified"])
         self.assertTrue(evidence.jdk_evidence({"java.version": "21.0.1"}, "21", jobs)[2]["runtimeVerified"])
 
     def test_safe_diagnostics_strip_private_values(self):

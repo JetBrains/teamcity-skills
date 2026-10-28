@@ -21,6 +21,24 @@ collector = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(collector)
 
 
+# Minimal TeamCity Docker-wrapper output: a model query followed by the build.
+DOCKER_LOG = r"""[10:00:00]i: [Step 1/1] Container script (to be run inside container):
+exec java -classpath "/tools/maven/boot/*:" \
+ org.codehaus.plexus.classworlds.launcher.Launcher \
+ -f /work/info.123.pom.xml \
+ "org.jetbrains.maven:info-maven3-plugin:1.4.8:info"
+[10:00:00]i: [Step 1/1] Starting: /bin/sh -c docker exec example-container /bin/sh /tmp/model.sh
+[10:00:01]i: [Step 1/1] Process exited with code 0
+[10:00:01]i: [Step 1/1] Container script (to be run inside container):
+exec java -Dteamcity.auth.password=private-canary \
+ -classpath "/tools/maven/boot/*:" \
+ org.codehaus.plexus.classworlds.launcher.Launcher \
+ -V -B clean verify
+[10:00:01]i: [Step 1/1] Starting: /bin/sh -c docker exec example-container /bin/sh /tmp/build.sh
+[10:00:01] : [Step 1/1] Java version: 21.0.2, vendor: Example, runtime: /opt/java/openjdk
+"""
+
+
 def launch(home="/usr/lib/jvm/java-21-amazon-corretto", step=1, total=1):
     executable = home + ("\\bin\\java.exe" if "\\" in home else "/bin/java")
     return (f'[10:00:00]i: [Step {step}/{total}] Starting: "{executable}" '
@@ -39,7 +57,7 @@ def job(number=1, steps=1):
 
 class MavenLogTest(unittest.TestCase):
     def test_docker_wrapper_binds_maven_execution_and_runtime_to_its_step(self):
-        log = (EVALS / "tests/fixtures/maven-docker.log").read_text()
+        log = DOCKER_LOG
         result = maven_runtime(log, "21", 1, [1], 1)
         self.assertEqual("verified", result["status"])
         self.assertEqual(1, result["launchCount"])
@@ -54,8 +72,11 @@ class MavenLogTest(unittest.TestCase):
                 self.assertEqual("missing", maven_runtime(incomplete, "21", 1, [1], 1)["status"])
 
     def test_docker_script_cannot_supply_runtime_for_another_step(self):
-        log = (EVALS / "tests/fixtures/maven-docker.log").read_text().replace("Step 1/1", "Step 1/2")
-        log += '[Step 2/2] Java version: 21.0.2, vendor: Example, runtime: /opt/java/openjdk\n'
+        marker = "[10:00:01]i: [Step 1/1] Starting:"
+        printed, executed = DOCKER_LOG.rsplit(marker, 1)
+        log = (printed.replace("Step 1/1", "Step 1/2")
+               + marker.replace("Step 1/1", "Step 2/2")
+               + executed.replace("Step 1/1", "Step 2/2"))
         self.assertEqual("missing", maven_runtime(log, "21", 1, [2], 2)["status"])
 
     def test_native_maven_launch_identifies_java_on_linux_windows_and_macos(self):
@@ -176,7 +197,7 @@ class MavenGraderTest(unittest.TestCase):
                 self.assertFalse(diagnostics["jdk"]["runtimeVerified"])
 
     def test_configuration_grading_honors_runner_override_without_logs(self):
-        tc, _, jobs = self.fixture()
+        jobs = [job()]
         case = {"expected": {"minimumJobs": 1, "sourceMutations": "none", "toolchain": {"jdk": "21"}}}
         observed = {"jobs": jobs, "mutations": [], "toolCalls": []}
         for home, expected in (("%env.JDK_17_0%", False), ("%env.JDK_21_0%", True)):
@@ -187,12 +208,17 @@ class MavenGraderTest(unittest.TestCase):
         self.assertTrue(runner.grade_configuration(case, observed)["toolchain"]["passed"])
         jobs[0]["parameters"] = {"env.JAVA_HOME": "%env.JDK_17_0%"}
         self.assertTrue(runner.grade_configuration(case, observed)["toolchain"]["passed"])
-        tc.build_log.assert_not_called()
 
     def test_configuration_runner_jdk_resolves_parameters_before_filtering(self):
         tc = runner.TeamCity("teamcity", "https://example.invalid", "private", {})
         case = {"expected": {"minimumJobs": 1, "sourceMutations": "none", "toolchain": {"jdk": "21"}}}
         for parameters, environment, home, job_parameters, expected in (
+            ({}, {}, "/opt/jdk-17.0.21", {}, False),
+            ({}, {}, "%env.JDK_17_21%", {}, False),
+            ({}, {}, "/opt/jdk-21.0.2", {}, True),
+            ({}, {}, r"C:\Program Files\Java\jdk-17.0.21", {}, False),
+            ({}, {}, r"C:\Program Files\Java\jdk-21.0.2", {}, True),
+            ({"selected.jdk": "/opt/jdk-17.0.21"}, {}, "%selected.jdk%", {}, False),
             ({"env.JDK_21_0": "/opt/jdk-17"}, {}, "%env.JDK_21_0%", {}, False),
             ({"selected.jdk": "%jdk.root%", "jdk.root": "/opt/jdk-21"}, {}, "%selected.jdk%", {}, True),
             ({"selected.jdk": "/opt/jdk-21"}, {}, "%selected.jdk%", {"selected.jdk": "/opt/jdk-17"}, False),
@@ -257,8 +283,9 @@ class MavenGraderTest(unittest.TestCase):
         tc, build, _ = self.fixture()
         observed, diagnostics = observe_chain(tc, "project", build, "21")
         diagnostics["jdk"]["mavenRuntime"][0].update(log=launch(), path="private-canary")
-        published = runner.publishable_result({"checks": {}, "verificationDiagnostics": diagnostics,
-                                               "mavenRuntime": observed["mavenRuntime"], "log": launch()})
+        raw = {"checks": {}, "verificationDiagnostics": diagnostics,
+               "mavenRuntime": observed["mavenRuntime"], "log": launch()}
+        published = runner.publishable_result(raw)
         self.assertNotIn("private-canary", json.dumps(published))
         self.assertNotIn("jobId", json.dumps(published))
 
@@ -266,13 +293,14 @@ class MavenGraderTest(unittest.TestCase):
             if "--json" in args:
                 return subprocess.CompletedProcess([], 0, json.dumps({"file": [{"name": "eval-result.json"}]}))
             destination = pathlib.Path(args[args.index("--output") + 1])
-            (destination / "eval-result.json").write_text(json.dumps(published))
+            (destination / "eval-result.json").write_text(json.dumps(raw))
             return subprocess.CompletedProcess([], 0, "")
 
         with mock.patch.object(collector, "cli", side_effect=cli):
             collected = collector.download_result([], "https://example.invalid", 50, set())
         self.assertNotIn("private-canary", json.dumps(collected))
-        self.assertEqual("verified", collected["verificationDiagnostics"]["jdk"]["mavenRuntime"][0]["status"])
+        self.assertNotIn("jobId", json.dumps(collected))
+        self.assertEqual(published["verificationDiagnostics"], collected["verificationDiagnostics"])
 
     def test_cli_reads_complete_raw_log_for_the_exact_build(self):
         tc = runner.TeamCity("teamcity", "https://example.invalid", "private", {})

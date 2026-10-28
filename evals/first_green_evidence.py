@@ -2,7 +2,7 @@
 
 import re
 
-from maven_runtime import maven_runtime, safe_maven_runtime
+from maven_runtime import java_major, maven_runtime, path_major, safe_maven_runtime
 
 
 VERIFICATION_ERROR_CATEGORIES = {
@@ -115,21 +115,30 @@ def resolve_jdk_home(value, parameters, environment):
     return expand(value, set())
 
 
+def jdk_home_major(value):
+    selector = re.fullmatch(r"%env\.JDK_(\d+(?:_\d+)*)%", value)
+    if selector:
+        return java_major(selector[1].replace("_", "."))
+    return path_major(value.replace("\\", "/").rstrip("/"))
+
+
 def jdk_evidence(properties, jdk, jobs=None):
-    version = re.compile(rf"(?<!\d){re.escape(jdk)}(?!\d)")
+    required_major = int(jdk)
     # A selected home or available JDK is not a measured runtime version.
     runtime = [str(value) for key, value in properties.items()
                if key in ("java.version", "java.specification.version")]
-    runtime_verified = bool(runtime) and all(version.search(value) for value in runtime)
+    runtime_verified = bool(runtime) and all(java_major(value) == required_major for value in runtime)
     matched_jobs, evidence = 0, []
     for job in jobs or []:
         selectors = list(jdk_selectors(job.get("environment")).values())
         selectors += list(jdk_selectors(job.get("parameters"), parameter=True).values())
+        selectors = [jdk_home_major(value) for value in selectors]
         steps = [step for step in job.get("steps", []) if step.get("type") in ("maven", "gradle")]
         images = [step.get("properties", {}).get("docker-image", "")
                   for step in job.get("steps", [])]
         images = [image for image in images if isinstance(image, str)
                   and re.search(r"(?i)java|jdk|openjdk|temurin", image)]
+        images = [path_major(image) or java_major(image.rsplit(":", 1)[-1]) for image in images]
         choices, runner_selected = [], False
         for step in steps or [{}]:
             step_properties = step.get("properties", {})
@@ -137,13 +146,13 @@ def jdk_evidence(properties, jdk, jobs=None):
             if isinstance(home, str) and home.strip():
                 # A runner's explicit JDK overrides the job environment.
                 home = resolve_jdk_home(home, job.get("parameters"), job.get("environment"))
-                choices.append([home])
+                choices.append([jdk_home_major(home)])
                 runner_selected = True
             else:
                 # Preserve the existing declaration check for jobs without a
                 # runner override. Maven execution is verified separately.
                 choices.append(selectors + images)
-        if all(selection and all(version.search(value) for value in selection)
+        if all(selection and all(major == required_major for major in selection)
                for selection in choices):
             matched_jobs += 1
             evidence.append("declared-runner-jdk" if runner_selected else

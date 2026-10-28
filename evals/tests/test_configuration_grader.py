@@ -101,10 +101,13 @@ class ConfigurationGraderTest(unittest.TestCase):
             )
         ]
 
-        matched, evidence = run_case.toolchain_evidence({}, "25", jobs)
-
-        self.assertTrue(matched)
-        self.assertIn("declared-docker-image", evidence)
+        for image in ("eclipse-temurin:25-jdk", "eclipse-temurin:25.0.1-jdk",
+                      "maven:3.9.9-eclipse-temurin-25"):
+            with self.subTest(image=image):
+                jobs[0]["steps"][0]["properties"]["docker-image"] = image
+                matched, evidence = run_case.toolchain_evidence({}, "25", jobs)
+                self.assertTrue(matched)
+                self.assertIn("declared-docker-image", evidence)
 
     def test_toolchain_rejects_wrong_jdk_container_image(self):
         jobs = [
@@ -116,9 +119,11 @@ class ConfigurationGraderTest(unittest.TestCase):
             )
         ]
 
-        matched, _ = run_case.toolchain_evidence({}, "25", jobs)
-
-        self.assertFalse(matched)
+        for image in ("eclipse-temurin:21-jdk", "eclipse-temurin:21.0.25-jdk"):
+            with self.subTest(image=image):
+                jobs[0]["steps"][0]["properties"]["docker-image"] = image
+                matched, _ = run_case.toolchain_evidence({}, "25", jobs)
+                self.assertFalse(matched)
 
     def test_clean_spring_requires_java_21_not_a_particular_selection_method(self):
         case = json.loads(CLEAN_SPRING_CASE.read_text())
