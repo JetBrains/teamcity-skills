@@ -24,8 +24,8 @@ class EvidenceError(RuntimeError):
 
 
 def pipeline_signature(document):
-    # The server may normalize the display name; topology and settings must match.
-    return {key: document.get(key) or {} for key in ("jobs", "parameters", "environment")}
+    # Only the display name may be normalized by the server.
+    return {key: value for key, value in document.items() if key != "name"}
 
 
 def select_pipeline(definitions, source=None):

@@ -182,7 +182,10 @@ requires all of the following:
 For both first-green-build and pipeline-configuration cases, the grader pulls
 the selected pipeline's saved YAML and runs `teamcity pipeline validate <file>
 --refresh-schema`, even if the agent did not run validation. The saved YAML
-must still match the definition selected from the agent's final deliverable.
+must match every field of the agent's final deliverable except its display
+name. First-green-build cases validate before waiting for a verification
+chain, so a missing build or failed head cannot bypass schema validation.
+The saved definition must still match the validated snapshot after the wait.
 Only that pipeline is validated; unrelated diagnostic pipelines do not affect
 the grade. A schema violation fails `configurationValidated`. A CLI, auth, or
 schema-fetch error leaves the eval `errored`, rather than grading it as valid

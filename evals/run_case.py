@@ -1981,15 +1981,16 @@ def wait_for_build(
     no_build_timeout: int = None,
 ) -> dict:
     """Freeze one verification head and wait for its entire dependency DAG."""
-    deadline = time.time() + timeout
-    no_build_deadline = time.time() + (timeout if no_build_timeout is None else no_build_timeout)
     if timeout <= 0:
         raise NoBuildQueued("no verification head observed within the wait budget")
     pipeline_id, selection, definition = verification_pipeline(tc, project_id, case, checkout)
+    schema_diagnostics = tc.validate_pipeline(pipeline_id, definition)
     # Stored YAML, not virtual job metadata, is authoritative for script fields.
     # Check only the selected verification pipeline; unrelated probes are not
     # evidence about it. Fail before querying builds or sleeping in the queue.
     configuration_diagnostics = validate_pipeline_scripts(definition)
+    deadline = time.time() + timeout
+    no_build_deadline = time.time() + (timeout if no_build_timeout is None else no_build_timeout)
     latest, attempts = None, 0
     queued = {}
     while time.time() < deadline:
@@ -2008,6 +2009,7 @@ def wait_for_build(
                     raise EvidenceError("verification-chain-incomplete")
                 return {**latest, "state": "finished", "nodes": nodes,
                         "configurationDiagnostics": configuration_diagnostics,
+                        "schemaValidationDiagnostics": schema_diagnostics,
                         "pipelineDefinition": definition,
                         "pipelineId": pipeline_id, "selection": selection, "attempts": attempts,
                         "status": "SUCCESS" if all(node["status"] == "SUCCESS" for node in nodes)
@@ -2341,13 +2343,13 @@ def run(
             raise
         result["configurationDiagnostics"] = build["configurationDiagnostics"]
         phases.enter("grading")
-        result["schemaValidationDiagnostics"] = tc.validate_pipeline(
-            build["pipelineId"], build["pipelineDefinition"],
-        )
+        result["schemaValidationDiagnostics"] = build["schemaValidationDiagnostics"]
         # How many builds it took to get green is a quality signal in itself:
         # green on the first attempt and green on the sixth are not the same
         # work, and the graded checks alone cannot tell them apart.
         try:
+            if tc.pipeline_definition(build["pipelineId"]) != build["pipelineDefinition"]:
+                raise EvidenceError("verification-pipeline-ambiguous")
             chain_observed, result["verificationDiagnostics"] = observe_chain(
                 tc, project_id, build, case["expected"]["toolchain"]["jdk"]
             )

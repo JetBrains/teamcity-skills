@@ -27,7 +27,7 @@ import collect_teamcity_eval_runs as collector
 def document(feature="xml-report"):
     return {
         "jobs": {"Verify": {
-            "environment": {"JAVA_HOME": "/jdk-21"},
+            "parameters": {"env.JAVA_HOME": "/jdk-21"},
             "steps": [{"type": "maven", "goals": "clean verify"}],
             "features": [{"type": feature, "report-type": "junit",
                           "rules": "target/surefire-reports/*.xml"}],
@@ -129,7 +129,8 @@ class PipelineSchemaTest(unittest.TestCase):
             self.assertEqual("unavailable", raised.exception.diagnostics["status"])
 
     def run_evaluation(self, feature="xml-report", kind="first-green-build", unavailable=False,
-                       timed_out=False):
+                       timed_out=False, *, final_updates=None, build_state="complete",
+                       server_changes_after_validation=None, expected_validations=1):
         with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
             source = document(feature)
             case = {
@@ -144,13 +145,17 @@ class PipelineSchemaTest(unittest.TestCase):
             case_path = pathlib.Path(directory) / "case.json"
             case_path.write_text(json.dumps(case))
             tc = runner.TeamCity("teamcity", "https://target.invalid", "private-token", {})
+            tree = {"id": 1, "buildTypeId": "selected", "state": "finished", "status": "SUCCESS",
+                    "dependencies": [{"id": 2, "buildTypeId": "child", "state": "finished",
+                                      "status": "SUCCESS", "dependencies": []}]}
+            if build_state == "head-only":
+                tree.update(status="FAILURE", dependencies=[])
             for name, value in (
                 ("create_project", "project"), ("mark_temporary_project", None),
                 ("pipeline_ids", ["selected", "probe"]), ("build_types", [{"id": "selected"}]),
-                ("builds", [{"id": 1, "buildTypeId": "selected", "status": "SUCCESS"}]),
-                ("build_tree", {"id": 1, "buildTypeId": "selected", "state": "finished", "status": "SUCCESS",
-                    "dependencies": [{"id": 2, "buildTypeId": "child", "state": "finished",
-                                      "status": "SUCCESS", "dependencies": []}]}),
+                ("builds", [] if build_state == "not-queued" else
+                    [{"id": 1, "buildTypeId": "selected", "status": "SUCCESS"}]),
+                ("build_tree", tree),
                 ("build", {"id": 2, "buildTypeId": "child", "state": "finished", "status": "SUCCESS",
                            "buildType": {"name": "Verify"}}),
                 ("test_results", [{"name": "Example.test", "status": "SUCCESS", "ignored": False}]),
@@ -158,15 +163,21 @@ class PipelineSchemaTest(unittest.TestCase):
             ):
                 stack.enter_context(mock.patch.object(tc, name, return_value=value))
             probe = {"jobs": {"Probe": {"features": [{"type": "invalid-probe"}]}}}
-            stack.enter_context(mock.patch.object(tc, "pipeline", side_effect=lambda key:
-                {"yaml": yaml.safe_dump(source if key == "selected" else probe, sort_keys=False)}))
+
+            def saved_pipeline(key):
+                saved = source if key == "selected" else probe
+                if key == "selected" and command.call_count and server_changes_after_validation:
+                    saved = {**saved, **server_changes_after_validation}
+                return {"yaml": yaml.safe_dump(saved, sort_keys=False)}
+
+            stack.enter_context(mock.patch.object(tc, "pipeline", side_effect=saved_pipeline))
             command = stack.enter_context(mock.patch.object(tc, "_execute", side_effect=(
                 lambda args: subprocess.CompletedProcess(args, 1, "", "failed to download schema: private-canary")
             ) if unavailable else validator))
 
             def checkout(_case, path):
                 path.mkdir(parents=True, exist_ok=True)
-                (path / ".teamcity.yml").write_text(yaml.safe_dump(source))
+                (path / ".teamcity.yml").write_text(yaml.safe_dump({**source, **(final_updates or {})}))
 
             bridge = mock.MagicMock()
             bridge.__enter__.return_value.agent_environment.return_value = {}
@@ -179,6 +190,11 @@ class PipelineSchemaTest(unittest.TestCase):
             stack.enter_context(mock.patch.object(runner, "checkout_repository", side_effect=checkout))
             stack.enter_context(mock.patch.object(runner, "harness_revision", return_value="a" * 40))
             stack.enter_context(mock.patch.object(runner.sys, "stderr", io.StringIO()))
+            if build_state == "not-queued":
+                clock = [0]
+                stack.enter_context(mock.patch.object(runner.time, "time", side_effect=lambda: clock[0]))
+                stack.enter_context(mock.patch.object(runner.time, "sleep", side_effect=
+                    lambda seconds: clock.__setitem__(0, clock[0] + seconds)))
             for name, value in (("agent_usage", {}), ("trace_error_category", None),
                                 ("permission_failure_surface", None), ("agent_tool_summary", {}),
                                 ("source_mutations", []), ("tool_calls", [])):
@@ -189,9 +205,10 @@ class PipelineSchemaTest(unittest.TestCase):
                 "exitCode": 124 if timed_out else 0, "timedOut": timed_out, "timeoutSeconds": 3600,
             }))
             result = runner.publishable_result(runner.run(case_path, False, False, "baseline", "cli-only"))
-            command.assert_called_once()
-            if kind == "pipeline-configuration":
+            self.assertEqual(expected_validations, command.call_count)
+            if kind == "pipeline-configuration" or feature == "junit" or unavailable or final_updates:
                 tc.builds.assert_not_called()
+                tc.build_tree.assert_not_called()
             self.assertNotIn("private", json.dumps(result))
             return result
 
@@ -212,6 +229,29 @@ class PipelineSchemaTest(unittest.TestCase):
                 self.assertEqual({"status": "invalid", "errorCount": 1, "issues": [
                     {"line": 12, "category": "invalid-enum-value"},
                 ]}, result["schemaValidationDiagnostics"])
+
+    def test_final_yaml_root_mismatch_cannot_pass_either_case_kind(self):
+        for kind in ("first-green-build", "pipeline-configuration"):
+            with self.subTest(kind=kind):
+                result = self.run_evaluation(kind=kind, final_updates={"version": 999}, expected_validations=0)
+                self.assertEqual("errored", result["status"])
+                self.assertEqual("verification-pipeline-ambiguous", result["verificationErrorCategory"])
+                self.assertNotIn("gradeStatus", result)
+
+    def test_invalid_yaml_is_graded_without_a_complete_or_queued_build(self):
+        for state in ("head-only", "not-queued"):
+            with self.subTest(state=state):
+                result = self.run_evaluation("junit", build_state=state)
+                self.assertEqual("failed", result["status"])
+                self.assertFalse(result["checks"]["configurationValidated"]["passed"])
+                self.assertEqual("invalid", result["schemaValidationDiagnostics"]["status"])
+                self.assertEqual("verification-invalid-pipeline-yaml", result["verificationErrorCategory"])
+
+    def test_changed_server_yaml_after_validation_is_not_graded(self):
+        result = self.run_evaluation(server_changes_after_validation={"version": 999})
+        self.assertEqual("errored", result["status"])
+        self.assertEqual("verification-pipeline-ambiguous", result["verificationErrorCategory"])
+        self.assertNotIn("gradeStatus", result)
 
     def test_unavailable_validation_is_an_error_not_a_failed_agent_grade(self):
         result = self.run_evaluation(unavailable=True)
