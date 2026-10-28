@@ -121,6 +121,25 @@ and is not covered by this contract.
 | `kotlinconf-app-multi-targets` | KotlinConf App preserves six shared-test, Android, iOS, desktop, web, and backend jobs, and publishes each platform output from the job that produces it. |
 | `teamcity-mcp-access-permissions` | The evaluation environment is authenticated and exposes the TeamCity operations needed for first-green-build setup. It classifies an actual `401`/`403` authorization failure separately from an operation that the selected TeamCity tool surface does not provide. |
 
+The Clean Spring Maven cases use repository revision
+[`315ca51dcb0ec25f2cce8f99fa239ec23717f3f6`](https://github.com/kawser2133/clean-spring-boot-project/tree/315ca51dcb0ec25f2cce8f99fa239ec23717f3f6).
+At this revision, `README.md` requires Java 21 and Maven 3.6+, and `pom.xml`
+sets Java 21. No CI workflow is tracked at this revision, so the contract is
+based on these files and the repository's test configuration.
+
+The tests use H2, as configured in `src/test/resources/application.properties`.
+PostgreSQL is therefore not required for the verification build, even though
+the README lists it as an application prerequisite. The repository contains
+`mvnw` launchers but no tracked `.mvn/wrapper` files, so installed Maven is
+allowed. The recorded control build and suite counts are documented in
+[Independent source checks](eval-expansion-plan.md#independent-source-checks-not-eval-samples).
+
+The live case requires a native Maven `verify` build with the required Java
+and Maven versions, at least 39 successful tests covering the six required
+test-name patterns, TeamCity test reporting, and JAR/XML publication.
+Maven dependency caching and parallel execution are optional optimizations;
+their absence does not fail the eval.
+
 The Clean Spring Maven contracts reject test-skipping flags and assertion
 disabling flags in both `goals` and `runner-arguments`, including quoted
 `-D`/`--define` options and references to stored pipeline/job parameters or
