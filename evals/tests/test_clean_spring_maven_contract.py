@@ -72,7 +72,9 @@ class CleanSpringContractTest(unittest.TestCase):
             for option in ("-DskipTests", "-DskipTests=true", "-Dmaven.test.skip",
                            "-Dmaven.test.skip=true", '-DskipTests="true"',
                            "'-Dmaven.test.skip=true'", "-D skipTests=true",
-                           '-D"skipTests=true"', '-D"maven.test.skip=true"'):
+                           '-D"skipTests=true"', '-D"maven.test.skip=true"',
+                           "--define skipTests", "--define=skipTests=true",
+                           "--define maven.test.skip=true", "-define=skipTests=true"):
                 with self.subTest(property=property_name, option=option):
                     actual = observed()
                     props = actual["jobs"][0]["steps"][0]["properties"]
@@ -92,7 +94,10 @@ class CleanSpringContractTest(unittest.TestCase):
                            "'-DargLine=-Xmx512m -disableassertions'",
                            '"-DargLine=-Xmx512m\t-da"',
                            '-D argLine="-Xmx512m -da"',
-                           r'-DargLine="-Dlabel=\"some text\" -da"'):
+                           r'-DargLine="-Dlabel=\"some text\" -da"',
+                           "--define=enableAssertions=false",
+                           '--define argLine="-Xmx512m -da"',
+                           r'-DargLine="-ea -Dlabel=C:\tools\ -da"'):
                 with self.subTest(property=property_name, option=option):
                     actual = observed()
                     props = actual["jobs"][0]["steps"][0]["properties"]
@@ -111,7 +116,10 @@ class CleanSpringContractTest(unittest.TestCase):
                            '"-DargLine=-Xmx512m -ea"',
                            r'-DargLine="-Dlabel=\"some -da text\" -ea"',
                            '-Dlabel="some -DskipTests=true -DenableAssertions=false"',
-                           r'-Dmaven.repo.local="C:\Program Files\maven-repo"'):
+                           r'-Dmaven.repo.local="C:\Program Files\maven-repo"',
+                           "--define=skipTests=false", "--define enableAssertions=true",
+                           "-DargLine=\"'-Dlabel=some -da text' -ea\"",
+                           r'-DargLine="-Dpath=C:\tools\ -ea"'):
                 with self.subTest(property=property_name, option=option):
                     actual = observed()
                     props = actual["jobs"][0]["steps"][0]["properties"]
@@ -154,7 +162,8 @@ class CleanSpringContractTest(unittest.TestCase):
                                      ["forbiddenStepProperties"]["passed"])
 
     def test_inconclusive_maven_arguments_cannot_pass(self):
-        for value in ('-V "-DargLine=-da', "%unknown%", "-D", None):
+        for value in ('-V "-DargLine=-da', "%unknown%", "-D", "--define", "--define=",
+                      '--define ""', None):
             with self.subTest(value=value):
                 actual = observed()
                 actual["jobs"][0]["steps"][0]["properties"]["runner-arguments"] = value
@@ -284,30 +293,24 @@ class MavenVersionTest(unittest.TestCase):
                     wrapped.replace("Apache Maven 3.9.11", "Apache Maven 3.5.4"), job(), "3.6")["status"])
 
     def test_observation_reads_only_bound_maven_child_logs(self):
-        tc = mock.Mock()
-        tc.build_log.return_value = log()
+        tc = runner.TeamCity("teamcity", "https://example.invalid", "synthetic", {})
         configured = job()
         results = [{"job": job([step("script")]), "buildId": 101},
                    {"job": configured, "buildId": 102}]
-        measured = observe_maven_versions(tc, results, "3.6")
-        tc.build_log.assert_called_once_with(102)
+        with mock.patch.object(tc, "_run", return_value=log()) as command:
+            measured = observe_maven_versions(tc, results, "3.6")
+        command.assert_called_once_with(["run", "log", "102", "--raw"])
         self.assertTrue(maven_versions_match(measured, [configured], "3.6"))
         self.assertNotIn("/jdk", json.dumps(measured))
         self.assertNotIn("Launcher", json.dumps(measured))
         for corrupt in ([], measured * 2, [{**measured[0], "jobId": "other"}],
                         [{**measured[0], "versions": ["3.5.4"]}]):
             self.assertFalse(maven_versions_match(corrupt, [configured], "3.6"))
-        tc.build_log.side_effect = RuntimeError("private-canary")
-        measured = observe_maven_versions(tc, results, "3.6")
+        with mock.patch.object(tc, "_run", side_effect=RuntimeError("private-canary")):
+            measured = observe_maven_versions(tc, results, "3.6")
         self.assertEqual("unavailable", measured[0]["status"])
         self.assertNotIn("private-canary", json.dumps(measured))
         self.assertFalse(maven_versions_match(measured, [configured], "3.6"))
-
-    def test_adapter_reads_raw_log_through_first_class_cli(self):
-        tc = runner.TeamCity("teamcity", "https://example.invalid", "synthetic", {})
-        with mock.patch.object(tc, "_run", return_value=log()) as command:
-            self.assertEqual(log(), tc.build_log(102))
-        command.assert_called_once_with(["run", "log", "102", "--raw"])
 
 
 if __name__ == "__main__":

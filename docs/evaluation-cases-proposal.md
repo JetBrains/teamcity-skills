@@ -122,8 +122,9 @@ and is not covered by this contract.
 | `teamcity-mcp-access-permissions` | The evaluation environment is authenticated and exposes the TeamCity operations needed for first-green-build setup. It classifies an actual `401`/`403` authorization failure separately from an operation that the selected TeamCity tool surface does not provide. |
 
 The Clean Spring Maven contracts reject test-skipping flags and assertion
-disabling flags in both `goals` and `runner-arguments`, including quoted options
-and references to stored pipeline/job parameters or environment variables.
+disabling flags in both `goals` and `runner-arguments`, including quoted
+`-D`/`--define` options and references to stored pipeline/job parameters or
+environment variables.
 Unresolved or cyclic references and malformed arguments fail the check.
 They also reject explicit bundled Maven selections older than 3.6. The live case requires an
 `Apache Maven <version>` banner from every native Maven build launch in the

@@ -78,32 +78,32 @@
         {
           "stepType": "maven",
           "property": "goals",
-          "matches": "(?i)(?:^|\\s)[\"']?-D\\s*(?:skipTests|maven\\.test\\.skip)(?:=[\"']?true[\"']?)?(?=[\"']?(?:\\s|$))"
+          "matches": "(?i)^-D(?:skipTests|maven\\.test\\.skip)(?:=true)?$"
         },
         {
           "stepType": "maven",
           "property": "runner-arguments",
-          "matches": "(?i)(?:^|\\s)[\"']?-D\\s*(?:skipTests|maven\\.test\\.skip)(?:=[\"']?true[\"']?)?(?=[\"']?(?:\\s|$))"
+          "matches": "(?i)^-D(?:skipTests|maven\\.test\\.skip)(?:=true)?$"
         },
         {
           "stepType": "maven",
           "property": "goals",
-          "matches": "(?i)(?:^|\\s)[\"']?-D\\s*enableAssertions=[\"']?false[\"']?(?=[\"']?(?:\\s|$))"
+          "matches": "(?i)^-DenableAssertions=false$"
         },
         {
           "stepType": "maven",
           "property": "runner-arguments",
-          "matches": "(?i)(?:^|\\s)[\"']?-D\\s*enableAssertions=[\"']?false[\"']?(?=[\"']?(?:\\s|$))"
+          "matches": "(?i)^-DenableAssertions=false$"
         },
         {
           "stepType": "maven",
           "property": "goals",
-          "matches": "(?i)(?:^|\\s)[\"']?-D\\s*argLine=(?:[\"']?-(?:da|disableassertions)(?=[:\\s\"']|$)|\"[^\"]*\\s-(?:da|disableassertions)(?=[:\\s\"]|$)|'[^']*\\s-(?:da|disableassertions)(?=[:\\s']|$))"
+          "matches": "(?i)^-DargLine=-(?:da|disableassertions)(?=:|$)"
         },
         {
           "stepType": "maven",
           "property": "runner-arguments",
-          "matches": "(?i)(?:^|\\s)[\"']?-D\\s*argLine=(?:[\"']?-(?:da|disableassertions)(?=[:\\s\"']|$)|\"[^\"]*\\s-(?:da|disableassertions)(?=[:\\s\"]|$)|'[^']*\\s-(?:da|disableassertions)(?=[:\\s']|$))"
+          "matches": "(?i)^-DargLine=-(?:da|disableassertions)(?=:|$)"
         },
         {
           "stepType": "maven",

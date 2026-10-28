@@ -1,7 +1,6 @@
 """Resolve and inspect native Maven arguments without publishing parameter data."""
 
 import re
-import shlex
 
 
 REFERENCE = re.compile(r"%([^%\r\n]+)%")
@@ -33,6 +32,36 @@ def resolve_maven_arguments(value, parameters, environment):
         return UNRESOLVED
 
 
+def _split_arguments(value, *, unescape_quotes=False):
+    """Honor quotes without treating backslashes as shell escape characters.
+
+    Remove quote escapes only at the runner layer. Surefire's argLine parser
+    keeps backslashes, including those before quotes, in the JVM arguments.
+    """
+    arguments, current, quote, started = [], [], None, False
+    for char in value:
+        if char in "\"'" and (quote is None or char == quote):
+            if current and current[-1] == "\\":
+                if unescape_quotes:
+                    current.pop()
+                current.append(char)
+            else:
+                quote = None if quote else char
+            started = True
+        elif char.isspace() and quote is None:
+            if started:
+                arguments.append("".join(current))
+                current, started = [], False
+        else:
+            current.append(char)
+            started = True
+    if quote is not None:
+        raise ValueError
+    if started:
+        arguments.append("".join(current))
+    return arguments
+
+
 def maven_arguments_match(value, pattern):
     """Match forbidden options after unquoting; inconclusive input fails closed.
 
@@ -42,18 +71,20 @@ def maven_arguments_match(value, pattern):
     if not isinstance(value, str) or REFERENCE.search(value):
         return True
     try:
-        arguments = iter(shlex.split(value))
+        arguments = iter(_split_arguments(value, unescape_quotes=True))
         for argument in arguments:
-            if argument == "-D":
-                argument += next(arguments)
-                if argument == "-D":
+            option, separator, definition = argument.partition("=")
+            if argument == "-D" or option in ("--define", "-define"):
+                definition = definition if separator else next(arguments)
+                if not definition:
                     return True
-            if pattern.match(argument):
-                return True
+                argument = "-D" + definition
             if argument.startswith("-DargLine="):
                 if any(pattern.match("-DargLine=" + item)
-                       for item in shlex.split(argument[len("-DargLine="):])):
+                       for item in _split_arguments(argument[len("-DargLine="):])):
                     return True
+            elif pattern.match(argument):
+                return True
     except (ValueError, StopIteration):
         return True
     return False
