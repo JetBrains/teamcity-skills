@@ -772,6 +772,10 @@
         "firstBuild"
       ],
       "properties": {
+        "vcsRootMatchesRepository": {
+          "description": "Check that the selected pipeline has one attached Git VCS root matching repository.url, and that this root's default branch equals repository.defaultBranch as a full Git ref. This checks current configuration, not the ref or commit used by a completed build.",
+          "const": true
+        },
         "configurationValidated": {
           "const": true
         },

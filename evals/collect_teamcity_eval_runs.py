@@ -83,6 +83,7 @@ SAFE_GRADE_STATUSES = {"passed", "failed"}
 SAFE_CHECK_NAMES = {
     "configurationValidated", "firstBuild", "testsExecutedAndReported",
     "artifactsPublished", "toolchain", "sourceMutations",
+    "vcsRepository", "vcsDefaultBranch",
     "requiredMcpToolUse", "forbiddenCliToolUse", "requiredLocalMcpProbeUse",
     "minimumJobs", "jobCount", "requiredStepTypes", "requiredStepProperties",
     "forbiddenStepProperties", "requiredArtifactRules", "requiredAgentRequirements",
@@ -313,6 +314,7 @@ def inventory():
             "testsExecutedAndReported": "test reporting",
             "artifactsPublished": "artifact publication",
             "sourceMutations": "source fidelity",
+            "vcsRootMatchesRepository": "attached repository and VCS default branch",
             "minimumJobs": "job topology",
             "jobCount": "exact job count",
             "requiredStepTypes": "runner selection",

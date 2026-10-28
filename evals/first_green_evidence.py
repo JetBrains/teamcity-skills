@@ -1,6 +1,7 @@
 """Fail-closed first-green chain binding and safe, declaration-only JDK evidence."""
 
 import re
+from urllib.parse import urlsplit
 
 
 VERIFICATION_ERROR_CATEGORIES = {
@@ -79,6 +80,45 @@ def bind_jobs(jobs, builds):
     return [declared[build["buildType"]["name"]] for build in builds]
 
 
+def git_repository_identity(url):
+    """Compare Git remotes across HTTPS/SSH without retaining credentials."""
+    if not isinstance(url, str) or not url or any(char.isspace() for char in url):
+        return None
+    if "://" not in url:
+        address, separator, path = url.partition(":")
+        if not separator or "@" not in address or "/" in address:
+            return None
+        url = f"ssh://{address}/{path}"
+    try:
+        remote = urlsplit(url)
+        host, port = remote.hostname, remote.port
+    except ValueError:
+        return None
+    default_ports = {"https": 443, "http": 80, "ssh": 22, "git": 9418}
+    if (remote.scheme not in default_ports or not host or remote.query or remote.fragment
+            or "\\" in remote.path):
+        return None
+    path = remote.path.strip("/").removesuffix(".git")
+    if not path or any(part in ("", ".", "..") for part in path.split("/")):
+        return None
+    if host == "github.com":
+        path = path.lower()
+    return host, None if port in (None, default_ports[remote.scheme]) else port, path
+
+
+def vcs_root_evidence(repository, roots):
+    """Check current pipeline settings, not the sources of a completed build."""
+    identity = git_repository_identity(repository["url"])
+    matching = [root for root in roots if isinstance(root, dict)
+                and root.get("vcsName") == "jetbrains.git" and identity is not None
+                and git_repository_identity(root.get("url")) == identity]
+    branch = repository["defaultBranch"]
+    ref = branch if branch.startswith("refs/heads/") else f"refs/heads/{branch}"
+    # The branch must belong to the same unambiguous repository root.
+    return {"vcsRepository": len(matching) == 1,
+            "vcsDefaultBranch": len(matching) == 1 and matching[0].get("branch") == ref}
+
+
 def jdk_selectors(mapping, parameter=False):
     allowed = ("env.JAVA_HOME", "env.JDK_HOME") if parameter else ("JAVA_HOME", "JDK_HOME")
     return {key: value for key, value in (mapping or {}).items()
@@ -113,7 +153,7 @@ def jdk_evidence(properties, jdk, jobs=None):
     }
 
 
-def observe_chain(tc, project_id, build, required_jdk):
+def observe_chain(tc, project_id, build, required_jdk, verify_vcs_root=False):
     members = []
     for node in build["nodes"]:
         if node["id"] == build["id"]:
@@ -153,6 +193,8 @@ def observe_chain(tc, project_id, build, required_jdk):
         "testCount": len(all_tests), "tests": all_tests, "jobResults": job_results,
         "artifacts": artifacts, "properties": {},
         "jobs": jobs, "attempts": build["attempts"], "buildStatus": build["status"],
+        # Pipeline children use the root attached to their selected head.
+        "vcsRoots": tc.vcs_roots(build["pipelineId"]) if verify_vcs_root else [],
     }, {
         "headId": build["id"], "selection": build["selection"], "builds": diagnostics,
         "testCount": len(all_tests), "artifactCount": len(artifacts),
