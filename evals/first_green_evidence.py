@@ -7,6 +7,7 @@ VERIFICATION_ERROR_CATEGORIES = {
     "verification-no-pipeline", "verification-pipeline-ambiguous",
     "verification-chain-incomplete", "verification-observation-failed",
     "verification-invalid-script-steps",
+    "verification-invalid-pipeline-yaml", "verification-schema-validation-unavailable",
     "verification-unexplained-head-failure",
     "build-not-queued", "build-wait-timeout", "build-queue-stalled",
 }

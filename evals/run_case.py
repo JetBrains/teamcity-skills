@@ -87,7 +87,8 @@ from first_green_evidence import (
     safe_verification_diagnostics, safe_verification_error, select_pipeline,
 )
 from pipeline_validation import (
-    ScriptConfigurationError, safe_script_diagnostics, script_step_diagnostics,
+    PipelineSchemaError, ScriptConfigurationError, pipeline_schema_result,
+    safe_schema_diagnostics, safe_script_diagnostics, script_step_diagnostics,
     validate_pipeline_scripts,
 )
 from build_monitor import LiveBuildMonitor, STOP_CATEGORY, safe_monitor_diagnostics
@@ -372,7 +373,7 @@ class TeamCity:
         self.command_timeout = command_timeout
         self.deadline = None
 
-    def _run(self, arguments: list, json_output: bool = False) -> str:
+    def _execute(self, arguments: list) -> subprocess.CompletedProcess:
         budget = self.command_timeout
         if self.deadline is not None:
             budget = min(budget, self.deadline - time.monotonic())
@@ -389,6 +390,10 @@ class TeamCity:
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise EvalError("TeamCity CLI lifecycle command could not run") from exc
+        return completed
+
+    def _run(self, arguments: list, json_output: bool = False) -> str:
+        completed = self._execute(arguments)
         if completed.returncode:
             # Do not put CLI output into a published result: it can include
             # server state beyond this one temporary eval project.
@@ -500,6 +505,27 @@ class TeamCity:
         if not isinstance(parsed, dict) or not isinstance(parsed.get("jobs"), dict):
             raise EvalError("stored pipeline has no job definitions")
         return parsed
+
+    def validate_pipeline(self, pipeline_id: str, definition: dict) -> dict:
+        """Validate the selected server YAML, independently of the agent's calls."""
+        import yaml
+        try:
+            document = self.pipeline(pipeline_id)["yaml"]
+            # Do not grade a different configuration if the pipeline changed
+            # while its verification chain was running.
+            if yaml.safe_load(document) != definition:
+                raise EvidenceError("verification-pipeline-ambiguous")
+            with tempfile.TemporaryDirectory(prefix="teamcity-eval-validation-") as directory:
+                path = pathlib.Path(directory) / "pipeline.yml"
+                path.write_text(document, encoding="utf-8")
+                completed = self._execute([
+                    "pipeline", "validate", str(path), "--refresh-schema",
+                ])
+                return pipeline_schema_result(completed, path)
+        except (EvalError, OSError) as exc:
+            raise PipelineSchemaError({"status": "unavailable"}) from exc
+        except yaml.YAMLError:
+            raise EvidenceError("verification-pipeline-ambiguous") from None
 
     def jobs(self, project_id: str, pipeline_id: str = None) -> list:
         """The jobs the agent defined, read from the pipeline YAML on the server.
@@ -650,6 +676,7 @@ def grade(case: dict, observed: dict) -> dict:
     checks["configurationValidated"] = {
         "expected": expected["configurationValidated"],
         "observed": (observed["buildTypeCount"] > 0 and observed["buildStatus"] is not None
+                     and observed.get("schemaValidated") is True
                      and not script_step_diagnostics(observed.get("jobs", []))["issues"]),
         "detail": f"{observed['buildTypeCount']} build configuration(s) created",
     }
@@ -801,7 +828,8 @@ def grade_configuration(case: dict, observed: dict) -> dict:
 
     checks["configurationValidated"] = {
         "expected": True,
-        "observed": bool(jobs) and not script_step_diagnostics(jobs)["issues"],
+        "observed": (bool(jobs) and observed.get("schemaValidated") is True
+                     and not script_step_diagnostics(jobs)["issues"]),
         "detail": f"{len(jobs)} job(s): {[j['name'] for j in jobs]}",
     }
     checks["minimumJobs"] = {
@@ -1889,6 +1917,9 @@ def publishable_result(result: dict) -> dict:
     configuration = safe_script_diagnostics(result.get("configurationDiagnostics"))
     if configuration:
         published["configurationDiagnostics"] = configuration
+    schema = safe_schema_diagnostics(result.get("schemaValidationDiagnostics"))
+    if schema:
+        published["schemaValidationDiagnostics"] = schema
     verification_error = safe_verification_error(result.get("verificationErrorCategory"))
     if verification_error:
         published["verificationErrorCategory"] = verification_error
@@ -1919,17 +1950,8 @@ def harness_revision() -> Optional[str]:
     return revision if SAFE_REVISION.fullmatch(revision) else None
 
 
-def wait_for_build(
-    tc: TeamCity, project_id: str, timeout: int, poll: int = 15,
-    queue_check_after: int = 120, queue_stall_timeout: int = 600,
-    case: dict = None, checkout: pathlib.Path = None,
-    no_build_timeout: int = None,
-) -> dict:
-    """Freeze one verification head and wait for its entire dependency DAG."""
-    deadline = time.time() + timeout
-    no_build_deadline = time.time() + (timeout if no_build_timeout is None else no_build_timeout)
-    if timeout <= 0:
-        raise NoBuildQueued("no verification head observed within the wait budget")
+def verification_pipeline(tc, project_id, case=None, checkout=None):
+    """Select the saved configuration that matches the agent's final deliverable."""
     definitions = {key: tc.pipeline_definition(key) for key in tc.pipeline_ids(project_id)}
     if not definitions:
         raise NoBuildQueued("the agent created no pipeline in the temporary project",
@@ -1949,10 +1971,25 @@ def wait_for_build(
             if not isinstance(source, dict):
                 raise EvidenceError("verification-pipeline-ambiguous")
     pipeline_id, selection = select_pipeline(definitions, source)
+    return pipeline_id, selection, definitions[pipeline_id]
+
+
+def wait_for_build(
+    tc: TeamCity, project_id: str, timeout: int, poll: int = 15,
+    queue_check_after: int = 120, queue_stall_timeout: int = 600,
+    case: dict = None, checkout: pathlib.Path = None,
+    no_build_timeout: int = None,
+) -> dict:
+    """Freeze one verification head and wait for its entire dependency DAG."""
+    deadline = time.time() + timeout
+    no_build_deadline = time.time() + (timeout if no_build_timeout is None else no_build_timeout)
+    if timeout <= 0:
+        raise NoBuildQueued("no verification head observed within the wait budget")
+    pipeline_id, selection, definition = verification_pipeline(tc, project_id, case, checkout)
     # Stored YAML, not virtual job metadata, is authoritative for script fields.
     # Check only the selected verification pipeline; unrelated probes are not
     # evidence about it. Fail before querying builds or sleeping in the queue.
-    configuration_diagnostics = validate_pipeline_scripts(definitions[pipeline_id])
+    configuration_diagnostics = validate_pipeline_scripts(definition)
     latest, attempts = None, 0
     queued = {}
     while time.time() < deadline:
@@ -1971,6 +2008,7 @@ def wait_for_build(
                     raise EvidenceError("verification-chain-incomplete")
                 return {**latest, "state": "finished", "nodes": nodes,
                         "configurationDiagnostics": configuration_diagnostics,
+                        "pipelineDefinition": definition,
                         "pipelineId": pipeline_id, "selection": selection, "attempts": attempts,
                         "status": "SUCCESS" if all(node["status"] == "SUCCESS" for node in nodes)
                         else "FAILURE"}
@@ -2252,8 +2290,11 @@ def run(
             # No build is run: the case asks what the agent configured, which is
             # answerable in minutes and without a build agent.
             phases.enter("grading")
+            pipeline_id, _, definition = verification_pipeline(tc, project_id, case, checkout)
+            result["schemaValidationDiagnostics"] = tc.validate_pipeline(pipeline_id, definition)
             observed = {
-                "jobs": tc.jobs(project_id),
+                "jobs": tc.jobs(project_id, pipeline_id),
+                "schemaValidated": result["schemaValidationDiagnostics"].get("status") == "valid",
                 "mutations": source_mutations(checkout, allowed),
                 "toolCalls": tool_calls(trace),
             }
@@ -2300,6 +2341,9 @@ def run(
             raise
         result["configurationDiagnostics"] = build["configurationDiagnostics"]
         phases.enter("grading")
+        result["schemaValidationDiagnostics"] = tc.validate_pipeline(
+            build["pipelineId"], build["pipelineDefinition"],
+        )
         # How many builds it took to get green is a quality signal in itself:
         # green on the first attempt and green on the sixth are not the same
         # work, and the graded checks alone cannot tell them apart.
@@ -2312,6 +2356,7 @@ def run(
             raise
         observed = {
             **chain_observed,
+            "schemaValidated": result["schemaValidationDiagnostics"].get("status") == "valid",
             "buildTypeCount": len(tc.build_types(project_id)),
             "buildStatus": build.get("status"),
             "statusText": build.get("statusText"),
@@ -2335,6 +2380,16 @@ def run(
 
       except _Graded:
         pass
+      except PipelineSchemaError as exc:
+        result["schemaValidationDiagnostics"] = exc.diagnostics
+        result["verificationErrorCategory"] = exc.category
+        result["errorCategory"] = result.get("errorCategory") or exc.category
+        result["error"] = exc.category
+        if exc.diagnostics.get("status") == "invalid":
+            result["checks"]["configurationValidated"] = {
+                "expected": True, "observed": False, "passed": False,
+            }
+            set_graded_status(result, agent_run)
       except ScriptConfigurationError as exc:
         result["configurationDiagnostics"] = exc.diagnostics
         result["verificationErrorCategory"] = exc.category

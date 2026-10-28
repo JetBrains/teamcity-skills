@@ -165,7 +165,11 @@ def main() -> int:
             print(f"  {job['name']:10} steps={[s['type'] for s in job['steps']]} "
                   f"runs-on={job['agentRequirements']} artifacts={job['artifactRules'].splitlines()}")
 
-        checks = run_case.grade_configuration(CASE, {"jobs": jobs, "mutations": []})
+        pipeline_id, _, definition = run_case.verification_pipeline(tc, project_id)
+        validation = tc.validate_pipeline(pipeline_id, definition)
+        checks = run_case.grade_configuration(CASE, {
+            "jobs": jobs, "mutations": [], "schemaValidated": validation["status"] == "valid",
+        })
         for name, wanted in EXPECTATIONS.items():
             got = checks.get(name, {}).get("passed")
             mark = "ok " if got == wanted else "BAD"

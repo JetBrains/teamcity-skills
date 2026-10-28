@@ -173,11 +173,23 @@ completion contract.
 The runner must not treat a green checkout-only job as a pass. A passing run
 requires all of the following:
 
-- server-side validation of the generated pipeline YAML;
+- validation of the saved pipeline YAML against the target server's schema;
 - a successful verification build;
 - every test expectation declared by the case is satisfied, including required
   test reports, minimum counts, and named tests;
 - every declared artifact path present in the build artifacts.
+
+For both first-green-build and pipeline-configuration cases, the grader pulls
+the selected pipeline's saved YAML and runs `teamcity pipeline validate <file>
+--refresh-schema`, even if the agent did not run validation. The saved YAML
+must still match the definition selected from the agent's final deliverable.
+Only that pipeline is validated; unrelated diagnostic pipelines do not affect
+the grade. A schema violation fails `configurationValidated`. A CLI, auth, or
+schema-fetch error leaves the eval `errored`, rather than grading it as valid
+or blaming the agent for invalid YAML. Published `schemaValidationDiagnostics`
+contain the outcome, error count, line numbers and fixed error categories,
+without raw YAML, job names, values or CLI output. Historical result artifacts
+are not regraded.
 
 `expected.toolchain.jdk` is the case's single JDK requirement. The grader
 checks it against the selected JDK home, JDK container image, and, when

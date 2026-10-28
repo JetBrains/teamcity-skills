@@ -15,6 +15,7 @@ class FirstGreenJava25Test(unittest.TestCase):
     def setUp(self):
         self.case = json.loads(CASE.read_text())
         self.observed = {
+            "schemaValidated": True,
             "buildTypeCount": 1,
             "buildStatus": "SUCCESS",
             "statusText": "Successful",
