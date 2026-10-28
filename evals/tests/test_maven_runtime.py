@@ -38,6 +38,26 @@ def job(number=1, steps=1):
 
 
 class MavenLogTest(unittest.TestCase):
+    def test_docker_wrapper_binds_maven_execution_and_runtime_to_its_step(self):
+        log = (EVALS / "tests/fixtures/maven-docker.log").read_text()
+        result = maven_runtime(log, "21", 1, [1], 1)
+        self.assertEqual("verified", result["status"])
+        self.assertEqual(1, result["launchCount"])
+        self.assertEqual([21], result["observedMajors"])
+        self.assertNotIn("private-canary", json.dumps(result))
+        self.assertEqual("mismatch", maven_runtime(
+            log.replace("Java version: 21", "Java version: 17"), "21", 1, [1], 1)["status"])
+        for incomplete in (log.replace("Java version:", "No version:"),
+                           log.replace("Starting:", "Not executed:"),
+                           log.split("[10:00:01]i: [Step 1/1] Process exited")[0]):
+            with self.subTest(log=incomplete):
+                self.assertEqual("missing", maven_runtime(incomplete, "21", 1, [1], 1)["status"])
+
+    def test_docker_script_cannot_supply_runtime_for_another_step(self):
+        log = (EVALS / "tests/fixtures/maven-docker.log").read_text().replace("Step 1/1", "Step 1/2")
+        log += '[Step 2/2] Java version: 21.0.2, vendor: Example, runtime: /opt/java/openjdk\n'
+        self.assertEqual("missing", maven_runtime(log, "21", 1, [2], 2)["status"])
+
     def test_native_maven_launch_identifies_java_on_linux_windows_and_macos(self):
         for home, required in (("/usr/lib/jvm/java-21-amazon-corretto", "21"),
                                (r"C:\Program Files\Java\jdk-21.0.2", "21"),
@@ -168,6 +188,45 @@ class MavenGraderTest(unittest.TestCase):
         jobs[0]["parameters"] = {"env.JAVA_HOME": "%env.JDK_17_0%"}
         self.assertTrue(runner.grade_configuration(case, observed)["toolchain"]["passed"])
         tc.build_log.assert_not_called()
+
+    def test_configuration_runner_jdk_resolves_parameters_before_filtering(self):
+        tc = runner.TeamCity("teamcity", "https://example.invalid", "private", {})
+        case = {"expected": {"minimumJobs": 1, "sourceMutations": "none", "toolchain": {"jdk": "21"}}}
+        for parameters, environment, home, job_parameters, expected in (
+            ({"env.JDK_21_0": "/opt/jdk-17"}, {}, "%env.JDK_21_0%", {}, False),
+            ({"selected.jdk": "%jdk.root%", "jdk.root": "/opt/jdk-21"}, {}, "%selected.jdk%", {}, True),
+            ({"selected.jdk": "/opt/jdk-21"}, {}, "%selected.jdk%", {"selected.jdk": "/opt/jdk-17"}, False),
+            ({}, {"JDK_HOME": "/opt/jdk-21"}, "%env.JDK_HOME%", {}, True),
+            ({"jdk21": "%jdk21%", "env.JAVA_HOME": "/opt/jdk-21"}, {}, "%jdk21%", {}, False),
+        ):
+            with self.subTest(home=home, parameters=parameters):
+                document = {"parameters": {"private": "canary", **parameters}, "environment": environment,
+                            "jobs": {"verify": {"parameters": job_parameters,
+                                                "steps": [{"type": "maven", "jdk-home": home}]}}}
+                with mock.patch.object(tc, "pipeline_definition", return_value=document):
+                    jobs = tc.jobs("project", "pipeline")
+                self.assertNotIn("canary", json.dumps(jobs))
+                observed = {"jobs": jobs, "mutations": [], "toolCalls": []}
+                self.assertEqual(expected, runner.grade_configuration(case, observed)["toolchain"]["passed"])
+
+    def test_mixed_pipeline_still_checks_the_gradle_job(self):
+        tc, build, jobs = self.fixture(2)
+        jobs[1]["steps"] = [{"type": "gradle", "properties": {"tasks": "build"}}]
+        for major, expected in ((17, False), (21, True)):
+            with self.subTest(major=major):
+                jobs[1]["parameters"] = {"env.JAVA_HOME": f"%env.JDK_{major}_0%"}
+                observed, _ = observe_chain(tc, "project", build, "21")
+                self.assertEqual(expected, self.grade(observed)["passed"])
+
+    def test_mixed_job_still_checks_its_gradle_step(self):
+        tc, build, jobs = self.fixture()
+        jobs[0]["steps"].append({"type": "gradle", "properties": {"tasks": "build"}})
+        tc.build_log.return_value = launch(total=2)
+        for major, expected in ((17, False), (21, True)):
+            with self.subTest(major=major):
+                jobs[0]["steps"][1]["properties"]["jdk-home"] = f"%env.JDK_{major}_0%"
+                observed, _ = observe_chain(tc, "project", build, "21")
+                self.assertEqual(expected, self.grade(observed)["passed"])
 
     def test_each_maven_job_needs_its_own_runtime_evidence(self):
         tc, build, jobs = self.fixture(2)

@@ -11,6 +11,7 @@ MAVEN_MAIN = re.compile(
 START = re.compile(r'''^Starting:\s*(?:"([^"]+)"|'([^']+)'|(\S+))\s+(.*)$''')
 STEP = re.compile(r"\bStep (\d+)/(\d+)\b")
 JAVA_INFO = re.compile(r"^Java version:\s*([^,\s]+),.*\bruntime:\s*(.+?)\s*$", re.I)
+MODEL_QUERY = re.compile(r"\borg\.jetbrains\.maven:info-maven3-plugin:[^:\s]+:info\b")
 
 
 def java_major(version):
@@ -19,6 +20,8 @@ def java_major(version):
 
 
 def java_home(executable):
+    if executable.lower() in ("java", "java.exe"):
+        return ""  # Java selected through PATH needs Maven's runtime record.
     path = executable.replace("\\", "/").rstrip("/")
     return re.sub(r"/bin/java(?:\.exe)?$", "", path, flags=re.I) if re.search(
         r"/bin/java(?:\.exe)?$", path, re.I) else None
@@ -53,41 +56,77 @@ def log_messages(log):
         yield current_step, line
 
 
+def maven_log_messages(log):
+    """Pair a Docker wrapper's printed exec command with its actual launch."""
+    previous_step, in_script, command, pending = None, False, None, None
+    for step, line in log_messages(log):
+        if step != previous_step:
+            in_script, command, pending = False, None, None
+            previous_step = step
+        if line == "Container script (to be run inside container):":
+            in_script, command, pending = True, None, None
+        elif in_script:
+            if command is not None:
+                command += " " + line
+            elif line.startswith("exec "):
+                command = line[5:]
+            if command is not None:
+                if command.endswith("\\"):
+                    command = command[:-1]
+                else:
+                    pending, command, in_script = command, None, False
+        if START.fullmatch(line):
+            if pending is not None and re.search(r"\bdocker\s+exec\s", line):
+                yield step, "Starting: " + pending
+                in_script, command, pending = False, None, None
+                continue
+            in_script, command, pending = False, None, None
+        yield step, line
+
+
 def maven_runtime(log, jdk, step_count, step_indices=None, total_steps=None):
     """Require a known, matching JVM for every declared native Maven step.
 
     Accept the executable in a Maven launch command when its installation
     directory identifies a JDK version. For an unversioned installation, a
     Maven `Java version: ..., runtime: ...` record must identify that same home
-    in that same step. Standalone `java -version` output is never evidence.
+    in that same step. A Docker wrapper may launch Java through PATH; Maven's
+    runtime record must then identify its home and version. Standalone
+    `java -version` output is never evidence.
     """
     result = {"requiredMajor": int(jdk), "stepCount": step_count,
               "launchCount": 0, "verifiedLaunchCount": 0, "observedMajors": [],
               "status": "missing"}
     if not isinstance(log, str) or not log.strip():
         return result
-    launches, information = [], []
-    for step, line in log_messages(log):
+    launches, information, active_launch = [], [], None
+    for step, line in maven_log_messages(log):
         match = START.fullmatch(line)
-        if match and MAVEN_MAIN.search(match[4]):
-            home = java_home(next(value for value in match.groups()[:3] if value is not None))
-            launches.append((step, home, path_major(home) if home else None))
+        if match:
+            active_launch = None
+            # The native runner probes the POM before executing build goals.
+            model_query = (MODEL_QUERY.search(match[4])
+                           and re.search(r"\binfo\.\d+\.pom\.xml\b", match[4]))
+            if MAVEN_MAIN.search(match[4]) and not model_query:
+                home = java_home(next(value for value in match.groups()[:3] if value is not None))
+                active_launch = len(launches)
+                launches.append((step, home, path_major(home) if home else None))
         info = JAVA_INFO.fullmatch(line)
-        if info:
-            information.append((step, info[2].strip('"').replace("\\", "/").rstrip("/"),
+        if info and active_launch is not None and step == launches[active_launch][0]:
+            information.append((active_launch, info[2].strip('"').replace("\\", "/").rstrip("/"),
                                 java_major(info[1])))
     observed, missing, ambiguous = set(), False, False
-    for step, home, major in launches:
+    for index, (step, home, major) in enumerate(launches):
         versions = {major} if major is not None else set()
-        # An unscoped version record cannot identify one of several launches.
-        peers = [launch for launch in launches if launch[0] == step]
-        for info_step, info_home, info_major in information:
-            if len(peers) == 1 and step == info_step and home:
+        for info_launch, info_home, info_major in information:
+            if index == info_launch and home is not None:
                 # Explicit conflicting Maven output wins even when Java
                 # reports a resolved home different from the launch path.
                 if info_major is not None and info_major != int(jdk):
                     versions.add(info_major)
-                if not same_home(home, info_home):
+                if home and not same_home(home, info_home):
+                    continue
+                if not home and not re.match(r"^(?:/|[A-Za-z]:/)", info_home):
                     continue
                 if info_major is None:
                     ambiguous = True

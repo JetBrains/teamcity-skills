@@ -184,12 +184,18 @@ the grader reads the full log of each bound Maven job through
 `teamcity run log <id> --raw`. Every native Maven step needs a JVM launch whose
 Java installation identifies the required major version. An unversioned path
 needs Maven's `Java version: ..., runtime: ...` output for the same home in the
-same step. Missing, ambiguous, unavailable, or conflicting evidence cannot
+same step. For Docker-wrapped native steps, the printed multiline `exec java`
+command must have a corresponding `docker exec` launch in that step. Java
+selected through `PATH` needs Maven's version and runtime-home output; the
+wrapper's `JAVA_HOME` export is not sufficient. The runner's preliminary
+`info-maven3-plugin` query against a generated model POM is not a build launch.
+Missing, ambiguous, unavailable, or conflicting evidence cannot
 pass. `JAVA_HOME`, the container image, the agent JVM, and a separate
 `java -version` script are not Maven runtime evidence. No extra diagnostic
 step is required. Published diagnostics contain only build IDs, major
 versions, counts, and fixed statuses; raw logs and installation paths remain
-private. Gradle's existing declaration/property checks are unchanged.
+private. Gradle's existing declaration/property checks also apply to Gradle
+jobs and steps in mixed Maven/Gradle pipelines.
 
 ### Target-Level Expectations And Observed Baseline
 
@@ -230,7 +236,10 @@ cloud-agent provisioning, so it cannot cover many repositories; this one can.
 For a configuration-only case, `expected.toolchain.jdk` requires an explicit
 JDK image, environment declaration, or Maven/Gradle runner `jdk-home`. An
 explicit runner JDK overrides the job environment. These checks do not run a
-build or claim to verify the runtime. Maven first-green cases require runtime
+build or claim to verify the runtime. Saved parameter references in `jdk-home`
+are resolved with job overrides before unrelated parameters are discarded.
+Cyclic or unresolved custom references cannot identify the required JDK.
+Maven first-green cases require runtime
 evidence separately, as described above.
 
 The runner reads the build configurations the agent created, skipping the

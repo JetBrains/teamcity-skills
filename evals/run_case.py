@@ -84,7 +84,7 @@ from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
 from queue_recovery import QueueRecoveryFixture, forbidden_queue_transport, safe_fixture_diagnostics
 from first_green_evidence import (
     EvidenceError, chain_nodes, jdk_evidence, jdk_selectors, observe_chain,
-    safe_verification_diagnostics, safe_verification_error, select_pipeline,
+    resolve_jdk_home, safe_verification_diagnostics, safe_verification_error, select_pipeline,
 )
 from maven_runtime import maven_runtime_matches
 from pipeline_validation import (
@@ -524,6 +524,8 @@ class TeamCity:
             parsed = self.pipeline_definition(pipeline_id)
             for job_id, job in (parsed.get("jobs") or {}).items():
                 job = job or {}
+                parameters = {**(parsed.get("parameters") or {}), **(job.get("parameters") or {})}
+                environment = {**(parsed.get("environment") or {}), **(job.get("environment") or {})}
                 steps = [
                     {
                         "type": step.get("type"),
@@ -533,6 +535,10 @@ class TeamCity:
                     }
                     for step in (job.get("steps") or [])
                 ]
+                for step in steps:
+                    home = step["properties"].get("jdk-home")
+                    if step["type"] in ("maven", "gradle") and isinstance(home, str) and home.strip():
+                        step["properties"]["jdk-home"] = resolve_jdk_home(home, parameters, environment)
                 # Pipeline YAML permits the short string form as well as an
                 # object with an explicit ``publish-artifact`` flag. A string
                 # is itself an artifact rule, so it must not be treated as a
@@ -550,12 +556,8 @@ class TeamCity:
                     "steps": steps,
                     "artifactRules": "\n".join(published),
                     "agentRequirements": [str(runs_on)] if runs_on else [],
-                    "environment": jdk_selectors({
-                        **(parsed.get("environment") or {}), **(job.get("environment") or {}),
-                    }),
-                    "parameters": jdk_selectors({
-                        **(parsed.get("parameters") or {}), **(job.get("parameters") or {}),
-                    }, parameter=True),
+                    "environment": jdk_selectors(environment),
+                    "parameters": jdk_selectors(parameters, parameter=True),
                 })
         return collected
 
@@ -684,9 +686,21 @@ def grade(case: dict, observed: dict) -> dict:
     uses_maven = case.get("stack", {}).get("buildTool") == "maven" or any(
         step.get("type") == "maven" for job in jobs for step in job.get("steps", []))
     if uses_maven:
-        matched = maven_runtime_matches(observed.get("mavenRuntime"), jobs, jdk)
-        detail = ("Maven JVM verified in the build log" if matched else
-                  "Maven JVM missing, ambiguous, unavailable, or does not match the required JDK")
+        maven_verified = maven_runtime_matches(observed.get("mavenRuntime"), jobs, jdk)
+        other_jobs = []
+        for job in jobs:
+            steps = job.get("steps", [])
+            if (not any(step.get("type") == "maven" for step in steps)
+                    or any(step.get("type") == "gradle" for step in steps)):
+                other_jobs.append({**job, "steps": [step for step in steps if step.get("type") != "maven"]})
+        others_verified = not other_jobs or toolchain_evidence(observed["properties"], jdk, other_jobs)[0]
+        matched = maven_verified and others_verified
+        if not maven_verified:
+            detail = "Maven JVM missing, ambiguous, unavailable, or does not match the required JDK"
+        elif not others_verified:
+            detail = "Non-Maven jobs do not evidence the required JDK"
+        else:
+            detail = "Maven JVM verified in the build log"
     else:
         matched, evidence = toolchain_evidence(observed["properties"], jdk, jobs)
         detail = f"matched: {evidence}" if matched else f"no JDK {jdk} among: {evidence}"

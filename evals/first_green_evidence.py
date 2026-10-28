@@ -87,6 +87,34 @@ def jdk_selectors(mapping, parameter=False):
             if key in allowed and isinstance(value, str)}
 
 
+def resolve_jdk_home(value, parameters, environment):
+    """Resolve saved references before the adapter discards unrelated values."""
+    values = {**{"env." + key: item for key, item in (environment or {}).items()},
+              **(parameters or {})}
+    unresolved = "%unresolved-jdk-home%"
+
+    def expand(text, seen):
+        for match in re.finditer(r"%([^%]+)%", text):
+            name = match[1]
+            if name in seen or len(seen) >= 100:
+                return unresolved
+            if name not in values:
+                # Agent-provided JDK selectors are declarations, not runtime
+                # proof. Other unresolved references cannot identify a JDK.
+                if re.fullmatch(r"env\.JDK_\d+(?:_\d+)*", name):
+                    continue
+                return unresolved
+            if not isinstance(values[name], str):
+                return unresolved
+            replacement = expand(values[name], seen | {name})
+            if replacement == unresolved:
+                return unresolved
+            text = text.replace(match[0], replacement)
+        return text
+
+    return expand(value, set())
+
+
 def jdk_evidence(properties, jdk, jobs=None):
     version = re.compile(rf"(?<!\d){re.escape(jdk)}(?!\d)")
     # A selected home or available JDK is not a measured runtime version.
@@ -108,8 +136,7 @@ def jdk_evidence(properties, jdk, jobs=None):
             home = step_properties.get("jdk-home")
             if isinstance(home, str) and home.strip():
                 # A runner's explicit JDK overrides the job environment.
-                home = (job.get("parameters", {}).get(home.strip("%"))
-                        or job.get("environment", {}).get(home.strip("%")) or home)
+                home = resolve_jdk_home(home, job.get("parameters"), job.get("environment"))
                 choices.append([home])
                 runner_selected = True
             else:
