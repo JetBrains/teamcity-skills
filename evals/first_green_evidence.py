@@ -2,7 +2,9 @@
 
 import re
 
-from maven_runtime import java_major, maven_runtime, path_major, safe_maven_runtime
+from maven_runtime import (
+    JDK_MATCH_MODES, java_major, jdk_major_matches, maven_runtime, path_major, safe_maven_runtime,
+)
 
 
 VERIFICATION_ERROR_CATEGORIES = {
@@ -122,12 +124,12 @@ def jdk_home_major(value):
     return path_major(value.replace("\\", "/").rstrip("/"))
 
 
-def jdk_evidence(properties, jdk, jobs=None):
-    required_major = int(jdk)
+def jdk_evidence(properties, jdk, jobs=None, jdk_match="exact"):
     # A selected home or available JDK is not a measured runtime version.
     runtime = [str(value) for key, value in properties.items()
                if key in ("java.version", "java.specification.version")]
-    runtime_verified = bool(runtime) and all(java_major(value) == required_major for value in runtime)
+    runtime_verified = bool(runtime) and all(jdk_major_matches(java_major(value), jdk, jdk_match)
+                                            for value in runtime)
     matched_jobs, evidence = 0, []
     for job in jobs or []:
         selectors = list(jdk_selectors(job.get("environment")).values())
@@ -152,7 +154,7 @@ def jdk_evidence(properties, jdk, jobs=None):
                 # Preserve the existing declaration check for jobs without a
                 # runner override. Maven execution is verified separately.
                 choices.append(selectors + images)
-        if all(selection and all(major == required_major for major in selection)
+        if all(selection and all(jdk_major_matches(major, jdk, jdk_match) for major in selection)
                for selection in choices):
             matched_jobs += 1
             evidence.append("declared-runner-jdk" if runner_selected else
@@ -161,13 +163,13 @@ def jdk_evidence(properties, jdk, jobs=None):
     # Contradictory runtime evidence must override a declaration.
     matched = runtime_verified if runtime else declared_match
     return matched, evidence, {
-        "requiredMajor": int(jdk), "declaredMatch": declared_match,
+        "requiredMajor": int(jdk), "jdkMatch": jdk_match, "declaredMatch": declared_match,
         "runtimeVerified": runtime_verified, "declaredJobCount": matched_jobs,
         "jobCount": len(jobs or []),
     }
 
 
-def observe_chain(tc, project_id, build, required_jdk):
+def observe_chain(tc, project_id, build, required_jdk, jdk_match="exact"):
     members = []
     for node in build["nodes"]:
         if node["id"] == build["id"]:
@@ -185,9 +187,10 @@ def observe_chain(tc, project_id, build, required_jdk):
         if maven_steps:
             try:
                 runtime = maven_runtime(tc.build_log(member["id"]), required_jdk, maven_steps,
-                                        maven_indices, len(job["steps"]))
+                                        maven_indices, len(job["steps"]), jdk_match=jdk_match)
             except (RuntimeError, OSError, ValueError):
-                runtime = {**maven_runtime(None, required_jdk, maven_steps), "status": "unavailable"}
+                runtime = {**maven_runtime(None, required_jdk, maven_steps, jdk_match=jdk_match),
+                           "status": "unavailable"}
             maven.append({**runtime, "buildId": member["id"], "jobId": job["id"]})
         tests = tc.test_results(member["id"])
         published_artifacts = tc.artifacts(member["id"])
@@ -200,7 +203,7 @@ def observe_chain(tc, project_id, build, required_jdk):
                             "successfulTestCount": sum(test["status"] == "SUCCESS"
                                                        and not test["ignored"] for test in tests),
                             "artifactCount": len(published_artifacts)})
-    _, _, jdk = jdk_evidence({}, required_jdk, jobs)
+    _, _, jdk = jdk_evidence({}, required_jdk, jobs, jdk_match=jdk_match)
     if maven:
         jdk["runtimeVerified"] = all(item["status"] == "verified" for item in maven)
         jdk["mavenRuntime"] = [safe_maven_runtime(item) for item in maven]
@@ -321,6 +324,8 @@ def safe_verification_diagnostics(value):
                        if type(jdk.get(key)) is int and jdk[key] >= 0}
         safe["jdk"].update({key: jdk[key] for key in ("declaredMatch", "runtimeVerified")
                             if type(jdk.get(key)) is bool})
+        if jdk.get("jdkMatch") in JDK_MATCH_MODES:
+            safe["jdk"]["jdkMatch"] = jdk["jdkMatch"]
         if isinstance(jdk.get("mavenRuntime"), list):
             safe["jdk"]["mavenRuntime"] = [safe_maven_runtime(item) for item in jdk["mavenRuntime"]]
     return safe

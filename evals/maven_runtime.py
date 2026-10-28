@@ -4,6 +4,7 @@ import re
 
 
 STATUSES = {"verified", "mismatch", "missing", "ambiguous", "unavailable"}
+JDK_MATCH_MODES = ("exact", "minimum")
 MAVEN_MAIN = re.compile(
     r"(?:^|\s)org\.(?:codehaus\.plexus\.classworlds\.launcher\.Launcher"
     r"|apache\.maven\.cli\.MavenCli|apache\.maven\.cling\.MavenCling)(?=\s|$)"
@@ -17,6 +18,16 @@ MODEL_QUERY = re.compile(r"\borg\.jetbrains\.maven:info-maven3-plugin:[^:\s]+:in
 def java_major(version):
     match = re.fullmatch(r"(?:1\.)?([1-9]\d{0,2})(?:[._+\-][\w.+\-]+)?", version)
     return int(match[1]) if match else None
+
+
+def jdk_major_matches(major, jdk, jdk_match="exact"):
+    if type(major) is not int:
+        return False
+    if jdk_match == "exact":
+        return major == int(jdk)
+    if jdk_match == "minimum":
+        return major >= int(jdk)
+    return False
 
 
 def java_home(executable):
@@ -84,7 +95,7 @@ def maven_log_messages(log):
         yield step, line
 
 
-def maven_runtime(log, jdk, step_count, step_indices=None, total_steps=None):
+def maven_runtime(log, jdk, step_count, step_indices=None, total_steps=None, jdk_match="exact"):
     """Require a known, matching JVM for every declared native Maven step.
 
     Accept the executable in a Maven launch command when its installation
@@ -92,9 +103,11 @@ def maven_runtime(log, jdk, step_count, step_indices=None, total_steps=None):
     Maven `Java version: ..., runtime: ...` record must identify that same home
     in that same step. A Docker wrapper may launch Java through PATH; Maven's
     runtime record must then identify its home and version. Standalone
-    `java -version` output is never evidence.
+    `java -version` output is never evidence. Exact matching is the default;
+    minimum matching accepts newer majors while still rejecting conflicts
+    within a single launch.
     """
-    result = {"requiredMajor": int(jdk), "stepCount": step_count,
+    result = {"requiredMajor": int(jdk), "jdkMatch": jdk_match, "stepCount": step_count,
               "launchCount": 0, "verifiedLaunchCount": 0, "observedMajors": [],
               "status": "missing"}
     if not isinstance(log, str) or not log.strip():
@@ -122,7 +135,8 @@ def maven_runtime(log, jdk, step_count, step_indices=None, total_steps=None):
             if index == info_launch and home is not None:
                 # Explicit conflicting Maven output wins even when Java
                 # reports a resolved home different from the launch path.
-                if info_major is not None and info_major != int(jdk):
+                if info_major is not None and (major is not None
+                                              or not jdk_major_matches(info_major, jdk, jdk_match)):
                     versions.add(info_major)
                 if home and not same_home(home, info_home):
                     continue
@@ -135,14 +149,15 @@ def maven_runtime(log, jdk, step_count, step_indices=None, total_steps=None):
         observed.update(versions)
         ambiguous |= len(versions) > 1
         missing |= not versions
-        result["verifiedLaunchCount"] += versions == {int(jdk)}
+        result["verifiedLaunchCount"] += (len(versions) == 1 and
+                                         all(jdk_major_matches(value, jdk, jdk_match) for value in versions))
     result.update(launchCount=len(launches), observedMajors=sorted(observed))
     scoped_steps = [step for step, _, _ in launches if step is not None]
     bound = (step_indices is None or
              (len(scoped_steps) == len(launches)
               and {step[0] for step in scoped_steps} == set(step_indices)
               and all(step[1] == total_steps for step in scoped_steps)))
-    if observed - {int(jdk)}:
+    if any(not jdk_major_matches(value, jdk, jdk_match) for value in observed):
         result["status"] = "mismatch"
     elif (ambiguous or len(launches) > step_count
           or len(scoped_steps) != len(set(scoped_steps))):
@@ -156,9 +171,10 @@ def maven_runtime(log, jdk, step_count, step_indices=None, total_steps=None):
 
 def safe_maven_runtime(value):
     if (not isinstance(value, dict) or not isinstance(value.get("status"), str)
-            or value["status"] not in STATUSES):
+            or value["status"] not in STATUSES
+            or value.get("jdkMatch", "exact") not in JDK_MATCH_MODES):
         return {}
-    safe = {"status": value["status"]}
+    safe = {"status": value["status"], "jdkMatch": value.get("jdkMatch", "exact")}
     for key in ("buildId", "requiredMajor", "stepCount", "launchCount", "verifiedLaunchCount"):
         if type(value.get(key)) is int and value[key] >= 0:
             safe[key] = value[key]
@@ -168,7 +184,7 @@ def safe_maven_runtime(value):
     return safe
 
 
-def maven_runtime_matches(observations, jobs, jdk):
+def maven_runtime_matches(observations, jobs, jdk, jdk_match="exact"):
     maven_jobs = [job for job in jobs if any(step.get("type") == "maven"
                                            for step in job.get("steps", []))]
     if not maven_jobs or not isinstance(observations, list) or len(observations) != len(maven_jobs):
@@ -178,7 +194,8 @@ def maven_runtime_matches(observations, jobs, jdk):
         step_count = sum(step.get("type") == "maven" for step in job.get("steps", []))
         if (not isinstance(raw, dict) or raw.get("jobId") != job["id"]
                 or item.get("status") != "verified" or item.get("requiredMajor") != int(jdk)
-                or item.get("observedMajors") != [int(jdk)]
+                or item.get("jdkMatch") != jdk_match or not item.get("observedMajors")
+                or not all(jdk_major_matches(major, jdk, jdk_match) for major in item["observedMajors"])
                 or not (item.get("stepCount") == item.get("launchCount")
                         == item.get("verifiedLaunchCount") == step_count)):
             return False

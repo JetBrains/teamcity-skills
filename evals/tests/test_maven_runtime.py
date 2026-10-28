@@ -1,5 +1,7 @@
 import copy
+import contextlib
 import importlib.util
+import io
 import json
 import pathlib
 import subprocess
@@ -37,6 +39,11 @@ exec java -Dteamcity.auth.password=private-canary \
 [10:00:01]i: [Step 1/1] Starting: /bin/sh -c docker exec example-container /bin/sh /tmp/build.sh
 [10:00:01] : [Step 1/1] Java version: 21.0.2, vendor: Example, runtime: /opt/java/openjdk
 """
+
+# Required major, accepted exact majors, accepted minimum majors in this matrix.
+JDK_EXPECTATIONS = (("17", {17}, {17, 21, 25}),
+                    ("21", {21}, {21, 25}),
+                    ("25", {25}, {25}))
 
 
 def launch(home="/usr/lib/jvm/java-21-amazon-corretto", step=1, total=1):
@@ -81,6 +88,8 @@ class MavenLogTest(unittest.TestCase):
 
     def test_native_maven_launch_identifies_java_on_linux_windows_and_macos(self):
         for home, required in (("/usr/lib/jvm/java-21-amazon-corretto", "21"),
+                               ("/opt/jdk-17.0.21", "17"),
+                               ("/opt/jdk-25.0.1", "25"),
                                (r"C:\Program Files\Java\jdk-21.0.2", "21"),
                                ("/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home", "21"),
                                ("/opt/jdk1.8.0_402", "8")):
@@ -97,11 +106,18 @@ class MavenLogTest(unittest.TestCase):
                'Java version: 21.0.2, vendor: Example, runtime: /jdk-21\n')
         self.assertEqual("missing", maven_runtime(log, "21", 1)["status"])
 
-    def test_wrong_maven_jvm_is_not_hidden_by_other_java_output(self):
-        log = 'openjdk version "21.0.2"\n' + launch("/opt/jdk-17.0.10")
-        result = maven_runtime(log, "21", 1)
-        self.assertEqual("mismatch", result["status"])
-        self.assertEqual([17], result["observedMajors"])
+    def test_runtime_respects_exact_and_minimum_jdk_regardless_of_other_java_output(self):
+        for required, exact, minimum in JDK_EXPECTATIONS:
+            for mode, accepted in ((None, exact), ("exact", exact), ("minimum", minimum)):
+                for major in (17, 21, 25):
+                    logs = (f'openjdk version "{required}.0.2"\n' + launch(f"/opt/jdk-{major}.0.2"),
+                            DOCKER_LOG.replace("Java version: 21.0.2", f"Java version: {major}.0.2"))
+                    for source, log in zip(("native", "docker"), logs):
+                        with self.subTest(required=required, mode=mode, major=major, source=source):
+                            options = {} if mode is None else {"jdk_match": mode}
+                            result = maven_runtime(log, required, 1, **options)
+                            self.assertEqual("verified" if major in accepted else "mismatch", result["status"])
+                            self.assertEqual([major], result["observedMajors"])
 
     def test_major_must_come_from_the_executable_installation(self):
         for home in ("/jdk-21/current", "/work/21/java", "/opt/jdk-121"):
@@ -124,10 +140,12 @@ class MavenLogTest(unittest.TestCase):
                 self.assertEqual("missing", maven_runtime(log + info, "21", 1)["status"])
 
     def test_conflicting_maven_version_output_overrides_a_versioned_path(self):
-        for home in ("/opt/jdk-21", "/resolved/jdk-17"):
-            with self.subTest(home=home):
-                log = launch("/opt/jdk-21") + f'[Step 1/1] Java version: 17.0.10, vendor: Example, runtime: {home}'
-                self.assertEqual("mismatch", maven_runtime(log, "21", 1)["status"])
+        for mode in ("exact", "minimum"):
+            for major, expected in ((17, "mismatch"), (25, "ambiguous" if mode == "minimum" else "mismatch")):
+                for home in ("/opt/jdk-21", "/resolved/java"):
+                    with self.subTest(mode=mode, major=major, home=home):
+                        log = launch("/opt/jdk-21") + f'[Step 1/1] Java version: {major}.0.2, vendor: Example, runtime: {home}'
+                        self.assertEqual(expected, maven_runtime(log, "21", 1, jdk_match=mode)["status"])
 
     def test_unversioned_unix_homes_are_case_sensitive(self):
         log = launch("/opt/Java") + '[Step 1/1] Java version: 21.0.2, vendor: Example, runtime: /opt/java'
@@ -139,6 +157,13 @@ class MavenLogTest(unittest.TestCase):
         self.assertEqual("ambiguous", maven_runtime(first + first, "21", 2)["status"])
         self.assertEqual("verified", maven_runtime(first + launch(step=2, total=2), "21", 2)["status"])
         self.assertEqual("mismatch", maven_runtime(first + launch("/jdk-17", 2, 2), "21", 2)["status"])
+        mixed = first + launch("/opt/jdk-25", 2, 2)
+        self.assertEqual("mismatch", maven_runtime(mixed, "21", 2)["status"])
+        minimum = maven_runtime(mixed, "21", 2, jdk_match="minimum")
+        self.assertEqual("verified", minimum["status"])
+        self.assertEqual([21, 25], minimum["observedMajors"])
+        self.assertEqual("mismatch", maven_runtime(
+            launch("/opt/jdk-17", 1, 2) + launch("/opt/jdk-25", 2, 2), "21", 2, jdk_match="minimum")["status"])
 
     def test_maven_launch_must_belong_to_the_declared_step_position(self):
         self.assertEqual("verified", maven_runtime(launch(step=2, total=3), "21", 1, [2], 3)["status"])
@@ -146,11 +171,12 @@ class MavenLogTest(unittest.TestCase):
         self.assertEqual("missing", maven_runtime(launch(step=2, total=2), "21", 1, [2], 3)["status"])
 
     def test_empty_malformed_or_unresolved_logs_do_not_pass(self):
-        for log in (None, "", "No log available", launch("%env.JDK_21_0%"),
-                    'echo "' + launch() + '"',
-                    launch("/opt/java/openjdk") + '[Step 1/1] Java version: unknown, vendor: Example, runtime: /opt/java/openjdk'):
-            with self.subTest(log=log):
-                self.assertNotEqual("verified", maven_runtime(log, "21", 1)["status"])
+        for mode in ("exact", "minimum"):
+            for log in (None, "", "No log available", launch("%env.JDK_21_0%"),
+                        'echo "' + launch() + '"',
+                        launch("/opt/java/openjdk") + '[Step 1/1] Java version: unknown, vendor: Example, runtime: /opt/java/openjdk'):
+                with self.subTest(mode=mode, log=log):
+                    self.assertNotEqual("verified", maven_runtime(log, "21", 1, jdk_match=mode)["status"])
 
 
 class MavenGraderTest(unittest.TestCase):
@@ -170,10 +196,62 @@ class MavenGraderTest(unittest.TestCase):
         tc.artifacts.return_value = ["app.jar"]
         return tc, build, jobs
 
-    def grade(self, observed):
+    def grade(self, observed, required="21", jdk_match=None):
         case = json.loads((EVALS / "first-green-build/cases/spring-petclinic-maven-yaml.json").read_text())
-        case["expected"]["toolchain"]["jdk"] = "21"
+        case["expected"]["toolchain"] = {"jdk": required}
+        if jdk_match is not None:
+            case["expected"]["toolchain"]["jdkMatch"] = jdk_match
         return runner.grade(case, {**observed, "buildTypeCount": 2, "mutations": []})["toolchain"]
+
+    def test_jdk_contract_reaches_runtime_diagnostics_and_configuration_grading(self):
+        for required, exact, minimum in JDK_EXPECTATIONS:
+            for mode, accepted in ((None, exact), ("exact", exact), ("minimum", minimum)):
+                for major in (17, 21, 25):
+                    with self.subTest(required=required, mode=mode, major=major):
+                        tc, build, jobs = self.fixture()
+                        jobs[0]["parameters"] = {}
+                        jobs[0]["steps"][0]["properties"]["jdk-home"] = f"/opt/jdk-{major}"
+                        tc.build_log.return_value = launch(f"/opt/jdk-{major}")
+                        observed, diagnostics = observe_chain(tc, "project", build, required, jdk_match=mode or "exact")
+                        self.assertEqual(major in accepted, self.grade(observed, required, mode)["passed"])
+                        self.assertEqual(major in accepted, diagnostics["jdk"]["runtimeVerified"])
+                        self.assertEqual(mode or "exact", diagnostics["jdk"]["jdkMatch"])
+                        toolchain = {"jdk": required, **({"jdkMatch": mode} if mode is not None else {})}
+                        case = {"expected": {"minimumJobs": 1, "sourceMutations": "none", "toolchain": toolchain}}
+                        self.assertEqual(major in accepted, runner.grade_configuration(case,
+                            {"jobs": jobs, "mutations": [], "toolCalls": []})["toolchain"]["passed"])
+
+    def test_repository_cases_allow_only_their_declared_jdk_versions(self):
+        for filename, accepted in (("spring-petclinic-maven-yaml", {17, 21, 25}),
+                                   ("clean-spring-boot-maven", {21, 25}),
+                                   ("tdd-spring-maven", {21})):
+            case_path = EVALS / f"first-green-build/cases/{filename}.json"
+            for major in (17, 21, 25):
+                with self.subTest(case=filename, major=major), contextlib.ExitStack() as stack:
+                    tc, build, jobs = self.fixture()
+                    tc.build_log.return_value = launch(f"/opt/jdk-{major}")
+                    tc.create_project.return_value = "project"
+                    tc.build_types.return_value = jobs
+                    build["configurationDiagnostics"] = runner.script_step_diagnostics(jobs)
+                    bridge = mock.MagicMock()
+                    bridge.__enter__.return_value.agent_environment.return_value = {}
+                    stack.enter_context(mock.patch.dict(runner.os.environ, {
+                        "TEAMCITY_URL": "https://example.invalid", "TEAMCITY_TOKEN": "private-token",
+                    }, clear=True))
+                    stack.enter_context(mock.patch.object(runner.shutil, "which", return_value="teamcity"))
+                    stack.enter_context(mock.patch.object(runner, "TeamCity", return_value=tc))
+                    stack.enter_context(mock.patch.object(runner, "TeamCityCliBridge", return_value=bridge))
+                    stack.enter_context(mock.patch.object(runner, "checkout_repository"))
+                    stack.enter_context(mock.patch.object(runner, "harness_revision", return_value="a" * 40))
+                    stack.enter_context(mock.patch.object(runner, "source_mutations", return_value=[]))
+                    stack.enter_context(mock.patch.object(runner, "wait_for_build", return_value=build))
+                    stack.enter_context(mock.patch.object(runner.sys, "stderr", io.StringIO()))
+                    stack.enter_context(mock.patch.object(runner, "invoke_agent", return_value={
+                        "exitCode": 0, "timedOut": False, "timeoutSeconds": 3600,
+                    }))
+                    result = runner.run(case_path, False, False, "baseline", "cli-only")
+                    self.assertEqual(major in accepted, result["checks"]["toolchain"]["passed"])
+                    self.assertEqual([major], result["verificationDiagnostics"]["jdk"]["mavenRuntime"][0]["observedMajors"])
 
     def test_collects_only_bound_maven_child_logs_and_grades_without_java_home(self):
         tc, build, jobs = self.fixture()
@@ -188,13 +266,14 @@ class MavenGraderTest(unittest.TestCase):
         tc, build, jobs = self.fixture()
         jobs[0]["steps"][0]["properties"].update({"jdk-home": "%env.JDK_17_0%",
                                                   "docker-image": "eclipse-temurin:21-jdk"})
-        for log in ("", launch("/jdk-17")):
-            with self.subTest(log=log):
-                tc.build_log.return_value = log
-                observed, diagnostics = observe_chain(tc, "project", build, "21")
-                observed["properties"] = {"java.version": "21.0.2"}
-                self.assertFalse(self.grade(observed)["passed"])
-                self.assertFalse(diagnostics["jdk"]["runtimeVerified"])
+        for mode in ("exact", "minimum"):
+            for log in ("", launch("/jdk-17")):
+                with self.subTest(mode=mode, log=log):
+                    tc.build_log.return_value = log
+                    observed, diagnostics = observe_chain(tc, "project", build, "21", jdk_match=mode)
+                    observed["properties"] = {"java.version": "25.0.2"}
+                    self.assertFalse(self.grade(observed, jdk_match=mode)["passed"])
+                    self.assertFalse(diagnostics["jdk"]["runtimeVerified"])
 
     def test_configuration_grading_honors_runner_override_without_logs(self):
         jobs = [job()]
@@ -238,21 +317,37 @@ class MavenGraderTest(unittest.TestCase):
     def test_mixed_pipeline_still_checks_the_gradle_job(self):
         tc, build, jobs = self.fixture(2)
         jobs[1]["steps"] = [{"type": "gradle", "properties": {"tasks": "build"}}]
-        for major, expected in ((17, False), (21, True)):
-            with self.subTest(major=major):
-                jobs[1]["parameters"] = {"env.JAVA_HOME": f"%env.JDK_{major}_0%"}
-                observed, _ = observe_chain(tc, "project", build, "21")
-                self.assertEqual(expected, self.grade(observed)["passed"])
+        for mode in ("exact", "minimum"):
+            for major, expected in ((17, False), (21, True), (25, mode == "minimum")):
+                with self.subTest(mode=mode, major=major):
+                    jobs[1]["parameters"] = {"env.JAVA_HOME": f"%env.JDK_{major}_0%"}
+                    observed, _ = observe_chain(tc, "project", build, "21", jdk_match=mode)
+                    self.assertEqual(expected, self.grade(observed, jdk_match=mode)["passed"])
 
     def test_mixed_job_still_checks_its_gradle_step(self):
         tc, build, jobs = self.fixture()
         jobs[0]["steps"].append({"type": "gradle", "properties": {"tasks": "build"}})
         tc.build_log.return_value = launch(total=2)
-        for major, expected in ((17, False), (21, True)):
-            with self.subTest(major=major):
-                jobs[0]["steps"][1]["properties"]["jdk-home"] = f"%env.JDK_{major}_0%"
-                observed, _ = observe_chain(tc, "project", build, "21")
-                self.assertEqual(expected, self.grade(observed)["passed"])
+        for mode in ("exact", "minimum"):
+            for major, expected in ((17, False), (21, True), (25, mode == "minimum")):
+                with self.subTest(mode=mode, major=major):
+                    jobs[0]["steps"][1]["properties"]["jdk-home"] = f"%env.JDK_{major}_0%"
+                    observed, _ = observe_chain(tc, "project", build, "21", jdk_match=mode)
+                    self.assertEqual(expected, self.grade(observed, jdk_match=mode)["passed"])
+
+    def test_runtime_evidence_is_bound_to_the_jdk_contract(self):
+        tc, build, jobs = self.fixture()
+        tc.build_log.return_value = launch("/opt/jdk-25")
+        observed, _ = observe_chain(tc, "project", build, "21", jdk_match="minimum")
+        evidence = observed["mavenRuntime"]
+        self.assertTrue(maven_runtime_matches(evidence, jobs, "21", jdk_match="minimum"))
+        self.assertFalse(maven_runtime_matches(evidence, jobs, "21"))
+        self.assertFalse(maven_runtime_matches(evidence, jobs, "25", jdk_match="minimum"))
+        for majors in ([], [17], [21, 17]):
+            with self.subTest(majors=majors):
+                modified = copy.deepcopy(evidence)
+                modified[0]["observedMajors"] = majors
+                self.assertFalse(maven_runtime_matches(modified, jobs, "21", jdk_match="minimum"))
 
     def test_each_maven_job_needs_its_own_runtime_evidence(self):
         tc, build, jobs = self.fixture(2)
@@ -281,13 +376,16 @@ class MavenGraderTest(unittest.TestCase):
 
     def test_public_result_and_collector_keep_only_safe_runtime_diagnostics(self):
         tc, build, _ = self.fixture()
-        observed, diagnostics = observe_chain(tc, "project", build, "21")
+        tc.build_log.return_value = launch("/opt/jdk-25")
+        observed, diagnostics = observe_chain(tc, "project", build, "21", jdk_match="minimum")
         diagnostics["jdk"]["mavenRuntime"][0].update(log=launch(), path="private-canary")
         raw = {"checks": {}, "verificationDiagnostics": diagnostics,
                "mavenRuntime": observed["mavenRuntime"], "log": launch()}
         published = runner.publishable_result(raw)
         self.assertNotIn("private-canary", json.dumps(published))
         self.assertNotIn("jobId", json.dumps(published))
+        self.assertEqual("minimum", published["verificationDiagnostics"]["jdk"]["jdkMatch"])
+        self.assertEqual([25], published["verificationDiagnostics"]["jdk"]["mavenRuntime"][0]["observedMajors"])
 
         def cli(_server, *args):
             if "--json" in args:

@@ -626,9 +626,9 @@ def artifact_matches(pattern: str, published: list) -> bool:
     return False
 
 
-def toolchain_evidence(properties: dict, jdk: str, jobs: list = None) -> tuple:
+def toolchain_evidence(properties: dict, jdk: str, jobs: list = None, jdk_match="exact") -> tuple:
     """Check explicit selections, separately from measured runtime versions."""
-    matched, evidence, _ = jdk_evidence(properties, jdk, jobs)
+    matched, evidence, _ = jdk_evidence(properties, jdk, jobs, jdk_match=jdk_match)
     return matched, evidence
 
 
@@ -682,18 +682,21 @@ def grade(case: dict, observed: dict) -> dict:
         "detail": f"unmatched: {missing}" if missing else f"{len(observed['artifacts'])} artifact(s)",
     }
     jdk = expected["toolchain"]["jdk"]
+    jdk_match = expected["toolchain"].get("jdkMatch", "exact")
+    jdk_requirement = f"{jdk}+" if jdk_match == "minimum" else jdk
     jobs = observed.get("jobs", [])
     uses_maven = case.get("stack", {}).get("buildTool") == "maven" or any(
         step.get("type") == "maven" for job in jobs for step in job.get("steps", []))
     if uses_maven:
-        maven_verified = maven_runtime_matches(observed.get("mavenRuntime"), jobs, jdk)
+        maven_verified = maven_runtime_matches(observed.get("mavenRuntime"), jobs, jdk, jdk_match=jdk_match)
         other_jobs = []
         for job in jobs:
             steps = job.get("steps", [])
             if (not any(step.get("type") == "maven" for step in steps)
                     or any(step.get("type") == "gradle" for step in steps)):
                 other_jobs.append({**job, "steps": [step for step in steps if step.get("type") != "maven"]})
-        others_verified = not other_jobs or toolchain_evidence(observed["properties"], jdk, other_jobs)[0]
+        others_verified = not other_jobs or toolchain_evidence(
+            observed["properties"], jdk, other_jobs, jdk_match=jdk_match)[0]
         matched = maven_verified and others_verified
         if not maven_verified:
             detail = "Maven JVM missing, ambiguous, unavailable, or does not match the required JDK"
@@ -702,11 +705,11 @@ def grade(case: dict, observed: dict) -> dict:
         else:
             detail = "Maven JVM verified in the build log"
     else:
-        matched, evidence = toolchain_evidence(observed["properties"], jdk, jobs)
-        detail = f"matched: {evidence}" if matched else f"no JDK {jdk} among: {evidence}"
+        matched, evidence = toolchain_evidence(observed["properties"], jdk, jobs, jdk_match=jdk_match)
+        detail = f"matched: {evidence}" if matched else f"no JDK {jdk_requirement} among: {evidence}"
     checks["toolchain"] = {
-        "expected": jdk,
-        "observed": jdk if matched else "not-evidenced",
+        "expected": jdk_requirement,
+        "observed": jdk_requirement if matched else "not-evidenced",
         "detail": detail,
     }
     if "requiredContainerImage" in expected:
@@ -840,7 +843,8 @@ def grade_configuration(case: dict, observed: dict) -> dict:
 
     if "toolchain" in expected:
         jdk = expected["toolchain"]["jdk"]
-        matched, _ = toolchain_evidence({}, jdk, jobs)
+        matched, _ = toolchain_evidence(
+            {}, jdk, jobs, jdk_match=expected["toolchain"].get("jdkMatch", "exact"))
         checks["toolchain"] = {"expected": True, "observed": matched}
 
     if "expectedJobCount" in expected:
@@ -2331,7 +2335,8 @@ def run(
         # work, and the graded checks alone cannot tell them apart.
         try:
             chain_observed, result["verificationDiagnostics"] = observe_chain(
-                tc, project_id, build, case["expected"]["toolchain"]["jdk"]
+                tc, project_id, build, case["expected"]["toolchain"]["jdk"],
+                jdk_match=case["expected"]["toolchain"].get("jdkMatch", "exact"),
             )
         except EvalError:
             result["verificationErrorCategory"] = "verification-observation-failed"

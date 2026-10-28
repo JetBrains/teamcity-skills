@@ -165,13 +165,15 @@ class FirstGreenEvidenceTest(unittest.TestCase):
 
     def test_runtime_version_is_separate_and_overrides_declaration(self):
         jobs = [{"environment": {"JAVA_HOME": "/jdk-21"}}]
-        for version in ("17.0.1", "17.0.21"):
-            with self.subTest(version=version):
-                matched, _, diagnostic = evidence.jdk_evidence({"java.version": version}, "21", jobs)
-                self.assertFalse(matched)
-                self.assertTrue(diagnostic["declaredMatch"])
-                self.assertFalse(diagnostic["runtimeVerified"])
-        self.assertTrue(evidence.jdk_evidence({"java.version": "21.0.1"}, "21", jobs)[2]["runtimeVerified"])
+        for mode in ("exact", "minimum"):
+            for version, expected in (("17.0.1", False), ("17.0.21", False),
+                                      ("21.0.1", True), ("25.0.1", mode == "minimum")):
+                with self.subTest(mode=mode, version=version):
+                    matched, _, diagnostic = evidence.jdk_evidence(
+                        {"java.version": version}, "21", jobs, jdk_match=mode)
+                    self.assertEqual(expected, matched)
+                    self.assertTrue(diagnostic["declaredMatch"])
+                    self.assertEqual(expected, diagnostic["runtimeVerified"])
 
     def test_safe_diagnostics_strip_private_values(self):
         published = runner.publishable_result({"checks": {}, "verificationDiagnostics": {

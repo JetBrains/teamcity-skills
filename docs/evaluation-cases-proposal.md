@@ -110,8 +110,8 @@ and is not covered by this contract.
 | `queued-no-compatible-agent` | Once a run has already been queued for over two minutes, the agent checks inventory, job incompatibility reasons, and unresolved stored-pipeline parameters by its second status observation, then stops instead of polling or requeueing. The runner simulates the queue and consumes no target build agent. |
 | `java25-agent-requirement-blocks-provisioning` (draft) | A deterministic queue stall distinguishes the pre-dispatch `env.JDK_25` requirement from installing JDK 25 after dispatch. The fixture exposes neither JDK 25 nor Docker, so the agent must inspect capabilities and explain that the requirement must change before a build-step download can run. |
 | `spring-petclinic-maven-pipeline` | The configuration-only Spring Petclinic case uses its documented Maven verification path and publishes the JAR. |
-| `clean-spring-boot-maven-pipeline` | A Maven-only Spring Boot project receives a Java 21 Maven verification job and JAR publication contract without running the target project. |
-| `clean-spring-boot-maven` | The Clean Spring project must reach a first green Maven verification build on Java 21, import its JUnit XML, and publish its JAR. |
+| `clean-spring-boot-maven-pipeline` | A Maven-only Spring Boot project receives a Maven verification job on Java 21 or newer and a JAR publication contract without running the target project. |
+| `clean-spring-boot-maven` | The Clean Spring project must reach a first green Maven verification build on Java 21 or newer, import its JUnit XML, and publish its JAR. |
 | `spring-boot-demo-gradle-testcontainers-pipeline` | A Kotlin/Gradle Spring Boot project gets separate Java 21 build/package and Docker-backed Testcontainers test jobs. Both generate its JOOQ/OpenAPI sources; the package job must not silently run tests. |
 | `spring-boot-demo-gradle-testcontainers` | The same repository must reach a first green Java 21 build with generated sources, Docker-backed Testcontainers tests, JUnit XML, and a published JAR. |
 | `spring-boot-kotlin-gradle-java25-pipeline` | A Spring Boot 4/Gradle repository gets exactly one Gradle build job using an exact JDK 25 container and publishes its JAR even when the ephemeral host does not preinstall JDK 25. |
@@ -179,7 +179,13 @@ requires all of the following:
   test reports, minimum counts, and named tests;
 - every declared artifact path present in the build artifacts.
 
-`expected.toolchain.jdk` is the case's single JDK requirement. For Maven builds,
+`expected.toolchain.jdk` specifies the required Java major version.
+`expected.toolchain.jdkMatch` is `exact` (the default) or `minimum`: for example,
+`{"jdk": "21", "jdkMatch": "minimum"}` accepts Java 21 and newer, while
+`{"jdk": "25"}` requires Java 25. Each case chooses its own contract.
+Petclinic requires Java 17 or newer; both Clean Spring Maven cases require
+Java 21 or newer. Cases requesting an exact toolchain retain exact matching.
+For Maven builds,
 the grader reads the full log of each bound Maven job through
 `teamcity run log <id> --raw`. Every native Maven step needs a JVM launch whose
 Java installation identifies the required major version. An unversioned path
@@ -189,13 +195,15 @@ command must have a corresponding `docker exec` launch in that step. Java
 selected through `PATH` needs Maven's version and runtime-home output; the
 wrapper's `JAVA_HOME` export is not sufficient. The runner's preliminary
 `info-maven3-plugin` query against a generated model POM is not a build launch.
+Different steps may use different supported majors under a minimum requirement;
+conflicting majors reported for the same launch never pass.
 Missing, ambiguous, unavailable, or conflicting evidence cannot
 pass. `JAVA_HOME`, the container image, the agent JVM, and a separate
 `java -version` script are not Maven runtime evidence. No extra diagnostic
 step is required. Published diagnostics contain only build IDs, major
-versions, counts, and fixed statuses; raw logs and installation paths remain
-private. Gradle's existing declaration/property checks also apply to Gradle
-jobs and steps in mixed Maven/Gradle pipelines.
+versions, the fixed JDK match mode, counts, and fixed statuses; raw logs and
+installation paths remain private. Gradle's existing declaration/property checks
+also apply to Gradle jobs and steps in mixed Maven/Gradle pipelines.
 
 ### Target-Level Expectations And Observed Baseline
 
@@ -233,8 +241,8 @@ rules, agent requirements - in minutes, without a build agent, and without the
 failure modes of a real build. A green-build case costs tens of minutes and
 cloud-agent provisioning, so it cannot cover many repositories; this one can.
 
-For a configuration-only case, `expected.toolchain.jdk` requires an explicit
-JDK image, environment declaration, or Maven/Gradle runner `jdk-home`. An
+For a configuration-only case, the same `jdk` and `jdkMatch` contract requires
+an explicit JDK image, environment declaration, or Maven/Gradle runner `jdk-home`. An
 explicit runner JDK overrides the job environment. These checks do not run a
 build or claim to verify the runtime. Saved parameter references in `jdk-home`
 are resolved with job overrides before unrelated parameters are discarded.
