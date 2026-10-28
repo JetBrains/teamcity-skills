@@ -101,10 +101,13 @@ class ConfigurationGraderTest(unittest.TestCase):
             )
         ]
 
-        matched, evidence = run_case.toolchain_evidence({}, "25", jobs)
-
-        self.assertTrue(matched)
-        self.assertIn("declared-docker-image", evidence)
+        for image in ("eclipse-temurin:25-jdk", "eclipse-temurin:25.0.1-jdk",
+                      "maven:3.9.9-eclipse-temurin-25"):
+            with self.subTest(image=image):
+                jobs[0]["steps"][0]["properties"]["docker-image"] = image
+                matched, evidence = run_case.toolchain_evidence({}, "25", jobs)
+                self.assertTrue(matched)
+                self.assertIn("declared-docker-image", evidence)
 
     def test_toolchain_rejects_wrong_jdk_container_image(self):
         jobs = [
@@ -116,11 +119,13 @@ class ConfigurationGraderTest(unittest.TestCase):
             )
         ]
 
-        matched, _ = run_case.toolchain_evidence({}, "25", jobs)
+        for image in ("eclipse-temurin:21-jdk", "eclipse-temurin:21.0.25-jdk"):
+            with self.subTest(image=image):
+                jobs[0]["steps"][0]["properties"]["docker-image"] = image
+                matched, _ = run_case.toolchain_evidence({}, "25", jobs)
+                self.assertFalse(matched)
 
-        self.assertFalse(matched)
-
-    def test_clean_spring_requires_java_21_not_a_particular_selection_method(self):
+    def test_clean_spring_requires_java_21_or_newer_with_any_selection_method(self):
         case = json.loads(CLEAN_SPRING_CASE.read_text())
         observed = {
             "jobs": [
@@ -136,16 +141,18 @@ class ConfigurationGraderTest(unittest.TestCase):
             "toolCalls": [],
         }
 
-        checks = run_case.grade_configuration(case, observed)
-        self.assertFalse(checks["toolchain"]["passed"])
-
-        observed["jobs"][0]["steps"][0]["properties"]["docker-image"] = "eclipse-temurin:21-jdk"
-        checks = run_case.grade_configuration(case, observed)
-        self.assertTrue(checks["toolchain"]["passed"])
-
-        del observed["jobs"][0]["steps"][0]["properties"]["docker-image"]
-        observed["jobs"][0]["parameters"] = {"env.JAVA_HOME": "%env.JDK_21_0%"}
-        self.assertTrue(run_case.grade_configuration(case, observed)["toolchain"]["passed"])
+        for major, expected in ((17, False), (21, True), (25, True)):
+            for source in ("docker-image", "env.JAVA_HOME", "jdk-home"):
+                with self.subTest(major=major, source=source):
+                    selected = observed["jobs"][0]
+                    selected["parameters"] = {}
+                    selected["steps"][0]["properties"] = {"goals": "clean verify"}
+                    if source == "env.JAVA_HOME":
+                        selected["parameters"][source] = f"%env.JDK_{major}_0%"
+                    else:
+                        selected["steps"][0]["properties"][source] = (
+                            f"eclipse-temurin:{major}-jdk" if source == "docker-image" else f"/opt/jdk-{major}")
+                    self.assertEqual(expected, run_case.grade_configuration(case, observed)["toolchain"]["passed"])
 
     def test_spring_demo_keeps_docker_backed_tests_out_of_package_job(self):
         case = json.loads(SPRING_DEMO_CASE.read_text())

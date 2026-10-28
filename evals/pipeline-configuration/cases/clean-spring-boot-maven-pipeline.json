@@ -4,7 +4,7 @@
   "kind": "pipeline-configuration",
   "status": "draft",
   "skill": "teamcity-first-green-build",
-  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository. Inspect its build and test setup, configure Maven verification on Java 21, publish JUnit XML and the application JAR, validate the configuration against the server, and stop there. Do not queue a build or modify repository sources. Java 21 may be selected on the agent or through a suitable build container.",
+  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository. Inspect its build and test setup, configure Maven verification on Java 21 or newer, publish JUnit XML and the application JAR, validate the configuration against the server, and stop there. Do not queue a build or modify repository sources. Java 21 or newer may be selected on the agent or through a suitable build container.",
   "teamcity": {
     "server": "runner-configured",
     "targetProject": "runner-configured"
@@ -38,7 +38,8 @@
     "sourceMutations": "none",
     "minimumJobs": 1,
     "toolchain": {
-      "jdk": "21"
+      "jdk": "21",
+      "jdkMatch": "minimum"
     },
     "requiredStepTypes": [
       "maven"

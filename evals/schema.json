@@ -794,7 +794,14 @@
           "required": ["jdk"],
           "properties": {
             "jdk": {
-              "type": "string"
+              "description": "Required Java major version; jdkMatch selects an exact version or a minimum.",
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,2}$"
+            },
+            "jdkMatch": {
+              "description": "exact requires the specified major; minimum also accepts newer majors. Omission preserves exact matching.",
+              "enum": ["exact", "minimum"],
+              "default": "exact"
             }
           }
         },
