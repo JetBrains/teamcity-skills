@@ -71,7 +71,8 @@ class CleanSpringContractTest(unittest.TestCase):
         for property_name in ("goals", "runner-arguments"):
             for option in ("-DskipTests", "-DskipTests=true", "-Dmaven.test.skip",
                            "-Dmaven.test.skip=true", '-DskipTests="true"',
-                           "'-Dmaven.test.skip=true'", "-D skipTests=true"):
+                           "'-Dmaven.test.skip=true'", "-D skipTests=true",
+                           '-D"skipTests=true"', '-D"maven.test.skip=true"'):
                 with self.subTest(property=property_name, option=option):
                     actual = observed()
                     props = actual["jobs"][0]["steps"][0]["properties"]
@@ -83,13 +84,20 @@ class CleanSpringContractTest(unittest.TestCase):
     def test_disabling_assertions_in_either_property_fails(self):
         for property_name in ("goals", "runner-arguments"):
             for option in ("-DenableAssertions=false", '-DenableAssertions="false"',
+                           '-D"enableAssertions=false"',
                            '-DargLine="-da"', "-DargLine=-disableassertions",
                            "-DargLine='-Xmx512m -da'", '-DargLine="-da:com.kawser..."',
-                           '-DargLine="-Xmx512m -disableassertions:com.kawser..."'):
+                           '-DargLine="-Xmx512m -disableassertions:com.kawser..."',
+                           '"-DargLine=-Xmx512m -da"',
+                           "'-DargLine=-Xmx512m -disableassertions'",
+                           '"-DargLine=-Xmx512m\t-da"',
+                           '-D argLine="-Xmx512m -da"',
+                           r'-DargLine="-Dlabel=\"some text\" -da"'):
                 with self.subTest(property=property_name, option=option):
                     actual = observed()
                     props = actual["jobs"][0]["steps"][0]["properties"]
                     props[property_name] = props.get(property_name, "") + " " + option
+                    self.assertFalse(runner.grade(CASE, actual)["forbiddenStepProperties"]["passed"])
                     self.assertFalse(runner.grade_configuration(CONFIG, actual)
                                      ["forbiddenStepProperties"]["passed"])
 
@@ -99,13 +107,59 @@ class CleanSpringContractTest(unittest.TestCase):
                            "-DenableAssertions=true", '-DargLine="-ea"',
                            '-DargLine="-Xmx512m -enableassertions"',
                            '-DargLine="-Ddata=example"',
-                           '-DargLine="-ea" -Dother="-da"'):
+                           '-DargLine="-ea" -Dother="-da"',
+                           '"-DargLine=-Xmx512m -ea"',
+                           r'-DargLine="-Dlabel=\"some -da text\" -ea"',
+                           '-Dlabel="some -DskipTests=true -DenableAssertions=false"',
+                           r'-Dmaven.repo.local="C:\Program Files\maven-repo"'):
                 with self.subTest(property=property_name, option=option):
                     actual = observed()
                     props = actual["jobs"][0]["steps"][0]["properties"]
                     props[property_name] = props.get(property_name, "") + " " + option
+                    self.assertTrue(runner.grade(CASE, actual)["forbiddenStepProperties"]["passed"])
                     self.assertTrue(runner.grade_configuration(CONFIG, actual)
                                     ["forbiddenStepProperties"]["passed"])
+
+    def test_adapter_resolves_maven_arguments_before_discarding_parameters(self):
+        tc = runner.TeamCity("teamcity", "https://example.invalid", "synthetic", {})
+        for field in ("goals", "runner-arguments"):
+            for parameters, environment, overrides, selected, expected in (
+                ({"args": '-V "-DargLine=-Xmx512m -da"'}, {}, {}, "%args%", False),
+                ({"args": "-DskipTests"}, {}, {}, "%args%", False),
+                ({"args": "%nested%", "nested": "-DenableAssertions=false"}, {}, {}, "%args%", False),
+                ({"args": "%nested%", "nested": "-DskipTests=false"}, {}, {}, "%args%", True),
+                ({"args": "-DskipTests"}, {}, {"args": "-DskipTests=false"}, "%args%", True),
+                ({"args": "-DskipTests=false"}, {}, {"args": "-DskipTests"}, "%args%", False),
+                ({}, {"MAVEN_ARGS": "-DenableAssertions=false"}, {}, "%env.MAVEN_ARGS%", False),
+                ({}, {"MAVEN_ARGS": "-DskipTests"}, {"env.MAVEN_ARGS": "-DskipTests=false"}, "%env.MAVEN_ARGS%", True),
+                ({}, {}, {}, "%missing%", False),
+                ({"args": "%nested%", "nested": "%args%"}, {}, {}, "%args%", False),
+                ({"args": 42}, {}, {}, "%args%", False),
+            ):
+                with self.subTest(field=field, selected=selected, parameters=parameters, overrides=overrides):
+                    properties = {"goals": "clean verify", "runner-arguments": "-V"}
+                    properties[field] += " " + selected
+                    document = {"parameters": {"private": "private-canary", **parameters},
+                        "environment": environment, "jobs": {"Verify": {
+                            "parameters": {"env.JAVA_HOME": "%env.JDK_21_0%", **overrides},
+                            "steps": [{"type": "maven", **properties}],
+                            "files-publication": ["target/*.jar", "target/surefire-reports/*.xml"],
+                        }}}
+                    with mock.patch.object(tc, "pipeline_definition", return_value=document):
+                        actual = observed()
+                        actual["jobs"] = tc.jobs("project", "pipeline")
+                    self.assertNotIn("private-canary", json.dumps(actual["jobs"]))
+                    self.assertEqual(expected, runner.grade(CASE, actual)["forbiddenStepProperties"]["passed"])
+                    self.assertEqual(expected, runner.grade_configuration(CONFIG, actual)
+                                     ["forbiddenStepProperties"]["passed"])
+
+    def test_inconclusive_maven_arguments_cannot_pass(self):
+        for value in ('-V "-DargLine=-da', "%unknown%", "-D", None):
+            with self.subTest(value=value):
+                actual = observed()
+                actual["jobs"][0]["steps"][0]["properties"]["runner-arguments"] = value
+                self.assertFalse(runner.grade(CASE, actual)["forbiddenStepProperties"]["passed"])
+                self.assertFalse(runner.grade_configuration(CONFIG, actual)["forbiddenStepProperties"]["passed"])
 
     def test_known_older_bundled_maven_is_rejected_before_running(self):
         for minor in (0, 1, 2, 3, 5, 6, 8, 9):
@@ -220,7 +274,14 @@ class MavenVersionTest(unittest.TestCase):
                 "[Step 1/1] -V -B clean verify\n"
                 "[Step 1/1] Starting: /bin/sh -c docker exec container /script.sh\n"
                 "[Step 1/1] Apache Maven 3.9.11\n")
-        self.assertEqual("verified", maven_version(text, job(), "3.6")["status"])
+        for runtime in ("docker", "podman"):
+            with self.subTest(runtime=runtime):
+                wrapped = text.replace("docker exec", runtime + " exec")
+                self.assertEqual("verified", maven_version(wrapped, job(), "3.6")["status"])
+                self.assertEqual("missing", maven_version(
+                    wrapped.replace("Starting:", "Not executed:"), job(), "3.6")["status"])
+                self.assertEqual("mismatch", maven_version(
+                    wrapped.replace("Apache Maven 3.9.11", "Apache Maven 3.5.4"), job(), "3.6")["status"])
 
     def test_observation_reads_only_bound_maven_child_logs(self):
         tc = mock.Mock()

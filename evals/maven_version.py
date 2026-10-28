@@ -53,7 +53,7 @@ def maven_version(log, job, minimum):
         if line.startswith("Starting:"):
             active = None
             command = line
-            if re.search(r"\bdocker\s+exec\s", line) and container_command:
+            if re.search(r"\b(?:docker|podman)\s+exec\s", line) and container_command:
                 command = container_command
             container_command, in_container_script = None, False
             probe = (re.search(r"\borg\.jetbrains\.maven:info-maven3-plugin:[^:\s]+:info\b", command)

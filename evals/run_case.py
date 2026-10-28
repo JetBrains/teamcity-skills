@@ -92,6 +92,7 @@ from pipeline_validation import (
 )
 from build_monitor import LiveBuildMonitor, STOP_CATEGORY, safe_monitor_diagnostics
 from maven_version import maven_versions_match, observe_maven_versions
+from maven_arguments import maven_arguments_match, resolve_maven_arguments
 
 
 class EvalError(RuntimeError):
@@ -524,6 +525,10 @@ class TeamCity:
             parsed = self.pipeline_definition(pipeline_id)
             for job_id, job in (parsed.get("jobs") or {}).items():
                 job = job or {}
+                environment = {**(parsed.get("environment") or {}),
+                               **(job.get("environment") or {})}
+                parameters = {**(parsed.get("parameters") or {}),
+                              **(job.get("parameters") or {})}
                 steps = [
                     {
                         "type": step.get("type"),
@@ -533,6 +538,14 @@ class TeamCity:
                     }
                     for step in (job.get("steps") or [])
                 ]
+                # Resolve arguments before discarding non-JDK parameters. Keep
+                # the resolved values private, like all other step properties.
+                for step in steps:
+                    if step["type"] == "maven":
+                        for field in ("goals", "runner-arguments"):
+                            if field in step["properties"]:
+                                step["properties"][field] = resolve_maven_arguments(
+                                    step["properties"][field], parameters, environment)
                 # Pipeline YAML permits the short string form as well as an
                 # object with an explicit ``publish-artifact`` flag. A string
                 # is itself an artifact rule, so it must not be treated as a
@@ -550,12 +563,8 @@ class TeamCity:
                     "steps": steps,
                     "artifactRules": "\n".join(published),
                     "agentRequirements": [str(runs_on)] if runs_on else [],
-                    "environment": jdk_selectors({
-                        **(parsed.get("environment") or {}), **(job.get("environment") or {}),
-                    }),
-                    "parameters": jdk_selectors({
-                        **(parsed.get("parameters") or {}), **(job.get("parameters") or {}),
-                    }, parameter=True),
+                    "environment": jdk_selectors(environment),
+                    "parameters": jdk_selectors(parameters, parameter=True),
                 })
         return collected
 
@@ -814,6 +823,18 @@ def add_transport_checks(
 # Runner
 # --------------------------------------------------------------------------- #
 
+def forbidden_step_property(step, forbidden, pattern):
+    field = forbidden["property"]
+    if step["type"] != forbidden["stepType"] or field not in step["properties"]:
+        return False
+    if pattern is None:
+        return True
+    value = step["properties"][field]
+    if step["type"] == "maven" and field in ("goals", "runner-arguments"):
+        return maven_arguments_match(value, pattern)
+    return bool(pattern.search(str(value)))
+
+
 def grade_configuration(case: dict, observed: dict) -> dict:
     """Grade the pipeline the agent produced, without running it."""
     expected = case["expected"]
@@ -878,12 +899,7 @@ def grade_configuration(case: dict, observed: dict) -> dict:
         for forbidden in expected["forbiddenStepProperties"]:
             pattern = re.compile(forbidden["matches"]) if "matches" in forbidden else None
             if any(
-                step["type"] == forbidden["stepType"]
-                and forbidden["property"] in step["properties"]
-                and (
-                    pattern is None
-                    or pattern.search(str(step["properties"][forbidden["property"]]))
-                )
+                forbidden_step_property(step, forbidden, pattern)
                 for job in jobs for step in job["steps"]
             ):
                 used.append(
@@ -957,12 +973,7 @@ def grade_configuration(case: dict, observed: dict) -> dict:
             for forbidden in contract.get("forbiddenStepProperties", []):
                 pattern = re.compile(forbidden["matches"]) if "matches" in forbidden else None
                 if any(
-                    step["type"] == forbidden["stepType"]
-                    and forbidden["property"] in step["properties"]
-                    and (
-                        pattern is None
-                        or pattern.search(str(step["properties"][forbidden["property"]]))
-                    )
+                    forbidden_step_property(step, forbidden, pattern)
                     for step in job["steps"]
                 ):
                     failures.append(
