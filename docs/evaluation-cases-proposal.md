@@ -179,10 +179,17 @@ requires all of the following:
   test reports, minimum counts, and named tests;
 - every declared artifact path present in the build artifacts.
 
-`expected.toolchain.jdk` is the case's single JDK requirement. The grader
-checks it against the selected JDK home, JDK container image, and, when
-TeamCity exposes it, the build's effective Java version. A build that
-evidences a conflicting Java version fails the check.
+`expected.toolchain.jdk` is the case's single JDK requirement. For Maven builds,
+the grader reads the full log of each bound Maven job through
+`teamcity run log <id> --raw`. Every native Maven step needs a JVM launch whose
+Java installation identifies the required major version. An unversioned path
+needs Maven's `Java version: ..., runtime: ...` output for the same home in the
+same step. Missing, ambiguous, unavailable, or conflicting evidence cannot
+pass. `JAVA_HOME`, the container image, the agent JVM, and a separate
+`java -version` script are not Maven runtime evidence. No extra diagnostic
+step is required. Published diagnostics contain only build IDs, major
+versions, counts, and fixed statuses; raw logs and installation paths remain
+private. Gradle's existing declaration/property checks are unchanged.
 
 ### Target-Level Expectations And Observed Baseline
 
@@ -221,9 +228,10 @@ failure modes of a real build. A green-build case costs tens of minutes and
 cloud-agent provisioning, so it cannot cover many repositories; this one can.
 
 For a configuration-only case, `expected.toolchain.jdk` requires an explicit
-JDK image or environment declaration. A first-green case additionally observes
-TeamCity's resulting build properties when they are available, so it can check
-the Java that executed the build.
+JDK image, environment declaration, or Maven/Gradle runner `jdk-home`. An
+explicit runner JDK overrides the job environment. These checks do not run a
+build or claim to verify the runtime. Maven first-green cases require runtime
+evidence separately, as described above.
 
 The runner reads the build configurations the agent created, skipping the
 composite pipeline heads a pipeline materialises per chain, and checks:

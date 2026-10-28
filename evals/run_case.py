@@ -86,6 +86,7 @@ from first_green_evidence import (
     EvidenceError, chain_nodes, jdk_evidence, jdk_selectors, observe_chain,
     safe_verification_diagnostics, safe_verification_error, select_pipeline,
 )
+from maven_runtime import maven_runtime_matches
 from pipeline_validation import (
     ScriptConfigurationError, safe_script_diagnostics, script_step_diagnostics,
     validate_pipeline_scripts,
@@ -454,6 +455,10 @@ class TeamCity:
     def build(self, build_id: int):
         return self._run(["run", "view", str(build_id), "--json"], json_output=True)
 
+    def build_log(self, build_id: int) -> str:
+        """Read the exact child build's full log; never publish the raw text."""
+        return self._run(["run", "log", str(build_id), "--raw"])
+
     def build_tree(self, build_id: int):
         return self._run(
             ["run", "tree", str(build_id), "--depth", "0", "--json"], json_output=True
@@ -555,10 +560,8 @@ class TeamCity:
         return collected
 
     def resulting_properties(self, build_id: int) -> dict:
-        # The first-class CLI has no resulting-properties command.  Toolchain
-        # evidence is therefore taken from the server-stored pipeline YAML
-        # (environment and image declarations) rather than falling back to
-        # direct REST.
+        # The first-class CLI has no resulting-properties command. Maven
+        # runtime evidence comes from `run log`, not the agent JVM properties.
         return {}
 
     def test_count(self, build_id: int) -> int:
@@ -677,11 +680,20 @@ def grade(case: dict, observed: dict) -> dict:
         "detail": f"unmatched: {missing}" if missing else f"{len(observed['artifacts'])} artifact(s)",
     }
     jdk = expected["toolchain"]["jdk"]
-    matched, evidence = toolchain_evidence(observed["properties"], jdk, observed.get("jobs"))
+    jobs = observed.get("jobs", [])
+    uses_maven = case.get("stack", {}).get("buildTool") == "maven" or any(
+        step.get("type") == "maven" for job in jobs for step in job.get("steps", []))
+    if uses_maven:
+        matched = maven_runtime_matches(observed.get("mavenRuntime"), jobs, jdk)
+        detail = ("Maven JVM verified in the build log" if matched else
+                  "Maven JVM missing, ambiguous, unavailable, or does not match the required JDK")
+    else:
+        matched, evidence = toolchain_evidence(observed["properties"], jdk, jobs)
+        detail = f"matched: {evidence}" if matched else f"no JDK {jdk} among: {evidence}"
     checks["toolchain"] = {
         "expected": jdk,
         "observed": jdk if matched else "not-evidenced",
-        "detail": f"matched: {evidence}" if matched else f"no JDK {jdk} among: {evidence}",
+        "detail": detail,
     }
     if "requiredContainerImage" in expected:
         has_matching_image = any(

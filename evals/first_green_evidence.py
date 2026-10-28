@@ -1,6 +1,8 @@
-"""Fail-closed first-green chain binding and safe, declaration-only JDK evidence."""
+"""Fail-closed first-green chain binding and safe JDK evidence."""
 
 import re
+
+from maven_runtime import maven_runtime, safe_maven_runtime
 
 
 VERIFICATION_ERROR_CATEGORIES = {
@@ -95,14 +97,30 @@ def jdk_evidence(properties, jdk, jobs=None):
     for job in jobs or []:
         selectors = list(jdk_selectors(job.get("environment")).values())
         selectors += list(jdk_selectors(job.get("parameters"), parameter=True).values())
+        steps = [step for step in job.get("steps", []) if step.get("type") in ("maven", "gradle")]
         images = [step.get("properties", {}).get("docker-image", "")
                   for step in job.get("steps", [])]
         images = [image for image in images if isinstance(image, str)
                   and re.search(r"(?i)java|jdk|openjdk|temurin", image)]
-        choices = selectors + images
-        if choices and all(version.search(value) for value in choices):
+        choices, runner_selected = [], False
+        for step in steps or [{}]:
+            step_properties = step.get("properties", {})
+            home = step_properties.get("jdk-home")
+            if isinstance(home, str) and home.strip():
+                # A runner's explicit JDK overrides the job environment.
+                home = (job.get("parameters", {}).get(home.strip("%"))
+                        or job.get("environment", {}).get(home.strip("%")) or home)
+                choices.append([home])
+                runner_selected = True
+            else:
+                # Preserve the existing declaration check for jobs without a
+                # runner override. Maven execution is verified separately.
+                choices.append(selectors + images)
+        if all(selection and all(version.search(value) for value in selection)
+               for selection in choices):
             matched_jobs += 1
-            evidence.append("declared-java-home" if selectors else "declared-docker-image")
+            evidence.append("declared-runner-jdk" if runner_selected else
+                            "declared-java-home" if selectors else "declared-docker-image")
     declared_match = bool(jobs) and matched_jobs == len(jobs)
     # Contradictory runtime evidence must override a declaration.
     matched = runtime_verified if runtime else declared_match
@@ -123,8 +141,18 @@ def observe_chain(tc, project_id, build, required_jdk):
             raise EvidenceError("verification-chain-incomplete")
         members.append(member)
     jobs = bind_jobs(tc.jobs(project_id, build["pipelineId"]), members)
-    artifacts, all_tests, diagnostics, job_results = [], [], [], []
+    artifacts, all_tests, diagnostics, job_results, maven = [], [], [], [], []
     for member, job in zip(members, jobs):
+        maven_indices = [index for index, step in enumerate(job.get("steps", []), 1)
+                         if step.get("type") == "maven"]
+        maven_steps = len(maven_indices)
+        if maven_steps:
+            try:
+                runtime = maven_runtime(tc.build_log(member["id"]), required_jdk, maven_steps,
+                                        maven_indices, len(job["steps"]))
+            except (RuntimeError, OSError, ValueError):
+                runtime = {**maven_runtime(None, required_jdk, maven_steps), "status": "unavailable"}
+            maven.append({**runtime, "buildId": member["id"], "jobId": job["id"]})
         tests = tc.test_results(member["id"])
         published_artifacts = tc.artifacts(member["id"])
         all_tests.extend(tests)
@@ -137,6 +165,9 @@ def observe_chain(tc, project_id, build, required_jdk):
                                                        and not test["ignored"] for test in tests),
                             "artifactCount": len(published_artifacts)})
     _, _, jdk = jdk_evidence({}, required_jdk, jobs)
+    if maven:
+        jdk["runtimeVerified"] = all(item["status"] == "verified" for item in maven)
+        jdk["mavenRuntime"] = [safe_maven_runtime(item) for item in maven]
     head = next(node for node in build["nodes"] if node["id"] == build["id"])
     metadata = None
     if head.get("status") in ("FAILURE", "ERROR"):
@@ -151,7 +182,7 @@ def observe_chain(tc, project_id, build, required_jdk):
             raise EvidenceError("verification-chain-incomplete")
     return {
         "testCount": len(all_tests), "tests": all_tests, "jobResults": job_results,
-        "artifacts": artifacts, "properties": {},
+        "artifacts": artifacts, "properties": {}, "mavenRuntime": maven,
         "jobs": jobs, "attempts": build["attempts"], "buildStatus": build["status"],
     }, {
         "headId": build["id"], "selection": build["selection"], "builds": diagnostics,
@@ -254,4 +285,6 @@ def safe_verification_diagnostics(value):
                        if type(jdk.get(key)) is int and jdk[key] >= 0}
         safe["jdk"].update({key: jdk[key] for key in ("declaredMatch", "runtimeVerified")
                             if type(jdk.get(key)) is bool})
+        if isinstance(jdk.get("mavenRuntime"), list):
+            safe["jdk"]["mavenRuntime"] = [safe_maven_runtime(item) for item in jdk["mavenRuntime"]]
     return safe
