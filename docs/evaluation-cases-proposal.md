@@ -535,6 +535,18 @@ monitored is never a first-green success, even if tests passed. In that state
 TeamCity may have substituted a default revision. The skill must repair the
 VCS root branch specification and rerun on a monitored branch.
 
+`expected.vcsRootMatchesRepository` opts a first-green case into two configuration
+checks: `vcsRepository` requires one attached Git VCS root matching the case's
+repository URL, and `vcsDefaultBranch` requires that same root's default branch
+to equal the case's `repository.defaultBranch` as a full Git ref. The runner
+reads the selected pipeline head with `teamcity job view --json`, then its
+attached roots with `teamcity project vcs view --json`. Equivalent HTTPS and SSH
+Git URLs are accepted. Unrelated roots in the project cannot satisfy these checks.
+An empty branch specification is valid for the default branch; the logical
+TeamCity branch name is not compared with the Git ref. These checks describe
+current settings and do not prove the ref or pinned commit used by a build.
+The live `clean-spring-boot-maven` case enables them.
+
 The runner keeps a retained project ID only inside its disposable process and
 sets `cleanupDeferred: true` in the minimized result. This temporary
 infrastructure state does not affect grading.
