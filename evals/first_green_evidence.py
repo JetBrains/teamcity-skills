@@ -129,7 +129,7 @@ def observe_chain(tc, project_id, build, required_jdk):
         published_artifacts = tc.artifacts(member["id"])
         all_tests.extend(tests)
         artifacts.extend(published_artifacts)
-        job_results.append({"job": job, "status": member.get("status"),
+        job_results.append({"job": job, "buildId": member["id"], "status": member.get("status"),
                             "tests": tests, "artifacts": published_artifacts})
         diagnostics.append({"id": member["id"], "state": member.get("state"),
                             "status": member.get("status"), "testCount": len(tests),

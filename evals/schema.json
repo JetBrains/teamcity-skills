@@ -805,6 +805,15 @@
           "type": "integer",
           "minimum": 1
         },
+        "allTestsPassed": {
+          "description": "Every imported test occurrence must have SUCCESS status and must not be ignored.",
+          "const": true
+        },
+        "minimumMavenVersion": {
+          "description": "Minimum Maven release, verified from the version banner of each native Maven build launch in the selected chain. Configuration-only cases do not measure runtime versions.",
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+(?:\\.\\d+)?$"
+        },
         "requiredTestNames": {
           "type": "array",
           "minItems": 1,
