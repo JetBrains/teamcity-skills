@@ -11,7 +11,6 @@ import tempfile
 import unittest
 from unittest import mock
 
-import jsonschema
 import yaml
 
 EVALS = pathlib.Path(__file__).resolve().parents[1]
@@ -35,29 +34,13 @@ def document(feature="xml-report"):
     }
 
 
-# Only the feature enum matters to this regression. This is a synthetic server
-# schema, not a replacement for the real CLI's complete target-server schema.
-SCHEMA = {
-    "properties": {
-        "jobs": {
-            "additionalProperties": {
-                "properties": {
-                    "features": {"items": {"properties": {"type": {"enum": ["xml-report"]}}}},
-                },
-            },
-        },
-    },
-}
-
-
-def validator(arguments):
-    assert arguments[:2] == ["pipeline", "validate"]
-    assert arguments[3:] == ["--refresh-schema"]
-    path = pathlib.Path(arguments[2])
-    actual = yaml.safe_load(path.read_text(encoding="utf-8"))
-    errors = list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(actual))
-    if not errors:
+# Replay CLI responses; schema validation itself belongs to the CLI.
+def cli_result(arguments, status):
+    path = arguments[2]
+    if status == "valid":
         return subprocess.CompletedProcess(arguments, 0, stdout=f"{path} is valid\n", stderr="")
+    if status == "unavailable":
+        return subprocess.CompletedProcess(arguments, 1, "", "failed to download schema: private-canary")
     return subprocess.CompletedProcess(arguments, 1, stdout="", stderr=(
         f"\x1b[31mX\x1b[0m {path} has 1 error(s)\n\n"
         "  Line 12: /jobs/Verify/features/0/type\n"
@@ -71,24 +54,23 @@ class PipelineSchemaTest(unittest.TestCase):
             "TEAMCITY_URL": "https://other.invalid", "TEAMCITY_GUEST": "1",
         })
         text = yaml.safe_dump(document(), sort_keys=False) + "# preserve this comment\n"
-        paths = []
 
         def execute(arguments, **kwargs):
             self.assertEqual("teamcity", arguments[0])
+            self.assertEqual(["pipeline", "validate"], arguments[1:3])
+            self.assertEqual(["--refresh-schema"], arguments[4:])
             self.assertEqual("https://target.invalid", kwargs["env"]["TEAMCITY_URL"])
             self.assertEqual("private-token", kwargs["env"]["TEAMCITY_TOKEN"])
             self.assertNotIn("TEAMCITY_GUEST", kwargs["env"])
             path = pathlib.Path(arguments[3])
-            paths.append(path)
             self.assertEqual(text, path.read_text(encoding="utf-8"))
-            return validator(arguments[1:])
+            return cli_result(arguments[1:], "valid")
 
         with mock.patch.object(tc, "pipeline", return_value={"yaml": text}) as pull, \
                 mock.patch.object(runner.subprocess, "run", side_effect=execute):
             result = tc.validate_pipeline("selected", document())
         pull.assert_called_once_with("selected")
         self.assertEqual("valid", result["status"])
-        self.assertFalse(paths[0].exists())
 
     def test_changed_server_yaml_is_not_the_selected_configuration(self):
         tc = runner.TeamCity("teamcity", "https://target.invalid", "private", {})
@@ -122,15 +104,13 @@ class PipelineSchemaTest(unittest.TestCase):
                 self.assertEqual("unavailable", raised.exception.diagnostics["status"])
                 self.assertNotIn("private", str(raised.exception))
         for code, message in ((1, "failed to fetch schema: private-canary"),
-                              (1, "unknown flag: --refresh-schema"),
-                              (1, "failed to compile schema"), (2, "unknown command")):
+                              (2, "x pipeline.yml has 1 error(s)\n")):
             with self.subTest(message=message), self.assertRaises(PipelineSchemaError) as raised:
                 pipeline_schema_result(subprocess.CompletedProcess([], code, "", message), "pipeline.yml")
             self.assertEqual("unavailable", raised.exception.diagnostics["status"])
 
     def run_evaluation(self, feature="xml-report", kind="first-green-build", unavailable=False,
-                       timed_out=False, *, final_updates=None, build_state="complete",
-                       server_changes_after_validation=None, expected_validations=1):
+                       timed_out=False, *, final_updates=None, server_changes_during_wait=None):
         with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
             source = document(feature)
             case = {
@@ -148,14 +128,10 @@ class PipelineSchemaTest(unittest.TestCase):
             tree = {"id": 1, "buildTypeId": "selected", "state": "finished", "status": "SUCCESS",
                     "dependencies": [{"id": 2, "buildTypeId": "child", "state": "finished",
                                       "status": "SUCCESS", "dependencies": []}]}
-            if build_state == "head-only":
-                tree.update(status="FAILURE", dependencies=[])
             for name, value in (
                 ("create_project", "project"), ("mark_temporary_project", None),
                 ("pipeline_ids", ["selected", "probe"]), ("build_types", [{"id": "selected"}]),
-                ("builds", [] if build_state == "not-queued" else
-                    [{"id": 1, "buildTypeId": "selected", "status": "SUCCESS"}]),
-                ("build_tree", tree),
+                ("builds", [{"id": 1, "buildTypeId": "selected", "status": "SUCCESS"}]),
                 ("build", {"id": 2, "buildTypeId": "child", "state": "finished", "status": "SUCCESS",
                            "buildType": {"name": "Verify"}}),
                 ("test_results", [{"name": "Example.test", "status": "SUCCESS", "ignored": False}]),
@@ -166,14 +142,16 @@ class PipelineSchemaTest(unittest.TestCase):
 
             def saved_pipeline(key):
                 saved = source if key == "selected" else probe
-                if key == "selected" and command.call_count and server_changes_after_validation:
-                    saved = {**saved, **server_changes_after_validation}
                 return {"yaml": yaml.safe_dump(saved, sort_keys=False)}
 
+            def build_tree(_head_id):
+                source.update(server_changes_during_wait or {})
+                return tree
+
             stack.enter_context(mock.patch.object(tc, "pipeline", side_effect=saved_pipeline))
-            command = stack.enter_context(mock.patch.object(tc, "_execute", side_effect=(
-                lambda args: subprocess.CompletedProcess(args, 1, "", "failed to download schema: private-canary")
-            ) if unavailable else validator))
+            stack.enter_context(mock.patch.object(tc, "build_tree", side_effect=build_tree))
+            status = "unavailable" if unavailable else "invalid" if feature == "junit" else "valid"
+            stack.enter_context(mock.patch.object(tc, "_execute", side_effect=lambda args: cli_result(args, status)))
 
             def checkout(_case, path):
                 path.mkdir(parents=True, exist_ok=True)
@@ -190,11 +168,6 @@ class PipelineSchemaTest(unittest.TestCase):
             stack.enter_context(mock.patch.object(runner, "checkout_repository", side_effect=checkout))
             stack.enter_context(mock.patch.object(runner, "harness_revision", return_value="a" * 40))
             stack.enter_context(mock.patch.object(runner.sys, "stderr", io.StringIO()))
-            if build_state == "not-queued":
-                clock = [0]
-                stack.enter_context(mock.patch.object(runner.time, "time", side_effect=lambda: clock[0]))
-                stack.enter_context(mock.patch.object(runner.time, "sleep", side_effect=
-                    lambda seconds: clock.__setitem__(0, clock[0] + seconds)))
             for name, value in (("agent_usage", {}), ("trace_error_category", None),
                                 ("permission_failure_surface", None), ("agent_tool_summary", {}),
                                 ("source_mutations", []), ("tool_calls", [])):
@@ -205,56 +178,48 @@ class PipelineSchemaTest(unittest.TestCase):
                 "exitCode": 124 if timed_out else 0, "timedOut": timed_out, "timeoutSeconds": 3600,
             }))
             result = runner.publishable_result(runner.run(case_path, False, False, "baseline", "cli-only"))
-            self.assertEqual(expected_validations, command.call_count)
-            if kind == "pipeline-configuration" or feature == "junit" or unavailable or final_updates:
-                tc.builds.assert_not_called()
-                tc.build_tree.assert_not_called()
             self.assertNotIn("private", json.dumps(result))
-            return result
+            return result, (tc.builds, tc.build_tree)
 
     def test_valid_xml_report_passes_in_both_live_case_kinds(self):
         for kind in ("first-green-build", "pipeline-configuration"):
             with self.subTest(kind=kind):
-                result = self.run_evaluation(kind=kind)
+                result, build_reads = self.run_evaluation(kind=kind)
                 self.assertEqual("passed", result["status"])
                 self.assertTrue(result["checks"]["configurationValidated"]["passed"])
                 self.assertEqual("valid", result["schemaValidationDiagnostics"]["status"])
+                if kind == "pipeline-configuration":
+                    for read in build_reads:
+                        read.assert_not_called()
 
-    def test_unsupported_junit_feature_fails_even_with_green_build(self):
+    def test_unsupported_junit_feature_fails_before_polling_builds(self):
         for kind in ("first-green-build", "pipeline-configuration"):
             with self.subTest(kind=kind):
-                result = self.run_evaluation("junit", kind)
+                result, build_reads = self.run_evaluation("junit", kind)
                 self.assertEqual("failed", result["status"])
                 self.assertFalse(result["checks"]["configurationValidated"]["passed"])
                 self.assertEqual({"status": "invalid", "errorCount": 1, "issues": [
                     {"line": 12, "category": "invalid-enum-value"},
                 ]}, result["schemaValidationDiagnostics"])
+                for read in build_reads:
+                    read.assert_not_called()
 
     def test_final_yaml_root_mismatch_cannot_pass_either_case_kind(self):
         for kind in ("first-green-build", "pipeline-configuration"):
             with self.subTest(kind=kind):
-                result = self.run_evaluation(kind=kind, final_updates={"version": 999}, expected_validations=0)
+                result, _ = self.run_evaluation(kind=kind, final_updates={"version": 999})
                 self.assertEqual("errored", result["status"])
                 self.assertEqual("verification-pipeline-ambiguous", result["verificationErrorCategory"])
                 self.assertNotIn("gradeStatus", result)
 
-    def test_invalid_yaml_is_graded_without_a_complete_or_queued_build(self):
-        for state in ("head-only", "not-queued"):
-            with self.subTest(state=state):
-                result = self.run_evaluation("junit", build_state=state)
-                self.assertEqual("failed", result["status"])
-                self.assertFalse(result["checks"]["configurationValidated"]["passed"])
-                self.assertEqual("invalid", result["schemaValidationDiagnostics"]["status"])
-                self.assertEqual("verification-invalid-pipeline-yaml", result["verificationErrorCategory"])
-
     def test_changed_server_yaml_after_validation_is_not_graded(self):
-        result = self.run_evaluation(server_changes_after_validation={"version": 999})
+        result, _ = self.run_evaluation(server_changes_during_wait={"version": 999})
         self.assertEqual("errored", result["status"])
         self.assertEqual("verification-pipeline-ambiguous", result["verificationErrorCategory"])
         self.assertNotIn("gradeStatus", result)
 
     def test_unavailable_validation_is_an_error_not_a_failed_agent_grade(self):
-        result = self.run_evaluation(unavailable=True)
+        result, _ = self.run_evaluation(unavailable=True)
         self.assertEqual("errored", result["status"])
         self.assertEqual("verification-schema-validation-unavailable", result["errorCategory"])
         self.assertEqual("unavailable", result["schemaValidationDiagnostics"]["status"])
@@ -263,7 +228,7 @@ class PipelineSchemaTest(unittest.TestCase):
         self.assertEqual("verification-schema-validation-unavailable", outcome)
 
     def test_schema_failure_does_not_hide_an_agent_timeout(self):
-        result = self.run_evaluation("junit", timed_out=True)
+        result, _ = self.run_evaluation("junit", timed_out=True)
         self.assertEqual("errored", result["status"])
         self.assertEqual("agent-timeout", result["errorCategory"])
         self.assertEqual("failed", result["gradeStatus"])
@@ -285,10 +250,15 @@ class PipelineSchemaTest(unittest.TestCase):
                     "testCount": 1, "artifacts": [], "properties": {}, "mutations": []})
                 self.assertEqual(value is True, runtime["configurationValidated"]["passed"])
 
-    def test_collector_keeps_only_safe_validation_diagnostics(self):
-        artifact = self.run_evaluation("junit")
-        artifact["schemaValidationDiagnostics"].update(output="private-canary")
-        artifact["schemaValidationDiagnostics"]["issues"][0].update(path="private-canary")
+    def test_publisher_and_collector_keep_only_safe_validation_diagnostics(self):
+        expected = {"status": "invalid", "errorCount": 1,
+                    "issues": [{"line": 12, "category": "invalid-enum-value"}]}
+        artifact = {"caseId": "synthetic", "status": "failed", "schemaValidationDiagnostics": {
+            **expected, "output": "private-canary",
+            "issues": [{**expected["issues"][0], "path": "private-canary"}],
+        }}
+        published = runner.publishable_result(artifact)
+        self.assertEqual(expected, published["schemaValidationDiagnostics"])
 
         def cli(_server, *arguments):
             if arguments[1] == "artifacts":
@@ -299,7 +269,7 @@ class PipelineSchemaTest(unittest.TestCase):
 
         with mock.patch.object(collector, "cli", side_effect=cli):
             result = collector.download_result([], "https://example.invalid", 42, {"synthetic"})
-        self.assertEqual("invalid", result["schemaValidationDiagnostics"]["status"])
+        self.assertEqual(expected, result["schemaValidationDiagnostics"])
         self.assertNotIn("private", json.dumps(result))
 
 

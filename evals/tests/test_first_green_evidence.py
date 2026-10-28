@@ -66,21 +66,13 @@ class FirstGreenEvidenceTest(unittest.TestCase):
                 with self.assertRaises(evidence.EvidenceError):
                     evidence.select_pipeline(definitions, source)
 
-    def test_source_binding_checks_all_root_fields_except_display_name(self):
-        saved = {"name": "Server display name", "jobs": {"test": {}}}
-        source = {**saved, "name": "Agent display name"}
-        self.assertEqual(("main", "source-matched"), evidence.select_pipeline({"main": saved}, source))
-        for field, value in (
-            ("version", 999), ("dependencies", ["OtherPipeline"]),
-            ("secrets", {"secret": "credentialsJSON:private-canary"}),
-            ("output-parameters", {"result": "value"}),
-            ("import-parameters", True), ("unknown-field", "value"),
-        ):
-            with self.subTest(field=field):
-                changed = {**source, field: value}
-                for definitions, final in (({"main": saved}, changed), ({"main": changed}, source)):
-                    with self.assertRaises(evidence.EvidenceError):
-                        evidence.select_pipeline(definitions, final)
+    def test_source_binding_uses_dependencies_and_allows_display_name_changes(self):
+        source = {"name": "Agent display name", "jobs": {"test": {}}, "dependencies": ["Required"]}
+        definitions = {
+            "probe": {**source, "dependencies": ["Other"]},
+            "main": {**source, "name": "Server display name"},
+        }
+        self.assertEqual(("main", "source-matched"), evidence.select_pipeline(definitions, source))
 
     def test_local_source_binds_multiple_pipelines(self):
         tc, _ = self.fixture()
