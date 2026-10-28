@@ -1,9 +1,62 @@
-"""Supplement Pipeline schema validation without exposing script contents.
+"""Interpret CLI schema validation and check script sources without exposing YAML.
 
 The server schema can accept arbitrary runner properties. This narrow check
 only establishes that each script step has a usable source; it does not prove
 shell syntax, checkout file existence, parameter resolution, or agent capacity.
 """
+
+import re
+
+
+SCHEMA_ERROR_CATEGORIES = {"schema-validation-error", "invalid-enum-value"}
+
+
+def safe_schema_diagnostics(value):
+    """Keep validation outcomes and source positions, never YAML or CLI text."""
+    if not isinstance(value, dict) or value.get("status") not in ("valid", "invalid", "unavailable"):
+        return {}
+    safe = {"status": value["status"]}
+    if type(value.get("errorCount")) is int and value["errorCount"] >= 0:
+        safe["errorCount"] = value["errorCount"]
+    safe["issues"] = [
+        {"line": item["line"], "category": item["category"]}
+        for item in value.get("issues", []) if isinstance(item, dict)
+        and type(item.get("line")) is int and item["line"] > 0
+        and isinstance(item.get("category"), str)
+        and item["category"] in SCHEMA_ERROR_CATEGORIES
+    ] if isinstance(value.get("issues"), list) else []
+    return safe
+
+
+class PipelineSchemaError(ValueError):
+    def __init__(self, diagnostics):
+        self.diagnostics = safe_schema_diagnostics(diagnostics)
+        self.category = ("verification-invalid-pipeline-yaml"
+                         if self.diagnostics.get("status") == "invalid"
+                         else "verification-schema-validation-unavailable")
+        super().__init__(self.category)
+
+
+def pipeline_schema_result(completed, filename):
+    """Interpret the CLI's text-only validator; unknown failures are not grades.
+
+    CLI 1.3.0 prints a file-specific error count and line/path pairs for schema
+    violations, but returns the same exit code for auth, schema and CLI errors.
+    Only a recognized validation report establishes invalid agent output.
+    """
+    if completed.returncode == 0:
+        return {"status": "valid", "errorCount": 0, "issues": []}
+    output = re.sub(r"\x1b\[[0-9;]*m", "", completed.stderr or "")
+    report = re.search(re.escape(str(filename)) + r" has ([1-9]\d*) error\(s\)\s*\n", output)
+    if completed.returncode != 1 or report is None:
+        raise PipelineSchemaError({"status": "unavailable"})
+    issues = []
+    for match in re.finditer(r"(?m)^\s*Line ([1-9]\d*):[^\n]*\n([^\n]*)", output[report.end():]):
+        category = ("invalid-enum-value" if re.match(r"\s*value must be (?:one of |['\"])", match[2])
+                    else "schema-validation-error")
+        issues.append({"line": int(match[1]), "category": category})
+    raise PipelineSchemaError({"status": "invalid", "errorCount": int(report[1]), "issues": issues})
+
 
 SCRIPT_ISSUE_CATEGORIES = {
     "unsupported-script-key", "invalid-script-source-type",
