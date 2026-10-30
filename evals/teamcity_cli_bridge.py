@@ -156,7 +156,7 @@ class CommandPolicy:
                 return
 
         if area == "run":
-            if operation in {"list", "view", "watch", "tree", "tests", "changes", "artifacts"}:
+            if operation in {"list", "view", "log", "watch", "tree", "tests", "changes", "artifacts"}:
                 return
             if operation in {"start", "restart", "cancel"} and self.allow_build_writes:
                 self._require_known_job(arguments)
@@ -190,7 +190,12 @@ class _BridgeHandler(socketserver.StreamRequestHandler):
             }
         except Exception as exc:  # Return a normal CLI-style failure to the wrapper.
             response = {"returncode": 2, "stdout": "", "stderr": f"Error: {exc}\n"}
-        self.wfile.write(json.dumps(response).encode() + b"\n")
+        try:
+            self.wfile.write(json.dumps(response).encode() + b"\n")
+        except (BrokenPipeError, ConnectionResetError):
+            # The caller may cancel a long-running CLI request. Its result
+            # needs no recipient; do not emit a server traceback or retry it.
+            pass
 
 
 class TeamCityCliBridge:

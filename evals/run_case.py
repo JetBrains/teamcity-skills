@@ -454,6 +454,20 @@ class TeamCity:
     def build(self, build_id: int):
         return self._run(["run", "view", str(build_id), "--json"], json_output=True)
 
+    def build_problems(self, build_id: int) -> dict:
+        """Read structured head failures without retaining their private details."""
+        summary = self._run(
+            ["run", "log", str(build_id), "--failed", "--json"], json_output=True
+        )
+        problems = summary.get("problems") if isinstance(summary, dict) else None
+        if (not isinstance(summary, dict) or summary.get("run_id") != str(build_id)
+                or not isinstance(problems, list)
+                or any(not isinstance(problem, dict) or not problem for problem in problems)):
+            raise EvalError("TeamCity CLI returned an invalid build failure summary")
+        # The CLI can return an empty list when its problems query fails. Zero
+        # therefore cannot explain a failed head or establish that it has no problems.
+        return {"count": len(problems)}
+
     def build_tree(self, build_id: int):
         return self._run(
             ["run", "tree", str(build_id), "--depth", "0", "--json"], json_output=True
