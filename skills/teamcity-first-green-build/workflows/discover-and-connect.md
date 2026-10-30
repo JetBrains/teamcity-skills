@@ -76,9 +76,24 @@ Read [VCS connections and authentication](../shared/vcs-connections-and-auth.md)
 - Inspect each VCS root before using it. Do not guess its ID.
 - Attach the selected root before pushing configuration or queueing a run.
 
-Before queueing, inspect the attached roots' default branches and branch
-specifications. Choose a branch selector accepted by the attached roots. The
-default Git ref is not necessarily selectable by its literal name. Omitting
-`--branch` while pinning a revision can instead resolve to `<unspecified>` and
-fail checkout. Read back the queued build's branch and revision before waiting.
-Do not switch to `main`/`master` or widen a branch filter only to hide an error.
+Before queueing, inspect the attached roots' default branches, branch
+specifications, and server-reported branch names. Do not assume a short Git
+name is a valid TeamCity selector: a default branch can be exposed as
+`refs/heads/development`, while `development` fails as an unmonitored branch.
+When TeamCity reports that full ref as the default, keep it and any requested
+revision pin:
+
+```bash
+TEAMCITY_URL=<server> teamcity run start <job-id> --branch refs/heads/development \
+  --revision <pinned-sha> --personal
+```
+
+Use this example only when it matches the attached root and server. CLI 1.3.0
+also uses `--branch` for the pinned revision's VCS ref, prefixing short names
+with `refs/heads/`; a literal `<default>` would become `refs/heads/<default>`.
+For another branch, verify both the logical name and revision ref mapping.
+Omitting `--branch` while pinning a revision can resolve to `<unspecified>`
+and fail checkout. Read back the queued build's branch and revision, and read
+its failure summary if it fails. Correct an
+`invalid_branch_name` mismatch even if child jobs pass. Do not switch to
+`main`/`master` or widen a branch filter only to hide an error.

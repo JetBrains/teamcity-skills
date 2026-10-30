@@ -45,12 +45,14 @@ class BuildMonitorTest(unittest.TestCase):
         self.path.write_text("jobs:\n  verify: {}\n")
         self.definition = {"jobs": {"verify": {}}}
         self.tree = node(10, "pipeline", "FAILURE", children=[node(11, "verify")])
-        self.tc = mock.Mock(spec=["pipeline_ids", "pipeline_definition", "builds", "build_tree", "build"])
+        self.tc = mock.Mock(spec=["pipeline_ids", "pipeline_definition", "builds", "build_tree",
+                                  "build", "build_problems"])
         self.tc.pipeline_ids.return_value = ["pipeline"]
         self.tc.pipeline_definition.return_value = self.definition
         self.tc.builds.return_value = [self.tree]
         self.tc.build_tree.return_value = self.tree
         self.tc.build.return_value = {**self.tree, "statusText": "canary secret, Tests passed: 39"}
+        self.tc.build_problems.return_value = {"count": 0}
         self.monitor = LiveBuildMonitor(self.tc, "only-project", self.root, ".teamcity.yml", clock=lambda: 100)
         self.output = io.StringIO()
         self.addCleanup(mock.patch.stopall)
@@ -66,7 +68,7 @@ class BuildMonitorTest(unittest.TestCase):
         self.assertEqual([{"id": 11, "state": "finished", "status": "SUCCESS"}],
                          diagnostic["lastChain"]["children"])
         self.assertEqual("unavailable", diagnostic["lastChain"]["problemEvidence"])
-        self.assertNotIn("problemCount", diagnostic["lastChain"])
+        self.assertEqual(0, diagnostic["lastChain"]["problemCount"])
         self.assertNotIn("canary", json.dumps(diagnostic) + self.output.getvalue())
         self.assertFalse(diagnostic["stoppedAgent"])  # Only the process owner marks it.
         self.tc.pipeline_ids.assert_called_once_with("only-project")
@@ -87,6 +89,25 @@ class BuildMonitorTest(unittest.TestCase):
         self.assertEqual("recorded", chain["problemEvidence"])
         self.assertTrue(chain["requiresInvestigation"])
         self.assertNotIn("canary", json.dumps(chain))
+        self.tc.build_problems.assert_not_called()
+
+    def test_failure_summary_keeps_agent_running_when_view_omits_problems(self):
+        self.tc.build_problems.return_value = {"count": 1}
+        self.assertIsNone(self.monitor.checkpoint(7200))
+        self.tc.build_problems.assert_called_once_with(10)
+        chain = self.monitor.diagnostics()["lastChain"]
+        self.assertEqual("recorded", chain["problemEvidence"])
+        self.assertEqual(1, chain["problemCount"])
+        self.assertEqual("FAILURE", chain["headStatus"])
+        self.assertTrue(chain["requiresInvestigation"])
+        self.assertNotIn("canary", json.dumps(chain) + self.output.getvalue())
+
+    def test_unavailable_failure_summary_cannot_justify_stopping_agent(self):
+        self.tc.build_problems.side_effect = runner.EvalError("canary private CLI error")
+        self.assertIsNone(self.monitor.checkpoint(7200))
+        self.assertEqual("read-unavailable", self.monitor.diagnostics()["state"])
+        self.assertEqual(1, self.monitor.diagnostics()["readFailureCount"])
+        self.assertNotIn("canary", self.output.getvalue())
 
     def test_regular_build_failures_and_nonterminal_states_do_not_stop_agent(self):
         for head_status, head_state, child_status, child_state in (
@@ -101,6 +122,7 @@ class BuildMonitorTest(unittest.TestCase):
                 self.tree["dependencies"][0].update(status=child_status, state=child_state)
                 self.assertIsNone(self.monitor.checkpoint(7200))
         self.tc.build.assert_not_called()
+        self.tc.build_problems.assert_not_called()
 
     def test_missing_child_cannot_trigger_intervention(self):
         self.tree["dependencies"] = []
@@ -184,12 +206,22 @@ class BuildMonitorTest(unittest.TestCase):
         tc.jobs.return_value = [{"name": "Verify"}]
         tc.test_results.return_value = []
         tc.artifacts.return_value = []
+        tc.build_problems.return_value = {"count": 1}
         build = {"id": 10, "pipelineId": "pipeline", "selection": "source-matched",
                  "attempts": 1, "status": "FAILURE", "nodes": [self.tree, self.tree["dependencies"][0]]}
-        observed, diagnostic = observe_chain(tc, "only-project", build, "21")
-        self.assertEqual("FAILURE", observed["buildStatus"])
-        self.assertTrue(diagnostic["terminalChain"]["requiresInvestigation"])
-        self.assertEqual("unavailable", diagnostic["terminalChain"]["problemEvidence"])
+        for read_error in (None, runner.EvalError("canary private CLI error")):
+            with self.subTest(read_error=read_error):
+                tc.build_problems.reset_mock()
+                tc.build_problems.side_effect = read_error
+                observed, diagnostic = observe_chain(tc, "only-project", build, "21")
+                self.assertEqual("FAILURE", observed["buildStatus"])
+                self.assertTrue(diagnostic["terminalChain"]["requiresInvestigation"])
+                self.assertEqual("unavailable" if read_error else "recorded",
+                                 diagnostic["terminalChain"]["problemEvidence"])
+                self.assertEqual(None if read_error else 1,
+                                 diagnostic["terminalChain"].get("problemCount"))
+                self.assertNotIn("canary", json.dumps(diagnostic))
+                tc.build_problems.assert_called_once_with(10)
 
     def test_missing_problem_metadata_is_distinct_from_measured_zero(self):
         nodes = [self.tree, self.tree["dependencies"][0]]
@@ -199,6 +231,36 @@ class BuildMonitorTest(unittest.TestCase):
         self.assertEqual(0, zero["problemCount"])
         self.assertEqual("unavailable", missing["problemEvidence"])
         self.assertEqual("unavailable", zero["problemEvidence"])
+
+
+class BuildFailureSummaryTest(unittest.TestCase):
+    def test_cli_failure_summary_is_bound_to_head_and_reduced_to_count(self):
+        tc = runner.TeamCity("teamcity", "https://example.invalid", "private", {})
+        summary = {"run_id": "10", "status": "FAILURE", "problems": [
+            {"type": "invalid_branch_name", "details": "canary private branch"},
+        ], "failed_tests": {"testOccurrence": [{"details": "canary private test"}]}}
+        with mock.patch.object(tc, "_run", return_value=summary) as command:
+            problems = tc.build_problems(10)
+        self.assertEqual({"count": 1}, problems)
+        command.assert_called_once_with(["run", "log", "10", "--failed", "--json"],
+                                        json_output=True)
+        self.assertNotIn("canary", json.dumps(problems))
+
+    def test_empty_summary_remains_unexplained(self):
+        tc = runner.TeamCity("teamcity", "https://example.invalid", "private", {})
+        with mock.patch.object(tc, "_run", return_value={"run_id": "10", "problems": []}):
+            self.assertEqual({"count": 0}, tc.build_problems(10))
+
+    def test_foreign_or_malformed_summaries_are_not_evidence(self):
+        tc = runner.TeamCity("teamcity", "https://example.invalid", "private", {})
+        for summary in (None, {}, {"run_id": "99", "problems": [{"type": "failure"}]},
+                        {"run_id": "10", "problems": None},
+                        {"run_id": "10", "problems": ["canary private problem"]},
+                        {"run_id": "10", "problems": [{}]}):
+            with self.subTest(summary=summary), mock.patch.object(tc, "_run", return_value=summary):
+                with self.assertRaises(runner.EvalError) as error:
+                    tc.build_problems(10)
+                self.assertNotIn("canary", str(error.exception))
 
 
 class AgentInterventionTest(unittest.TestCase):

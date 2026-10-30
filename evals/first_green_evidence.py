@@ -149,6 +149,14 @@ def observe_chain(tc, project_id, build, required_jdk):
             metadata.get(key) != head[key] for key in ("id", "buildTypeId", "state", "status")
         ):
             raise EvidenceError("verification-chain-incomplete")
+        terminal = terminal_chain_diagnostics(build["nodes"], build["id"], metadata)
+        if terminal["requiresInvestigation"] and terminal["problemEvidence"] == "unavailable":
+            try:
+                problems = tc.build_problems(head["id"])
+            except (RuntimeError, OSError, ValueError):
+                pass
+            else:
+                metadata = {**(metadata or {}), "problemOccurrences": problems}
     return {
         "testCount": len(all_tests), "tests": all_tests, "jobResults": job_results,
         "artifacts": artifacts, "properties": {},
