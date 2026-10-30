@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import pathlib
@@ -5,12 +6,13 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 EVALS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(EVALS))
 
-from teamcity_cli_bridge import BridgeError, CommandPolicy, TeamCityCliBridge
+from teamcity_cli_bridge import BridgeError, CommandPolicy, TeamCityCliBridge, _BridgeHandler
 
 
 class TeamCityCliBridgeTest(unittest.TestCase):
@@ -58,6 +60,31 @@ class TeamCityCliBridgeTest(unittest.TestCase):
             ):
                 with self.subTest(arguments=arguments), self.assertRaises(BridgeError):
                     policy.authorize(arguments, checkout)
+
+    def test_policy_allows_head_failure_summary_and_focused_logs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            checkout = pathlib.Path(directory)
+            policy = self.policy(checkout)
+            for options in (["--failed", "--json"], ["--raw", "--tail", "50"]):
+                with self.subTest(options=options):
+                    policy.authorize(["run", "log", "10", *options], checkout)
+
+    def test_disconnected_log_client_does_not_raise_or_retry_command(self):
+        for error in (BrokenPipeError, ConnectionResetError):
+            with self.subTest(error=error):
+                bridge = mock.Mock(nonce="synthetic")
+                bridge.execute.return_value = subprocess.CompletedProcess([], 0, "{}", "")
+                handler = object.__new__(_BridgeHandler)
+                handler.server = mock.Mock(bridge=bridge)
+                handler.rfile = io.BytesIO(json.dumps({
+                    "nonce": "synthetic", "arguments": ["run", "log", "10", "--failed", "--json"],
+                    "cwd": ".",
+                }).encode() + b"\n")
+                handler.wfile = mock.Mock()
+                handler.wfile.write.side_effect = error("client closed")
+                handler.handle()
+                bridge.execute.assert_called_once()
+                handler.wfile.write.assert_called_once()
 
     def test_bridge_authenticates_cli_without_exposing_token_to_agent_environment(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -78,6 +78,15 @@ use `teamcity pipeline pull` for this audit.
 - Maven verification normally uses `verify` without skipping tests. A wrapper
   launcher is not sufficient if its supporting files are missing; use a
   supported installed Maven version when the repository permits it.
+- In the Maven runner, additional command-line options use `runner-arguments`
+  when that field is exposed by the live schema; `args` is not an alias. For
+  example, use `goals: clean verify` and `runner-arguments: -V -B` to include
+  the Maven version in the actual verification log. Check that the stored
+  runner retained the options; schema acceptance alone can miss unknown fields.
+- Derive agent requirements from parameters actually reported by candidate
+  agents. If `os-family` expands to a missing `teamcity.agent.jvm.os.family`,
+  use an observed OS parameter such as `teamcity.agent.jvm.os.name = Linux`
+  in a custom `equals` requirement. Verify compatibility before queueing.
 - Importing JUnit results and publishing raw XML as an artifact are separate
   operations. When both are requested, configure both; a green Tests tab or a
   published JAR does not prove that the XML is downloadable.

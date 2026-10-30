@@ -187,8 +187,13 @@ TEAMCITY_URL=<server> teamcity pipeline validate <pipeline.yml>
 TEAMCITY_URL=<server> teamcity pipeline create <name> --project <target-project> \
   --vcs-root <vcs-root-id> --file <pipeline.yml>
 TEAMCITY_URL=<server> teamcity pipeline push <pipeline-id> <pipeline.yml>
-TEAMCITY_URL=<server> teamcity run start <job-id> --branch <branch> --personal
+TEAMCITY_URL=<server> teamcity run start <job-id> --branch '<logical-branch>' --personal
 ```
+
+Resolve `<logical-branch>` from TeamCity and the attached VCS roots; the default
+selector can be a full Git ref rather than the short branch name. See
+[branch selection](../workflows/discover-and-connect.md#establish-vcs-access)
+when pinning a revision.
 
 If its write capability is restricted to the build queue, use it to start a
 personal build on the explicit branch. Use CLI for pipeline and VCS-root writes
