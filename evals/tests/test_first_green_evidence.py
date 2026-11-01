@@ -221,3 +221,23 @@ class AgentBudgetTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RequiredTestsDedupTest(unittest.TestCase):
+    def test_duplicate_batch_occurrences_count_once(self):
+        repeated = {"name": "org.salespointframework.quantity.QuantityFormatterUnitTests.formats",
+                    "status": "SUCCESS", "ignored": False}
+        tests = [repeated] * 3 + [
+            {"name": "org.salespointframework.catalog.CatalogIntegrationTests.finds",
+             "status": "SUCCESS", "ignored": False},
+            {"name": "org.salespointframework.order.OrderManagementTests.skipped",
+             "status": "UNKNOWN", "ignored": True},
+        ]
+        contract = {"minimumTestCount": 2, "requiredTestNames": [
+            r"^org\.salespointframework\.quantity\.QuantityFormatterUnitTests",
+            r"^org\.salespointframework\.catalog\.CatalogIntegrationTests\.",
+        ]}
+        self.assertTrue(runner.required_tests_pass(contract, tests))
+        self.assertFalse(runner.required_tests_pass({"minimumTestCount": 3}, tests))
+        self.assertFalse(runner.required_tests_pass(
+            {"requiredTestNames": [r"^org\.salespointframework\.order\.OrderManagementTests\."]}, tests))

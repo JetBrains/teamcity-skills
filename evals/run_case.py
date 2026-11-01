@@ -743,8 +743,10 @@ def grade(case: dict, observed: dict) -> dict:
 
 
 def required_tests_pass(contract, tests):
-    successful = [test["name"] for test in tests
-                  if test.get("status") == "SUCCESS" and not test.get("ignored", False)]
+    # A test class scheduled into several parallel batches reports once per
+    # batch; count unique successful names so duplicates cannot pad the minimum.
+    successful = {test["name"] for test in tests
+                  if test.get("status") == "SUCCESS" and not test.get("ignored", False)}
     return (len(successful) >= contract.get("minimumTestCount", 0)
             and all(any(re.search(pattern, name) for name in successful)
                     for pattern in contract.get("requiredTestNames", [])))
