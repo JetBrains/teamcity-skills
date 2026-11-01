@@ -40,7 +40,10 @@
       "default": "active"
     },
     "skill": {
-      "const": "teamcity-first-green-build"
+      "enum": [
+        "teamcity-first-green-build",
+        "teamcity-onboard"
+      ]
     },
     "prompt": {
       "description": "User request handed to the agent. The runner substitutes {{teamcity.server}} and {{teamcity.targetProject}} with the values of the environment it provisioned before invoking the agent.",
@@ -568,6 +571,25 @@
           "items": {
             "type": "string",
             "minLength": 1
+          }
+        },
+        "requiredJobProperties": {
+          "description": "Job-level Pipeline properties that must appear with the exact expected value. This covers settings such as dependency caching and test parallelism, which do not belong to a build step.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["property", "value"],
+            "properties": {
+              "property": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value": {
+                "type": ["string", "number", "boolean"]
+              }
+            }
           }
         },
         "toolUse": {

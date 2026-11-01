@@ -87,6 +87,7 @@ SAFE_CHECK_NAMES = {
     "minimumJobs", "jobCount", "requiredStepTypes", "requiredStepProperties",
     "forbiddenStepProperties", "requiredArtifactRules", "requiredAgentRequirements",
     "requiredJobs", "requiredTests", "jobResults", "toolUse",
+    "requiredJobProperties", "pinnedRevision",
     "compatibilityCheckpoint", "statusCheckLimit",
     "diagnosticAgentInventory", "diagnosticAgentRuntimeCapabilities",
     "diagnosticJobIncompatibility",
