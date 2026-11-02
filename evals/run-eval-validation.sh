@@ -38,7 +38,7 @@ if [ -x "$venv_dir/bin/python" ]; then
 else
   venv_python="$venv_dir/Scripts/python.exe"
 fi
-"$venv_python" -m pip install --quiet --requirement evals/requirements.txt PyYAML
+"$venv_python" -m pip install --quiet --requirement evals/requirements.txt
 
 if [ "$mode" = validate ]; then
   "$venv_python" evals/validate.py
