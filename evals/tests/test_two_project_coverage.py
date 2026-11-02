@@ -45,7 +45,7 @@ def gradle_observed():
         {"job": jobs[1], "status": "SUCCESS", "tests": tests,
          "artifacts": ["TEST-example.xml"]},
     ]
-    return {"jobs": jobs, "jobResults": results, "tests": tests,
+    return {"schemaValidated": True, "jobs": jobs, "jobResults": results, "tests": tests,
             "testCount": 1, "artifacts": ["app.jar", "TEST-example.xml"],
             "properties": {}, "buildStatus": "SUCCESS", "buildTypeCount": 3,
             "statusText": "", "attempts": 1, "mutations": [], "toolCalls": []}
@@ -155,7 +155,7 @@ class TwoProjectCoverageTest(unittest.TestCase):
         self.assertFalse(runner.required_tests_pass(self.maven["expected"], tests))
 
     def test_maven_configuration_accepts_native_java_without_docker(self):
-        configured = {"jobs": [{"id": "pipeline/verify", "name": "Verify",
+        configured = {"schemaValidated": True, "jobs": [{"id": "pipeline/verify", "name": "Verify",
                       "parameters": {"env.JAVA_HOME": "%env.JDK_21_0%"},
                       "steps": [step("maven", goals="clean verify")],
                       "artifactRules": "target/*.jar\ntarget/surefire-reports/*.xml",

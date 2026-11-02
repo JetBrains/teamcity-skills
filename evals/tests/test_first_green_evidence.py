@@ -66,6 +66,14 @@ class FirstGreenEvidenceTest(unittest.TestCase):
                 with self.assertRaises(evidence.EvidenceError):
                     evidence.select_pipeline(definitions, source)
 
+    def test_source_binding_uses_dependencies_and_allows_display_name_changes(self):
+        source = {"name": "Agent display name", "jobs": {"test": {}}, "dependencies": ["Required"]}
+        definitions = {
+            "probe": {**source, "dependencies": ["Other"]},
+            "main": {**source, "name": "Server display name"},
+        }
+        self.assertEqual(("main", "source-matched"), evidence.select_pipeline(definitions, source))
+
     def test_local_source_binds_multiple_pipelines(self):
         tc, _ = self.fixture()
         tc.pipeline_ids.return_value = ["main", "probe"]

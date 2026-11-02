@@ -120,9 +120,10 @@ class PipelineScriptValidationTest(unittest.TestCase):
                  "artifactRules": "", "agentRequirements": []}]
         configuration = runner.grade_configuration({"expected": {
             "minimumJobs": 1, "sourceMutations": "none",
-        }}, {"jobs": jobs, "mutations": [], "toolCalls": []})
+        }}, {"jobs": jobs, "mutations": [], "toolCalls": [], "schemaValidated": True})
         runtime_case = json.loads((EVALS / "first-green-build/cases/spring-petclinic-maven-yaml.json").read_text())
         runtime = runner.grade(runtime_case, {
+            "schemaValidated": True,
             "jobs": jobs, "buildTypeCount": 2, "buildStatus": "SUCCESS", "attempts": 1,
             "testCount": 1, "artifacts": ["app.jar"], "properties": {}, "mutations": [],
         })

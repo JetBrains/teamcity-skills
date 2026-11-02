@@ -74,6 +74,7 @@ def step(step_type, **properties):
 
 def observed_jobs():
     return {
+        "schemaValidated": True,
         "jobs": [
             job("android", "Android", "Linux", [step("gradle", tasks="assembleDebug")], "app.apk"),
             job(
@@ -123,6 +124,7 @@ class ConfigurationGraderTest(unittest.TestCase):
     def test_clean_spring_requires_java_21_not_a_particular_selection_method(self):
         case = json.loads(CLEAN_SPRING_CASE.read_text())
         observed = {
+            "schemaValidated": True,
             "jobs": [
                 job(
                     "verify",
@@ -151,6 +153,7 @@ class ConfigurationGraderTest(unittest.TestCase):
         case = json.loads(SPRING_DEMO_CASE.read_text())
         jdk_image = "eclipse-temurin:21-jdk"
         observed = {
+            "schemaValidated": True,
             "jobs": [
                 job(
                     "build-package",
@@ -244,6 +247,7 @@ class ConfigurationGraderTest(unittest.TestCase):
             }
         }
         observed = {
+            "schemaValidated": True,
             "jobs": [
                 job(
                     "ios-framework",
