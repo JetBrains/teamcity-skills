@@ -85,6 +85,7 @@ from queue_recovery import QueueRecoveryFixture, forbidden_queue_transport, safe
 from first_green_evidence import (
     EvidenceError, chain_nodes, jdk_evidence, jdk_selectors, observe_chain,
     safe_verification_diagnostics, safe_verification_error, select_pipeline,
+    vcs_root_evidence,
 )
 from pipeline_validation import (
     SCHEMA_STATUS_INVALID, SCHEMA_STATUS_UNAVAILABLE, SCHEMA_STATUS_VALID,
@@ -471,6 +472,32 @@ class TeamCity:
             ["run", "tree", str(build_id), "--depth", "0", "--json"], json_output=True
         )
 
+    def vcs_roots(self, job_id: str) -> list:
+        """Read only roots attached to this configuration, never project-wide roots."""
+        job = self._run(["job", "view", job_id, "--json"], json_output=True)
+        entries = job.get("vcs-root-entries") if isinstance(job, dict) else None
+        records = self._records(entries, "vcs-root-entry")
+        if (not isinstance(job, dict) or job.get("id") != job_id
+                or not isinstance(entries, dict) or type(entries.get("count")) is not int
+                or entries["count"] != len(records)):
+            raise EvidenceError("verification-observation-failed")
+        roots = []
+        for entry in records:
+            root = entry.get("vcs-root") if isinstance(entry, dict) else None
+            root_id = root.get("id") if isinstance(root, dict) else None
+            if not isinstance(root_id, str) or not root_id:
+                raise EvidenceError("verification-observation-failed")
+            details = self._run(
+                ["project", "vcs", "view", root_id, "--json"], json_output=True
+            )
+            if not isinstance(details, dict) or details.get("id") != root_id:
+                raise EvidenceError("verification-observation-failed")
+            properties = {prop["name"]: prop.get("value")
+                          for prop in self._records(details.get("properties"), "property")
+                          if isinstance(prop, dict) and prop.get("name") in ("url", "branch")}
+            roots.append({"vcsName": details.get("vcsName"), **properties})
+        return roots
+
     def queue_wait_reason(self, build: dict) -> str:
         """Read only this build's queue reason through the first-class CLI."""
         job_id = build.get("buildTypeId")
@@ -747,6 +774,10 @@ def grade(case: dict, observed: dict) -> dict:
         "observed": "none" if not observed["mutations"] else "changed",
         "detail": f"changed: {observed['mutations']}" if observed["mutations"] else "clean checkout",
     }
+    if expected.get("vcsRootMatchesRepository"):
+        checks.update({name: {"expected": True, "observed": matched}
+                       for name, matched in vcs_root_evidence(
+                           case["repository"], observed.get("vcsRoots", [])).items()})
 
     if "configuration" in expected:
         configuration_observed = {**observed, "toolCalls": []}
@@ -2384,7 +2415,8 @@ def run(
             if tc.pipeline_definition(build["pipelineId"]) != build["pipelineDefinition"]:
                 raise EvidenceError("verification-pipeline-ambiguous")
             chain_observed, result["verificationDiagnostics"] = observe_chain(
-                tc, project_id, build, case["expected"]["toolchain"]["jdk"]
+                tc, project_id, build, case["expected"]["toolchain"]["jdk"],
+                verify_vcs_root=case["expected"].get("vcsRootMatchesRepository", False),
             )
             if "minimumMavenVersion" in case["expected"]:
                 chain_observed["mavenVersions"] = observe_maven_versions(

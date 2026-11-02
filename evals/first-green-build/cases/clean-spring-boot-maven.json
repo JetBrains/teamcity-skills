@@ -49,6 +49,7 @@
     ]
   },
   "expected": {
+    "vcsRootMatchesRepository": true,
     "configurationValidated": true,
     "testsExecutedAndReported": true,
     "artifactsPublished": true,
