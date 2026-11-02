@@ -32,6 +32,8 @@ spec = importlib.util.spec_from_file_location("run_case", HERE / "run_case.py")
 run_case = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(run_case)
 
+from pipeline_validation import SCHEMA_STATUS_VALID
+
 FIXTURE = """\
 name: selfcheck fixture
 jobs:
@@ -165,7 +167,11 @@ def main() -> int:
             print(f"  {job['name']:10} steps={[s['type'] for s in job['steps']]} "
                   f"runs-on={job['agentRequirements']} artifacts={job['artifactRules'].splitlines()}")
 
-        checks = run_case.grade_configuration(CASE, {"jobs": jobs, "mutations": []})
+        pipeline_id, _, definition = run_case.verification_pipeline(tc, project_id)
+        validation = tc.validate_pipeline(pipeline_id, definition)
+        checks = run_case.grade_configuration(CASE, {
+            "jobs": jobs, "mutations": [], "schemaValidated": validation["status"] == SCHEMA_STATUS_VALID,
+        })
         for name, wanted in EXPECTATIONS.items():
             got = checks.get(name, {}).get("passed")
             mark = "ok " if got == wanted else "BAD"

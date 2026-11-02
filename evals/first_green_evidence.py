@@ -1,6 +1,7 @@
 """Fail-closed first-green chain binding and safe JDK evidence."""
 
 import re
+from urllib.parse import urlsplit
 
 from maven_runtime import (
     JDK_MATCH_MODES, java_major, jdk_major_matches, maven_runtime, path_major, safe_maven_runtime,
@@ -11,6 +12,7 @@ VERIFICATION_ERROR_CATEGORIES = {
     "verification-no-pipeline", "verification-pipeline-ambiguous",
     "verification-chain-incomplete", "verification-observation-failed",
     "verification-invalid-script-steps",
+    "verification-invalid-pipeline-yaml", "verification-schema-validation-unavailable",
     "verification-unexplained-head-failure",
     "build-not-queued", "build-wait-timeout", "build-queue-stalled",
 }
@@ -27,8 +29,8 @@ class EvidenceError(RuntimeError):
 
 
 def pipeline_signature(document):
-    # The server may normalize the display name; topology and settings must match.
-    return {key: document.get(key) or {} for key in ("jobs", "parameters", "environment")}
+    # Only the display name may be normalized by the server.
+    return {key: value for key, value in document.items() if key != "name"}
 
 
 def select_pipeline(definitions, source=None):
@@ -81,6 +83,45 @@ def bind_jobs(jobs, builds):
             or set(actual) != set(declared)):
         raise EvidenceError("verification-chain-incomplete")
     return [declared[build["buildType"]["name"]] for build in builds]
+
+
+def git_repository_identity(url):
+    """Compare Git remotes across HTTPS/SSH without retaining credentials."""
+    if not isinstance(url, str) or not url or any(char.isspace() for char in url):
+        return None
+    if "://" not in url:
+        address, separator, path = url.partition(":")
+        if not separator or "@" not in address or "/" in address:
+            return None
+        url = f"ssh://{address}/{path}"
+    try:
+        remote = urlsplit(url)
+        host, port = remote.hostname, remote.port
+    except ValueError:
+        return None
+    default_ports = {"https": 443, "http": 80, "ssh": 22, "git": 9418}
+    if (remote.scheme not in default_ports or not host or remote.query or remote.fragment
+            or "\\" in remote.path):
+        return None
+    path = remote.path.strip("/").removesuffix(".git")
+    if not path or any(part in ("", ".", "..") for part in path.split("/")):
+        return None
+    if host == "github.com":
+        path = path.lower()
+    return host, None if port in (None, default_ports[remote.scheme]) else port, path
+
+
+def vcs_root_evidence(repository, roots):
+    """Check current pipeline settings, not the sources of a completed build."""
+    identity = git_repository_identity(repository["url"])
+    matching = [root for root in roots if isinstance(root, dict)
+                and root.get("vcsName") == "jetbrains.git" and identity is not None
+                and git_repository_identity(root.get("url")) == identity]
+    branch = repository["defaultBranch"]
+    ref = branch if branch.startswith("refs/heads/") else f"refs/heads/{branch}"
+    # The branch must belong to the same unambiguous repository root.
+    return {"vcsRepository": len(matching) == 1,
+            "vcsDefaultBranch": len(matching) == 1 and matching[0].get("branch") == ref}
 
 
 def jdk_selectors(mapping, parameter=False):
@@ -169,7 +210,7 @@ def jdk_evidence(properties, jdk, jobs=None, jdk_match="exact"):
     }
 
 
-def observe_chain(tc, project_id, build, required_jdk, jdk_match="exact"):
+def observe_chain(tc, project_id, build, required_jdk, jdk_match="exact", verify_vcs_root=False):
     members = []
     for node in build["nodes"]:
         if node["id"] == build["id"]:
@@ -196,7 +237,7 @@ def observe_chain(tc, project_id, build, required_jdk, jdk_match="exact"):
         published_artifacts = tc.artifacts(member["id"])
         all_tests.extend(tests)
         artifacts.extend(published_artifacts)
-        job_results.append({"job": job, "status": member.get("status"),
+        job_results.append({"job": job, "buildId": member["id"], "status": member.get("status"),
                             "tests": tests, "artifacts": published_artifacts})
         diagnostics.append({"id": member["id"], "state": member.get("state"),
                             "status": member.get("status"), "testCount": len(tests),
@@ -223,6 +264,8 @@ def observe_chain(tc, project_id, build, required_jdk, jdk_match="exact"):
         "testCount": len(all_tests), "tests": all_tests, "jobResults": job_results,
         "artifacts": artifacts, "properties": {}, "mavenRuntime": maven,
         "jobs": jobs, "attempts": build["attempts"], "buildStatus": build["status"],
+        # Pipeline children use the root attached to their selected head.
+        "vcsRoots": tc.vcs_roots(build["pipelineId"]) if verify_vcs_root else [],
     }, {
         "headId": build["id"], "selection": build["selection"], "builds": diagnostics,
         "testCount": len(all_tests), "artifactCount": len(artifacts),

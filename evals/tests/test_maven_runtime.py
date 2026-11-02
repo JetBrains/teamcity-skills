@@ -226,6 +226,7 @@ class MavenGraderTest(unittest.TestCase):
                                    ("clean-spring-boot-maven", {21, 25}),
                                    ("tdd-spring-maven", {21})):
             case_path = EVALS / f"first-green-build/cases/{filename}.json"
+            case = json.loads(case_path.read_text())
             for major in (17, 21, 25):
                 with self.subTest(case=filename, major=major), contextlib.ExitStack() as stack:
                     tc, build, jobs = self.fixture()
@@ -233,6 +234,13 @@ class MavenGraderTest(unittest.TestCase):
                     tc.create_project.return_value = "project"
                     tc.build_types.return_value = jobs
                     build["configurationDiagnostics"] = runner.script_step_diagnostics(jobs)
+                    build["schemaValidationDiagnostics"] = {"status": runner.SCHEMA_STATUS_VALID,
+                                                            "errorCount": 0, "issues": []}
+                    build["pipelineDefinition"] = {"jobs": {}}
+                    tc.pipeline_definition.return_value = build["pipelineDefinition"]
+                    tc.vcs_roots.return_value = [{"vcsName": "jetbrains.git",
+                        "url": case["repository"]["url"],
+                        "branch": "refs/heads/" + case["repository"]["defaultBranch"]}]
                     bridge = mock.MagicMock()
                     bridge.__enter__.return_value.agent_environment.return_value = {}
                     stack.enter_context(mock.patch.dict(runner.os.environ, {
@@ -252,6 +260,44 @@ class MavenGraderTest(unittest.TestCase):
                     result = runner.run(case_path, False, False, "baseline", "cli-only")
                     self.assertEqual(major in accepted, result["checks"]["toolchain"]["passed"])
                     self.assertEqual([major], result["verificationDiagnostics"]["jdk"]["mavenRuntime"][0]["observedMajors"])
+
+    def test_minimum_jdk_vcs_root_and_maven_version_checks_share_the_bound_chain(self):
+        case = json.loads((EVALS / "first-green-build/cases/clean-spring-boot-maven.json").read_text())
+        for major, branch in ((25, "development"), (17, "development"), (25, "main")):
+            with self.subTest(major=major, branch=branch):
+                tc, build, _ = self.fixture()
+                tc.build_log.return_value = (launch(f"/opt/jdk-{major}")
+                    + "[10:00:01] : [Step 1/1] Apache Maven 3.9.11\n")
+                tc.vcs_roots.return_value = [{"vcsName": "jetbrains.git",
+                    "url": case["repository"]["url"], "branch": "refs/heads/" + branch}]
+                observed, _ = observe_chain(tc, "project", build, "21",
+                                            jdk_match="minimum", verify_vcs_root=True)
+                observed["mavenVersions"] = runner.observe_maven_versions(
+                    tc, observed["jobResults"], case["expected"]["minimumMavenVersion"])
+                checks = runner.grade(case, {**observed, "buildTypeCount": 2,
+                                            "mutations": [], "schemaValidated": True})
+                self.assertEqual(major >= 21, checks["toolchain"]["passed"])
+                self.assertEqual(branch == "development", checks["vcsDefaultBranch"]["passed"])
+                self.assertTrue(checks["vcsRepository"]["passed"])
+                self.assertTrue(checks["mavenVersion"]["passed"])
+                self.assertTrue(checks["configurationValidated"]["passed"])
+                tc.vcs_roots.assert_called_once_with("pipeline")
+
+    def test_jdk_home_and_test_flags_resolve_in_the_same_job(self):
+        case = json.loads((EVALS / "pipeline-configuration/cases/clean-spring-boot-maven-pipeline.json").read_text())
+        tc = runner.TeamCity("teamcity", "https://example.invalid", "private", {})
+        for skip_tests in ("true", "false"):
+            with self.subTest(skip_tests=skip_tests):
+                document = {"parameters": {"selected.jdk": "/opt/jdk-25",
+                                          "args": "-V -DskipTests=" + skip_tests},
+                    "jobs": {"Verify": {"steps": [{"type": "maven", "goals": "clean verify",
+                        "jdk-home": "%selected.jdk%", "runner-arguments": "%args%"}]}}}
+                with mock.patch.object(tc, "pipeline_definition", return_value=document):
+                    jobs = tc.jobs("project", "pipeline")
+                checks = runner.grade_configuration(case, {"jobs": jobs, "mutations": [],
+                    "toolCalls": [], "schemaValidated": True})
+                self.assertTrue(checks["toolchain"]["passed"])
+                self.assertEqual(skip_tests == "false", checks["forbiddenStepProperties"]["passed"])
 
     def test_collects_only_bound_maven_child_logs_and_grades_without_java_home(self):
         tc, build, jobs = self.fixture()

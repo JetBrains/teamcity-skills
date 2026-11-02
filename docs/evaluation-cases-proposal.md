@@ -110,8 +110,8 @@ and is not covered by this contract.
 | `queued-no-compatible-agent` | Once a run has already been queued for over two minutes, the agent checks inventory, job incompatibility reasons, and unresolved stored-pipeline parameters by its second status observation, then stops instead of polling or requeueing. The runner simulates the queue and consumes no target build agent. |
 | `java25-agent-requirement-blocks-provisioning` (draft) | A deterministic queue stall distinguishes the pre-dispatch `env.JDK_25` requirement from installing JDK 25 after dispatch. The fixture exposes neither JDK 25 nor Docker, so the agent must inspect capabilities and explain that the requirement must change before a build-step download can run. |
 | `spring-petclinic-maven-pipeline` | The configuration-only Spring Petclinic case uses its documented Maven verification path and publishes the JAR. |
-| `clean-spring-boot-maven-pipeline` | A Maven-only Spring Boot project receives a Maven verification job on Java 21 or newer and a JAR publication contract without running the target project. |
-| `clean-spring-boot-maven` | The Clean Spring project must reach a first green Maven verification build on Java 21 or newer, import its JUnit XML, and publish its JAR. |
+| `clean-spring-boot-maven-pipeline` | A Maven-only Spring Boot project receives a Maven 3.6+ verification job on Java 21 or newer and a JAR publication contract without running the target project. |
+| `clean-spring-boot-maven` | The Clean Spring project must reach a green Maven 3.6+ verification build on Java 21 or newer, report at least 39 passing tests with none ignored or failed, and publish its JAR and all six expected test XML filenames. |
 | `spring-boot-demo-gradle-testcontainers-pipeline` | A Kotlin/Gradle Spring Boot project gets separate Java 21 build/package and Docker-backed Testcontainers test jobs. Both generate its JOOQ/OpenAPI sources; the package job must not silently run tests. |
 | `spring-boot-demo-gradle-testcontainers` | The same repository must reach a first green Java 21 build with generated sources, Docker-backed Testcontainers tests, JUnit XML, and a published JAR. |
 | `spring-boot-kotlin-gradle-java25-pipeline` | A Spring Boot 4/Gradle repository gets exactly one Gradle build job using an exact JDK 25 container and publishes its JAR even when the ephemeral host does not preinstall JDK 25. |
@@ -120,6 +120,48 @@ and is not covered by this contract.
 | `jetcaster-kmp-multi-targets` | Jetcaster preserves exactly seven independent test, Android, iOS, desktop-platform, and Wasm jobs, with each task, platform agent, and artifact checked inside the corresponding job. |
 | `kotlinconf-app-multi-targets` | KotlinConf App preserves six shared-test, Android, iOS, desktop, web, and backend jobs, and publishes each platform output from the job that produces it. |
 | `teamcity-mcp-access-permissions` | The evaluation environment is authenticated and exposes the TeamCity operations needed for first-green-build setup. It classifies an actual `401`/`403` authorization failure separately from an operation that the selected TeamCity tool surface does not provide. |
+
+The Clean Spring Maven cases use repository revision
+[`315ca51dcb0ec25f2cce8f99fa239ec23717f3f6`](https://github.com/kawser2133/clean-spring-boot-project/tree/315ca51dcb0ec25f2cce8f99fa239ec23717f3f6).
+At this revision, `README.md` requires Java 21 and Maven 3.6+, and `pom.xml`
+sets Java 21. No CI workflow is tracked at this revision, so the contract is
+based on these files and the repository's test configuration.
+
+The tests use H2, as configured in `src/test/resources/application.properties`.
+PostgreSQL is therefore not required for the verification build, even though
+the README lists it as an application prerequisite. The repository contains
+`mvnw` launchers but no tracked `.mvn/wrapper` files, so installed Maven is
+allowed. The recorded control build and suite counts are documented in
+[Independent source checks](eval-expansion-plan.md#independent-source-checks-not-eval-samples).
+
+The live case requires a native Maven `verify` build with the required Java
+and Maven versions, at least 39 successful tests covering the six required
+test-name patterns, TeamCity test reporting, and JAR/XML publication.
+Maven dependency caching and parallel execution are optional optimizations;
+their absence does not fail the eval.
+
+The Clean Spring Maven contracts reject test-skipping flags and assertion
+disabling flags in both `goals` and `runner-arguments`, including quoted
+`-D`/`--define` options and references to stored pipeline/job parameters or
+environment variables.
+Unresolved or cyclic references and malformed arguments fail the check.
+They also reject explicit bundled Maven selections older than 3.6. The live case requires an
+`Apache Maven <version>` banner from every native Maven build launch in the
+selected verification chain, including Docker and Podman containers.
+Use `-V` or `--show-version` in that runner;
+M2_HOME, an installation path, a POM inspection probe, and a separate diagnostic
+step are insufficient. Missing version output fails the runtime check.
+The configuration-only case cannot measure the runtime version and queues no
+builds.
+
+The live case requires all imported tests to succeed without ignored tests,
+in addition to the existing minimum of 39 tests and six test-class checks.
+The artifact listing must include `TEST-<fully-qualified-class>.xml` for the
+application test, ProductControllerTest, ProductServiceTest,
+AuthenticationControllerTest, UserRepositoryTest, and AuthenticationServiceTest.
+Nested and flattened publication paths are accepted. The empty
+ProductRepositoryTest class does not require a report. XML files are neither
+downloaded nor parsed; the check establishes filename coverage only.
 
 The cases define expected behavior, not stored results. A case can therefore be
 committed before it passes; each execution publishes only its minimal verdict.
@@ -173,11 +215,26 @@ completion contract.
 The runner must not treat a green checkout-only job as a pass. A passing run
 requires all of the following:
 
-- server-side validation of the generated pipeline YAML;
+- validation of the saved pipeline YAML against the target server's schema;
 - a successful verification build;
 - every test expectation declared by the case is satisfied, including required
   test reports, minimum counts, and named tests;
 - every declared artifact path present in the build artifacts.
+
+For both first-green-build and pipeline-configuration cases, the grader pulls
+the selected pipeline's saved YAML and runs `teamcity pipeline validate <file>
+--refresh-schema`, even if the agent did not run validation. The saved YAML
+must match every field of the agent's final deliverable except its display
+name. First-green-build cases validate before waiting for a verification
+chain, so a missing build or failed head cannot bypass schema validation.
+The saved definition must still match the validated snapshot after the wait.
+Only that pipeline is validated; unrelated diagnostic pipelines do not affect
+the grade. A schema violation fails `configurationValidated`. A CLI, auth, or
+schema-fetch error leaves the eval `errored`, rather than grading it as valid
+or blaming the agent for invalid YAML. Published `schemaValidationDiagnostics`
+contain the outcome, error count, line numbers and fixed error categories,
+without raw YAML, job names, values or CLI output. Historical result artifacts
+are not regraded.
 
 `expected.toolchain.jdk` specifies the required Java major version.
 `expected.toolchain.jdkMatch` is `exact` (the default) or `minimum`: for example,
@@ -559,6 +616,18 @@ A build that TeamCity marks failed because its requested branch is not
 monitored is never a first-green success, even if tests passed. In that state
 TeamCity may have substituted a default revision. The skill must repair the
 VCS root branch specification and rerun on a monitored branch.
+
+`expected.vcsRootMatchesRepository` opts a first-green case into two configuration
+checks: `vcsRepository` requires one attached Git VCS root matching the case's
+repository URL, and `vcsDefaultBranch` requires that same root's default branch
+to equal the case's `repository.defaultBranch` as a full Git ref. The runner
+reads the selected pipeline head with `teamcity job view --json`, then its
+attached roots with `teamcity project vcs view --json`. Equivalent HTTPS and SSH
+Git URLs are accepted. Unrelated roots in the project cannot satisfy these checks.
+An empty branch specification is valid for the default branch; the logical
+TeamCity branch name is not compared with the Git ref. These checks describe
+current settings and do not prove the ref or pinned commit used by a build.
+The live `clean-spring-boot-maven` case enables them.
 
 The runner keeps a retained project ID only inside its disposable process and
 sets `cleanupDeferred: true` in the minimized result. This temporary
