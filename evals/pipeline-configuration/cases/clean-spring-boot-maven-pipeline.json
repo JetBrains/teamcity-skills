@@ -4,7 +4,7 @@
   "kind": "pipeline-configuration",
   "status": "draft",
   "skill": "teamcity-first-green-build",
-  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository. Inspect its build and test setup, configure Maven verification on Java 21, publish JUnit XML and the application JAR, validate the configuration against the server, and stop there. Do not queue a build or modify repository sources. Java 21 may be selected on the agent or through a suitable build container.",
+  "prompt": "Create the TeamCity pipeline configuration on {{teamcity.server}} in project {{teamcity.targetProject}} for this repository. Inspect its build and test setup, configure Maven 3.6+ verification on Java 21, publish JUnit XML and the application JAR, validate the configuration against the server, and stop there. Do not queue a build or modify repository sources. Java 21 may be selected on the agent or through a suitable build container. Keep all repository tests and Java assertions enabled.",
   "teamcity": {
     "server": "runner-configured",
     "targetProject": "runner-configured"
@@ -18,7 +18,7 @@
   "stack": {
     "family": "spring-boot",
     "buildTool": "maven",
-    "maven": "3.x",
+    "maven": "3.6+",
     "springBoot": "3.2.5"
   },
   "requestedConfiguration": {
@@ -54,7 +54,37 @@
       {
         "stepType": "maven",
         "property": "goals",
-        "matches": "(?i)-D(?:skipTests|maven\\.test\\.skip)(?:=true)?(?=\\s|$)"
+        "matches": "(?i)^-D(?:skipTests|maven\\.test\\.skip)(?:=true)?$"
+      },
+      {
+        "stepType": "maven",
+        "property": "runner-arguments",
+        "matches": "(?i)^-D(?:skipTests|maven\\.test\\.skip)(?:=true)?$"
+      },
+      {
+        "stepType": "maven",
+        "property": "goals",
+        "matches": "(?i)^-DenableAssertions=false$"
+      },
+      {
+        "stepType": "maven",
+        "property": "runner-arguments",
+        "matches": "(?i)^-DenableAssertions=false$"
+      },
+      {
+        "stepType": "maven",
+        "property": "goals",
+        "matches": "(?i)^-DargLine=-(?:da|disableassertions)(?=:|$)"
+      },
+      {
+        "stepType": "maven",
+        "property": "runner-arguments",
+        "matches": "(?i)^-DargLine=-(?:da|disableassertions)(?=:|$)"
+      },
+      {
+        "stepType": "maven",
+        "property": "maven-version",
+        "matches": "bundled-3-[0-5](?!\\d)"
       }
     ],
     "requiredArtifactRules": [
