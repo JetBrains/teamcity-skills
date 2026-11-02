@@ -16,6 +16,8 @@ from first_green_evidence import (
 
 
 STOP_CATEGORY = "verification-unexplained-head-failure"
+INCOMPLETE_CHAIN_CATEGORY = "verification-chain-incomplete"
+STOP_CATEGORIES = (STOP_CATEGORY, INCOMPLETE_CHAIN_CATEGORY)
 
 
 def safe_monitor_diagnostics(value):
@@ -37,6 +39,7 @@ def safe_monitor_diagnostics(value):
 class LiveBuildMonitor:
     interval_seconds = 60
     read_budget_seconds = 15
+    missing_children_grace_seconds = 120
 
     def __init__(self, tc, project_id, checkout, source_path, clock=time.monotonic):
         self.tc = tc  # Dedicated CLI reader with a short command timeout.
@@ -47,6 +50,7 @@ class LiveBuildMonitor:
         self.data = {"checkCount": 0, "readFailureCount": 0, "stoppedAgent": False,
                      "intervalSeconds": self.interval_seconds, "state": "waiting-for-source"}
         self.last_emitted = None
+        self.incomplete_observation = None
 
     def source(self):
         import yaml
@@ -73,6 +77,7 @@ class LiveBuildMonitor:
             # Never publish exception/CLI text. A broken reader must be visible,
             # but cannot justify terminating an otherwise healthy agent.
             self.data["readFailureCount"] += 1
+            self.incomplete_observation = None
             self.data["state"] = "read-unavailable"
             if self.last_emitted != "read-unavailable":
                 print("[eval-build-monitor] read-unavailable; no stop inferred",
@@ -83,6 +88,7 @@ class LiveBuildMonitor:
     def _inspect(self):
         source = self.source()
         if source is None:
+            self.incomplete_observation = None
             self.data["state"] = "waiting-for-source"
             return None
         definitions = {key: self.tc.pipeline_definition(key)
@@ -90,17 +96,26 @@ class LiveBuildMonitor:
         try:
             pipeline, _ = select_pipeline(definitions, source)
         except EvidenceError:
+            self.incomplete_observation = None
             self.data["state"] = "waiting-for-pipeline"
             return None
         candidates = [item for item in self.tc.builds(self.project_id, pipeline)
                       if item.get("buildTypeId") == pipeline]
         if not candidates:
+            self.incomplete_observation = None
             self.data["state"] = "waiting-for-build"
             return None
         head_id = max(item["id"] for item in candidates)
         nodes = chain_nodes(self.tc.build_tree(head_id), head_id, pipeline)
         snapshot = terminal_chain_diagnostics(nodes, head_id)
-        if snapshot["requiresInvestigation"]:
+        missing_children = snapshot["failurePattern"] == "head-without-children"
+        if missing_children:
+            key = (pipeline, head_id, pipeline_signature(source))
+            if self.incomplete_observation is None or self.incomplete_observation[0] != key:
+                self.incomplete_observation = (key, self.clock())
+        else:
+            self.incomplete_observation = None
+        if snapshot["requiresInvestigation"] and not missing_children:
             metadata = self.tc.build(head_id)
             head = next(node for node in nodes if node["id"] == head_id)
             if any(metadata.get(k) != head[k] for k in ("id", "buildTypeId", "state", "status")):
@@ -112,8 +127,21 @@ class LiveBuildMonitor:
         if encoded != self.last_emitted:
             print("[eval-build-monitor] " + encoded, file=sys.stderr, flush=True)
             self.last_emitted = encoded
-        if not snapshot["requiresInvestigation"] or snapshot["problemEvidence"] != "unavailable":
-            return None
+        if missing_children:
+            # A just-finished head may become visible before its dependencies.
+            # Require stable reads over a grace period, then confirm the same
+            # empty chain. Never infer child IDs or grades from summary counts.
+            if self.clock() - self.incomplete_observation[1] < self.missing_children_grace_seconds:
+                return None
+            confirmed = chain_nodes(self.tc.build_tree(head_id), head_id, pipeline)
+            if len(confirmed) != 1 or confirmed[0]["state"] != "finished":
+                self.incomplete_observation = None
+                return None
+            category = INCOMPLETE_CHAIN_CATEGORY
+        else:
+            if not snapshot["requiresInvestigation"] or snapshot["problemEvidence"] != "unavailable":
+                return None
+            category = STOP_CATEGORY
         # Do not stop on a stale definition or when a newer attempt already exists.
         latest = self.tc.builds(self.project_id, pipeline)
         if any(item.get("buildTypeId") == pipeline and item["id"] > head_id for item in latest):
@@ -123,7 +151,7 @@ class LiveBuildMonitor:
                 or pipeline_signature(current_source) != pipeline_signature(source)
                 or pipeline_signature(self.tc.pipeline_definition(pipeline)) != pipeline_signature(source)):
             return None
-        return STOP_CATEGORY
+        return category
 
     def mark_stopped(self):
         self.data.update(state="intervened", stoppedAgent=True)

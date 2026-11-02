@@ -59,6 +59,22 @@ class TeamCityCliBridgeTest(unittest.TestCase):
                 with self.subTest(arguments=arguments), self.assertRaises(BridgeError):
                     policy.authorize(arguments, checkout)
 
+    def test_log_reads_are_available_without_build_write_permission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            checkout = pathlib.Path(directory)
+            policy = self.policy(checkout)
+            for arguments in (
+                ["run", "log", "123", "--raw"],
+                ["run", "log", "123", "--tail", "50"],
+                ["run", "log", "--job", "Eval_Project_Pipeline_Job", "--failed", "--raw"],
+            ):
+                with self.subTest(arguments=arguments):
+                    policy.authorize(arguments, checkout)
+            with self.assertRaises(BridgeError):
+                policy.authorize(["run", "log", "123", "--debug"], checkout)
+            with self.assertRaises(BridgeError):
+                policy.authorize(["run", "log", "123"], checkout.parent)
+
     def test_bridge_authenticates_cli_without_exposing_token_to_agent_environment(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

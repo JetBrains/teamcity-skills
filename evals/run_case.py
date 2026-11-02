@@ -94,7 +94,7 @@ from pipeline_validation import (
     safe_schema_diagnostics, safe_script_diagnostics, script_step_diagnostics,
     validate_pipeline_scripts,
 )
-from build_monitor import LiveBuildMonitor, STOP_CATEGORY, safe_monitor_diagnostics
+from build_monitor import LiveBuildMonitor, STOP_CATEGORIES, STOP_CATEGORY, safe_monitor_diagnostics
 from maven_version import maven_versions_match, observe_maven_versions
 from maven_arguments import maven_arguments_match, resolve_maven_arguments
 
@@ -1683,15 +1683,15 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
                         category = build_monitor.checkpoint(deadline)
                         if time.monotonic() >= deadline:
                             raise subprocess.TimeoutExpired(command, timeout)
-                        if category == STOP_CATEGORY and process.poll() is None:
+                        if category in STOP_CATEGORIES and process.poll() is None:
                             stop_agent_processes(process)
                             build_monitor.mark_stopped()
-                            print("[eval-build-monitor] stopped agent: " + STOP_CATEGORY,
+                            print("[eval-build-monitor] stopped agent: " + category,
                                   file=sys.stderr, flush=True)
                             return monitored({
                                 "exitCode": process.returncode,
                                 "timedOut": False, "timeoutSeconds": timeout,
-                                "failureCategory": STOP_CATEGORY,
+                                "failureCategory": category,
                             })
         except subprocess.TimeoutExpired:
             stop_agent_processes(process)
@@ -2341,11 +2341,11 @@ def run(
         # gets the full (unpaid) build wait rather than an early partial grade.
         budget = int(env.get("EVAL_BUILD_TIMEOUT", "3600"))
         result["buildTimeoutSeconds"] = budget
-        if agent_run.get("failureCategory") == STOP_CATEGORY:
+        if agent_run.get("failureCategory") in STOP_CATEGORIES:
             # The paid process has stopped. Preserve the incident, do not grade
             # partial output, wait for another build, repair a target or retry.
             result["status"] = "errored"
-            result["verificationErrorCategory"] = STOP_CATEGORY
+            result["verificationErrorCategory"] = agent_run["failureCategory"]
             result["verificationDiagnostics"] = {
                 "terminalChain": result["buildMonitorDiagnostics"].get("lastChain", {}),
             }

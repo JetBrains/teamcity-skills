@@ -281,6 +281,7 @@ def terminal_chain_diagnostics(nodes, head_id, metadata=None):
     head = next(node for node in nodes if node["id"] == head_id)
     children = [node for node in nodes if node["id"] != head_id]
     terminal = bool(children) and all(node["state"] == "finished" for node in nodes)
+    missing_children = head["state"] == "finished" and not children
     anomaly = (terminal and head.get("status") in ("FAILURE", "ERROR")
                and all(node.get("status") == "SUCCESS" for node in children))
     problems = (metadata or {}).get("problemOccurrences")
@@ -297,9 +298,10 @@ def terminal_chain_diagnostics(nodes, head_id, metadata=None):
         "childCount": len(children),
         "successfulChildCount": sum(node.get("status") == "SUCCESS"
                                     and node["state"] == "finished" for node in children),
-        "failurePattern": "head-failed-children-succeeded" if anomaly else "none",
+        "failurePattern": ("head-without-children" if missing_children else
+                           "head-failed-children-succeeded" if anomaly else "none"),
         "problemEvidence": "recorded" if recorded else "unavailable",
-        "requiresInvestigation": anomaly,
+        "requiresInvestigation": anomaly or missing_children,
         "children": children,
     }
     if count is not None:
@@ -316,7 +318,7 @@ def safe_terminal_chain_diagnostics(value):
     for key, allowed in (
         ("headState", ("queued", "running", "finished")),
         ("headStatus", ("SUCCESS", "FAILURE", "ERROR", "UNKNOWN", "CANCELED")),
-        ("failurePattern", ("none", "head-failed-children-succeeded")),
+        ("failurePattern", ("none", "head-failed-children-succeeded", "head-without-children")),
         ("problemEvidence", ("recorded", "unavailable")),
     ):
         if isinstance(value.get(key), str) and value[key] in allowed:
