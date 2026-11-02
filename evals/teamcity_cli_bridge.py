@@ -156,7 +156,7 @@ class CommandPolicy:
                 return
 
         if area == "run":
-            if operation in {"list", "view", "watch", "tree", "tests", "changes", "artifacts"}:
+            if operation in {"list", "view", "log", "watch", "tree", "tests", "changes", "artifacts"}:
                 return
             if operation in {"start", "restart", "cancel"} and self.allow_build_writes:
                 self._require_known_job(arguments)
