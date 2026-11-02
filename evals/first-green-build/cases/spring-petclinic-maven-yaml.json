@@ -41,7 +41,8 @@
     "artifactsPublished": true,
     "sourceMutations": "none",
     "toolchain": {
-      "jdk": "17"
+      "jdk": "17",
+      "jdkMatch": "minimum"
     },
     "firstBuild": "SUCCESS"
   }

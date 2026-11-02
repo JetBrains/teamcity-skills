@@ -84,9 +84,10 @@ from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
 from queue_recovery import QueueRecoveryFixture, forbidden_queue_transport, safe_fixture_diagnostics
 from first_green_evidence import (
     EvidenceError, chain_nodes, jdk_evidence, jdk_selectors, observe_chain,
-    safe_verification_diagnostics, safe_verification_error, select_pipeline,
+    resolve_jdk_home, safe_verification_diagnostics, safe_verification_error, select_pipeline,
     vcs_root_evidence,
 )
+from maven_runtime import maven_runtime_matches
 from pipeline_validation import (
     SCHEMA_STATUS_INVALID, SCHEMA_STATUS_UNAVAILABLE, SCHEMA_STATUS_VALID,
     PipelineSchemaError, ScriptConfigurationError, pipeline_schema_result,
@@ -592,9 +593,12 @@ class TeamCity:
                     }
                     for step in (job.get("steps") or [])
                 ]
-                # Resolve arguments before discarding non-JDK parameters. Keep
-                # the resolved values private, like all other step properties.
+                # Resolve runner references before discarding non-JDK parameters.
+                # Keep the resolved values private, like other step properties.
                 for step in steps:
+                    home = step["properties"].get("jdk-home")
+                    if step["type"] in ("maven", "gradle") and isinstance(home, str) and home.strip():
+                        step["properties"]["jdk-home"] = resolve_jdk_home(home, parameters, environment)
                     if step["type"] == "maven":
                         for field in ("goals", "runner-arguments"):
                             if field in step["properties"]:
@@ -623,10 +627,8 @@ class TeamCity:
         return collected
 
     def resulting_properties(self, build_id: int) -> dict:
-        # The first-class CLI has no resulting-properties command.  Toolchain
-        # evidence is therefore taken from the server-stored pipeline YAML
-        # (environment and image declarations) rather than falling back to
-        # direct REST.
+        # The first-class CLI has no resulting-properties command. Maven
+        # runtime evidence comes from `run log`, not the agent JVM properties.
         return {}
 
     def test_count(self, build_id: int) -> int:
@@ -689,9 +691,9 @@ def artifact_matches(pattern: str, published: list) -> bool:
     return False
 
 
-def toolchain_evidence(properties: dict, jdk: str, jobs: list = None) -> tuple:
+def toolchain_evidence(properties: dict, jdk: str, jobs: list = None, jdk_match="exact") -> tuple:
     """Check explicit selections, separately from measured runtime versions."""
-    matched, evidence, _ = jdk_evidence(properties, jdk, jobs)
+    matched, evidence, _ = jdk_evidence(properties, jdk, jobs, jdk_match=jdk_match)
     return matched, evidence
 
 
@@ -746,11 +748,35 @@ def grade(case: dict, observed: dict) -> dict:
         "detail": f"unmatched: {missing}" if missing else f"{len(observed['artifacts'])} artifact(s)",
     }
     jdk = expected["toolchain"]["jdk"]
-    matched, evidence = toolchain_evidence(observed["properties"], jdk, observed.get("jobs"))
+    jdk_match = expected["toolchain"].get("jdkMatch", "exact")
+    jdk_requirement = f"{jdk}+" if jdk_match == "minimum" else jdk
+    jobs = observed.get("jobs", [])
+    uses_maven = case.get("stack", {}).get("buildTool") == "maven" or any(
+        step.get("type") == "maven" for job in jobs for step in job.get("steps", []))
+    if uses_maven:
+        maven_verified = maven_runtime_matches(observed.get("mavenRuntime"), jobs, jdk, jdk_match=jdk_match)
+        other_jobs = []
+        for job in jobs:
+            steps = job.get("steps", [])
+            if (not any(step.get("type") == "maven" for step in steps)
+                    or any(step.get("type") == "gradle" for step in steps)):
+                other_jobs.append({**job, "steps": [step for step in steps if step.get("type") != "maven"]})
+        others_verified = not other_jobs or toolchain_evidence(
+            observed["properties"], jdk, other_jobs, jdk_match=jdk_match)[0]
+        matched = maven_verified and others_verified
+        if not maven_verified:
+            detail = "Maven JVM missing, ambiguous, unavailable, or does not match the required JDK"
+        elif not others_verified:
+            detail = "Non-Maven jobs do not evidence the required JDK"
+        else:
+            detail = "Maven JVM verified in the build log"
+    else:
+        matched, evidence = toolchain_evidence(observed["properties"], jdk, jobs, jdk_match=jdk_match)
+        detail = f"matched: {evidence}" if matched else f"no JDK {jdk_requirement} among: {evidence}"
     checks["toolchain"] = {
-        "expected": jdk,
-        "observed": jdk if matched else "not-evidenced",
-        "detail": f"matched: {evidence}" if matched else f"no JDK {jdk} among: {evidence}",
+        "expected": jdk_requirement,
+        "observed": jdk_requirement if matched else "not-evidenced",
+        "detail": detail,
     }
     if "requiredContainerImage" in expected:
         has_matching_image = any(
@@ -916,7 +942,8 @@ def grade_configuration(case: dict, observed: dict) -> dict:
 
     if "toolchain" in expected:
         jdk = expected["toolchain"]["jdk"]
-        matched, _ = toolchain_evidence({}, jdk, jobs)
+        matched, _ = toolchain_evidence(
+            {}, jdk, jobs, jdk_match=expected["toolchain"].get("jdkMatch", "exact"))
         checks["toolchain"] = {"expected": True, "observed": matched}
 
     if "expectedJobCount" in expected:
@@ -2416,6 +2443,7 @@ def run(
                 raise EvidenceError("verification-pipeline-ambiguous")
             chain_observed, result["verificationDiagnostics"] = observe_chain(
                 tc, project_id, build, case["expected"]["toolchain"]["jdk"],
+                jdk_match=case["expected"]["toolchain"].get("jdkMatch", "exact"),
                 verify_vcs_root=case["expected"].get("vcsRootMatchesRepository", False),
             )
             if "minimumMavenVersion" in case["expected"]:

@@ -4,7 +4,7 @@
   "kind": "first-green-build",
   "status": "active",
   "skill": "teamcity-first-green-build",
-  "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} and get a green Maven 3.6+ verification build on Java 21. Inspect the repository's Maven and test setup; use a native Maven runner with verify and do not skip tests. Keep repository sources unchanged, import its JUnit XML into TeamCity, and publish both the application JAR and raw JUnit XML as downloadable build artifacts. Select Java 21 on the agent or through a suitable build container. Show the Maven version in the verification runner's normal log using -V or --show-version. All repository tests must pass without ignored tests; keep Java assertions enabled.",
+  "prompt": "Set up TeamCity CI on {{teamcity.server}} in project {{teamcity.targetProject}} and get a green Maven 3.6+ verification build on Java 21 or newer. Inspect the repository's Maven and test setup; use a native Maven runner with verify and do not skip tests. Keep repository sources unchanged, import its JUnit XML into TeamCity, and publish both the application JAR and raw JUnit XML as downloadable build artifacts. Select Java 21 or newer on the agent or through a suitable build container. Show the Maven version in the verification runner's normal log using -V or --show-version. All repository tests must pass without ignored tests; keep Java assertions enabled.",
   "teamcity": {
     "server": "runner-configured",
     "targetProject": "runner-configured"
@@ -55,7 +55,8 @@
     "artifactsPublished": true,
     "sourceMutations": "none",
     "toolchain": {
-      "jdk": "21"
+      "jdk": "21",
+      "jdkMatch": "minimum"
     },
     "firstBuild": "SUCCESS",
     "configuration": {
@@ -63,7 +64,8 @@
       "sourceMutations": "none",
       "minimumJobs": 1,
       "toolchain": {
-        "jdk": "21"
+        "jdk": "21",
+        "jdkMatch": "minimum"
       },
       "requiredStepTypes": [
         "maven"

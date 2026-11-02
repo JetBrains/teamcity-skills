@@ -134,6 +134,8 @@ class PipelineSchemaTest(unittest.TestCase):
                 ("builds", [{"id": 1, "buildTypeId": "selected", "status": "SUCCESS"}]),
                 ("build", {"id": 2, "buildTypeId": "child", "state": "finished", "status": "SUCCESS",
                            "buildType": {"name": "Verify"}}),
+                ("build_log", "[Step 1/1] Starting: /opt/jdk-21/bin/java "
+                              "org.codehaus.plexus.classworlds.launcher.Launcher clean verify\n"),
                 ("test_results", [{"name": "Example.test", "status": "SUCCESS", "ignored": False}]),
                 ("artifacts", ["app.jar"]),
             ):
