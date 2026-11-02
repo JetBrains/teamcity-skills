@@ -8,12 +8,16 @@ shell syntax, checkout file existence, parameter resolution, or agent capacity.
 import re
 
 
+SCHEMA_STATUS_VALID = "valid"
+SCHEMA_STATUS_INVALID = "invalid"
+SCHEMA_STATUS_UNAVAILABLE = "unavailable"
+SCHEMA_STATUSES = (SCHEMA_STATUS_VALID, SCHEMA_STATUS_INVALID, SCHEMA_STATUS_UNAVAILABLE)
 SCHEMA_ERROR_CATEGORIES = {"schema-validation-error", "invalid-enum-value"}
 
 
 def safe_schema_diagnostics(value):
     """Keep validation outcomes and source positions, never YAML or CLI text."""
-    if not isinstance(value, dict) or value.get("status") not in ("valid", "invalid", "unavailable"):
+    if not isinstance(value, dict) or value.get("status") not in SCHEMA_STATUSES:
         return {}
     safe = {"status": value["status"]}
     if type(value.get("errorCount")) is int and value["errorCount"] >= 0:
@@ -32,7 +36,7 @@ class PipelineSchemaError(ValueError):
     def __init__(self, diagnostics):
         self.diagnostics = safe_schema_diagnostics(diagnostics)
         self.category = ("verification-invalid-pipeline-yaml"
-                         if self.diagnostics.get("status") == "invalid"
+                         if self.diagnostics.get("status") == SCHEMA_STATUS_INVALID
                          else "verification-schema-validation-unavailable")
         super().__init__(self.category)
 
@@ -45,17 +49,17 @@ def pipeline_schema_result(completed, filename):
     Only a recognized validation report establishes invalid agent output.
     """
     if completed.returncode == 0:
-        return {"status": "valid", "errorCount": 0, "issues": []}
+        return {"status": SCHEMA_STATUS_VALID, "errorCount": 0, "issues": []}
     output = re.sub(r"\x1b\[[0-9;]*m", "", completed.stderr or "")
     report = re.search(re.escape(str(filename)) + r" has ([1-9]\d*) error\(s\)\s*\n", output)
     if completed.returncode != 1 or report is None:
-        raise PipelineSchemaError({"status": "unavailable"})
+        raise PipelineSchemaError({"status": SCHEMA_STATUS_UNAVAILABLE})
     issues = []
     for match in re.finditer(r"(?m)^\s*Line ([1-9]\d*):[^\n]*\n([^\n]*)", output[report.end():]):
         category = ("invalid-enum-value" if re.match(r"\s*value must be (?:one of |['\"])", match[2])
                     else "schema-validation-error")
         issues.append({"line": int(match[1]), "category": category})
-    raise PipelineSchemaError({"status": "invalid", "errorCount": int(report[1]), "issues": issues})
+    raise PipelineSchemaError({"status": SCHEMA_STATUS_INVALID, "errorCount": int(report[1]), "issues": issues})
 
 
 SCRIPT_ISSUE_CATEGORIES = {

@@ -87,6 +87,7 @@ from first_green_evidence import (
     safe_verification_diagnostics, safe_verification_error, select_pipeline,
 )
 from pipeline_validation import (
+    SCHEMA_STATUS_INVALID, SCHEMA_STATUS_UNAVAILABLE, SCHEMA_STATUS_VALID,
     PipelineSchemaError, ScriptConfigurationError, pipeline_schema_result,
     safe_schema_diagnostics, safe_script_diagnostics, script_step_diagnostics,
     validate_pipeline_scripts,
@@ -523,7 +524,7 @@ class TeamCity:
                 ])
                 return pipeline_schema_result(completed, path)
         except (EvalError, OSError) as exc:
-            raise PipelineSchemaError({"status": "unavailable"}) from exc
+            raise PipelineSchemaError({"status": SCHEMA_STATUS_UNAVAILABLE}) from exc
         except yaml.YAMLError:
             raise EvidenceError("verification-pipeline-ambiguous") from None
 
@@ -2296,7 +2297,7 @@ def run(
             result["schemaValidationDiagnostics"] = tc.validate_pipeline(pipeline_id, definition)
             observed = {
                 "jobs": tc.jobs(project_id, pipeline_id),
-                "schemaValidated": result["schemaValidationDiagnostics"].get("status") == "valid",
+                "schemaValidated": result["schemaValidationDiagnostics"].get("status") == SCHEMA_STATUS_VALID,
                 "mutations": source_mutations(checkout, allowed),
                 "toolCalls": tool_calls(trace),
             }
@@ -2358,7 +2359,7 @@ def run(
             raise
         observed = {
             **chain_observed,
-            "schemaValidated": result["schemaValidationDiagnostics"].get("status") == "valid",
+            "schemaValidated": result["schemaValidationDiagnostics"].get("status") == SCHEMA_STATUS_VALID,
             "buildTypeCount": len(tc.build_types(project_id)),
             "buildStatus": build.get("status"),
             "statusText": build.get("statusText"),
@@ -2387,7 +2388,7 @@ def run(
         result["verificationErrorCategory"] = exc.category
         result["errorCategory"] = result.get("errorCategory") or exc.category
         result["error"] = exc.category
-        if exc.diagnostics.get("status") == "invalid":
+        if exc.diagnostics.get("status") == SCHEMA_STATUS_INVALID:
             result["checks"]["configurationValidated"] = {
                 "expected": True, "observed": False, "passed": False,
             }
