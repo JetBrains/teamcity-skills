@@ -103,7 +103,9 @@ def git_repository_identity(url):
     if (remote.scheme not in default_ports or not host or remote.query or remote.fragment
             or "\\" in remote.path):
         return None
-    path = remote.path.strip("/").removesuffix(".git")
+    path = remote.path.strip("/")
+    if path.endswith(".git"):
+        path = path[:-4]
     if not path or any(part in ("", ".", "..") for part in path.split("/")):
         return None
     if host == "github.com":
