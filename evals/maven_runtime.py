@@ -63,7 +63,9 @@ def log_messages(log):
         match = STEP.search(line)
         if match:
             current_step = (int(match[1]), int(match[2]))
-        line = re.sub(r"^\[Step \d+/\d+\]\s*", "", line)
+        # Docker messages may carry an inner block prefix instead of the step.
+        line = re.sub(
+            r"^(?:\[(?:Step \d+/\d+|Container wrapper: [^\]]+)\]\s*)+", "", line)
         yield current_step, line
 
 
