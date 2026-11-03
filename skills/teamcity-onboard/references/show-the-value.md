@@ -9,6 +9,7 @@ The execution timeouts are behind a server toggle.
 | Typed build steps (Maven, Gradle, Node.js) | Tools set up and tests reported, no scripts to maintain | The job's steps |
 | On-the-fly test reporting | Tests appear while the build runs: "3,000 tests passed so far" | The run's Tests tab |
 | Build chains and files between jobs | Build once, use the output in several jobs | The run's chain |
+| Build artifact | The built app or package, downloadable from every run: "app.zip, 4 MB" | The run's Artifacts tab, `run download <id>` |
 | Remote run | "Nothing is committed to your repo", said every time | The run page |
 | Job reuse | On a no-change rerun, the time saved: "13 min became 5 s" | The rerun's reused jobs |
 | Performance monitor | Agent-size advice: "E2E peaked at 11 GB, Large is right; Build would fit Medium" | The job's Performance Monitor tab |

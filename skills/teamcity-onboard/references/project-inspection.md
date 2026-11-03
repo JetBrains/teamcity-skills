@@ -14,7 +14,12 @@ Record:
   `Dockerfile`, `docker-compose.yml`;
 - the required JDK or runtime, from build files, `setup-*` steps, and the
   README;
-- test commands, test report paths, and the packaged output;
+- test commands and test report paths;
+- the build command and the output it writes: the `build` script in
+  `package.json` and its `dist/` or `build/` directory, `assemble` or
+  `package` and its `build/libs/*.jar` or `target/*.jar`, `go build`,
+  `cargo build --release`, `dotnet publish`. Record the expected size: on
+  TC Cloud an artifact over 300 MB does not publish;
 - services, environment variables, and credentials the build and tests
   need;
 - checked-in TeamCity YAML or Kotlin DSL. CI already exists; reuse it.
@@ -27,7 +32,9 @@ basic build only.
 
 `.github/workflows/` shows the commands, tool versions, services, and job
 order the team trusts. It is one signal next to the build files and the
-README. The first pipeline is the basic build.
+README. The first pipeline is the basic build. A workflow with lint and
+test jobs and no build job is common; the build command comes from the
+build files, not from the workflow.
 
 Take from it:
 
@@ -36,7 +43,8 @@ Take from it:
 - the artifacts it uploads;
 - the `needs:` order between the kept jobs;
 
-Leave for follow-ups: deploy, publish, and release jobs; tag-only, scheduled,
+Leave for follow-ups: deploy and release jobs, and publishing to a
+registry or a package index; tag-only, scheduled,
 and release-only workflows; CodeQL and other GitHub-specific actions; matrix
 combinations beyond the first Linux one; any job that needs a secret; `on:`
 triggers, `if:` conditions, `concurrency:`, notifications.

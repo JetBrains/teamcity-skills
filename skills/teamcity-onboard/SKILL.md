@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.1.0
+version: 0.2.0
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first basic green build with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
@@ -10,9 +10,12 @@ Get a new TeamCity user from the hand-over to the first basic green build,
 fast. The green build is the goal. Everything else is secondary. This is a
 quick start:
 
-- a basic build. What "basic" means depends on the stack. A good one
-  compiles, runs the tests, and packages the output. None of the three is
-  required;
+- a basic build. What "basic" means depends on the stack. It compiles,
+  runs the tests, builds the shippable output, and publishes that output as
+  an artifact the user can download from the run. The build and the artifact
+  are skipped only when the project has nothing to ship: no build script,
+  no package task, no binary. Lint and tests alone are not a basic build.
+  Say in the report what is published;
 - native runners in a chain of jobs;
 - a live build status;
 - a green run with a link to watch. Nothing is committed to the repository.
@@ -61,7 +64,10 @@ A long silence looks like a hang. Do not let one happen.
 Read [Project inspection](references/project-inspection.md). Build files, the
 README, and `.github/workflows/` show how the team builds. Design the basic
 build from them: a chain of jobs when there is more than one. Deploy,
-publish, release, and any job that needs a secret are follow-ups.
+release, pushing to a registry or a package index, and any job that needs
+a secret are follow-ups. The project's build command and its artifact are
+not: a workflow that only lints and tests still has a `build` script or a
+package task, and the basic build runs it and publishes the output.
 
 Read [Discover and connect](references/discover-and-connect.md). Confirm the
 server and the project. Find the VCS root and the branch.
@@ -78,8 +84,10 @@ candidate agents. Zero compatible candidates is a blocker. Fix it first.
 Read [Build-step selection](references/build-step-selection.md) and
 [Pipeline features](references/pipeline-features.md). Dedicated runners; a
 script step when the schema has none, and for glue and the `Status` step.
-Every test visible. Add the features the project supports: test reports,
-artifacts, the `Status` step, and the report tab. Keep the YAML file outside
+Every test visible. A `Build` job that produces the shippable output and
+publishes it with `files-publication`, unless the project has nothing to
+ship. Add the features the project supports: test reports, the `Status`
+step, and the report tab. Keep the YAML file outside
 the checkout. Validate it and check compatibility. A push error is the real
 validation.
 
@@ -107,6 +115,8 @@ run's `webUrl`. Then:
 - each test task per module and the job that runs it;
 - each job with its runner type, and one line per TeamCity feature: what the
   user gets and where to look;
+- the artifact: what is published, its size, and the run's Artifacts tab
+  link;
 - the runs: ID, state, duration;
 - each manual prerequisite, in the form
   [Manual prerequisites](references/manual-prerequisites.md) requires;

@@ -22,9 +22,11 @@ a job queued and its wait reason, a job started, a job finished with its
 state and test count, the head finished. After five minutes with no change,
 one line with the time elapsed and what you wait for. Keep going until the
 head and every job are green, or a blocker is proven. A green run is
-checked: read every test job's test count. 0 tests in a job that should
-report them is a silent failure. Fix the filter as
-[Build-step selection](build-step-selection.md) describes and run again.
+checked: read every test job's test count, and `run artifacts <id>` on the
+`Build` job. 0 tests in a job that should report them, or an empty artifact
+list on a job with `files-publication`, is a silent failure. Fix the filter
+or the path as [Build-step selection](build-step-selection.md) and
+[Pipeline features](pipeline-features.md) describe and run again.
 
 `execution-timeout-minutes` is behind a server toggle and may do nothing. Put
 the limit in the steps as [Build-step selection](build-step-selection.md)

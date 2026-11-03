@@ -2,8 +2,10 @@
 
 Add each feature below that the project can feed, whether or not the
 workflow had it. The `Status` step and the report tab fit every pipeline.
-Test reports need test output in a format TeamCity reads. Artifacts need
-packaged output. Say in the report which features were left out, and why.
+Test reports need test output in a format TeamCity reads. The artifact is
+required whenever the project has a build command; see
+[Project inspection](project-inspection.md). Say in the report which
+features were left out, and why.
 
 ## Test reports
 
@@ -19,10 +21,14 @@ failure. [Verify a build](verify-build.md) checks the count after every run.
 
 ## Artifacts
 
-`files-publication` for the packaged output: what the workflow uploaded, or
-the JAR or package the build produces. Every path is a file or a glob such as
-`**/target/*.jar`. A bare directory fails the publish step and turns a green
-job red.
+`files-publication` on the `Build` job for the shippable output: the JAR,
+the package, the binary, or a web app's `dist/` or `build/` directory. What
+the workflow uploaded is a hint, not the limit: a workflow that uploads
+nothing still has output to publish. Every path is a file or a glob such as
+`**/target/*.jar` or `dist/**`. A bare directory fails the
+publish step and turns a green job red. A web app's output directory has
+many files: pack it into one archive in the build step and publish the
+archive, so the user downloads one file.
 
 Rules: `dir/**` drops the directory prefix; `=>` is rejected;
 `publish-artifact: true` puts the files under `publish/`; `share-with-jobs`
