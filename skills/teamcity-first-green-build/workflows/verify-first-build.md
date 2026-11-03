@@ -14,8 +14,10 @@ Queue a personal or isolated build when supported. Poll the pipeline head and
 jobs with bounded backoff: 5, 10, 20, then 30 seconds.
 
 After two observations or 60–120 seconds in the queue, record the ID and queue
-state. Read [Build diagnostics](../shared/build-diagnostics.md). Queue the next
-build only after a documented correction or blocker.
+state. Read [Build diagnostics](../shared/build-diagnostics.md), including the
+`runs-on` and hosted-image schema check. Do this by two minutes in the queue,
+even if `pipeline validate` passed. Retry only after a documented correction,
+validation, and a compatibility recheck.
 
 ## Handle a failed build
 

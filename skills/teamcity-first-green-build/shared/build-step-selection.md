@@ -23,9 +23,9 @@ TeamCity server's supported capabilities.
   property from the repository's verified Gradle tasks. Do not substitute a
   generic script merely because schema validation does not validate every
   runner-specific property. When the repository declares an exact JDK, read
-  [JDK selection](jdk-selection.md) before selecting a host installation or
-  container. Use a script only for non-Gradle glue that the Gradle runner cannot
-  express.
+  [JDK selection](jdk-selection.md) before selecting an installed JDK,
+  build-local download, or container fallback. Use a script only for
+  non-Gradle glue that the Gradle runner cannot express.
 - Maven: when the live Pipeline schema exposes `type: maven`, use the Maven
   runner for the primary lifecycle work and put the repository's verified
   `verify`, `test`, or `package` invocation in its `goals` property. Preserve
