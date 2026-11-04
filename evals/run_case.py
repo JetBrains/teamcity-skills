@@ -97,6 +97,7 @@ from pipeline_validation import (
 from build_monitor import LiveBuildMonitor, STOP_CATEGORIES, STOP_CATEGORY, safe_monitor_diagnostics
 from maven_version import maven_versions_match, observe_maven_versions
 from maven_arguments import maven_arguments_match, resolve_maven_arguments
+from teamcity_test_reporting import report_checks
 
 
 class EvalError(RuntimeError):
@@ -2575,10 +2576,12 @@ def main() -> int:
             "error": str(exc),
         }
 
-    rendered = json.dumps(publishable_result(result), indent=2)
+    published = publishable_result(result)
+    rendered = json.dumps(published, indent=2)
     print(rendered)
     if args.result:
         args.result.write_text(rendered + "\n")
+    report_checks(published)
 
     if result["status"] in ("passed", "dry-run"):
         return 0

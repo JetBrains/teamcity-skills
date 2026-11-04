@@ -637,6 +637,17 @@ A failing `active` case exits non-zero. A failing `aspirational` case is
 reported and exits zero. `--dry-run` resolves the case without touching the
 server; `--keep` leaves the project and checkout in place for debugging.
 
+When `TEAMCITY_VERSION` is set, the runner also publishes each completed
+`active`-case grader check as a TeamCity test. Suite and test names include the
+case ID, arm, and tool mode, so their histories stay separate. This applies to every
+active case and reports only the checks selected by its contract. An execution
+error adds a failed `evalExecution` test; checks that were not graded are not
+reported as passing. Service messages use only the sanitized public result.
+`aspirational` and `draft` cases, dry runs, and local runs keep JSON-only output.
+In particular, aspirational failures do not become failed TeamCity tests,
+because pipeline jobs cannot disable failure on failed tests. The runner's exit
+codes and the `eval-result.json` artifact remain unchanged.
+
 Refresh the evaluation report after the case job reaches a terminal state and
 publishes `eval-result.json`. The dependent `Publish evaluation report` job
 does this automatically even when grading fails. While Claude is still
