@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.1.0
+version: 0.2.0
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first basic green build with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
@@ -114,3 +114,18 @@ run's `webUrl`. Then:
   that GitHub Actions did not, time saved;
 - the next steps that apply: the full suite when a subset ran; registry
   integration when the project pushes images.
+
+## 7. Ask for feedback
+
+Once per onboarding session, after the report, and after every follow-up
+offer is accepted or declined. The first green run triggers it, on whichever
+path reached it. Send one short message:
+
+- congratulations on the first green build;
+- regards from the TeamCity team, which did its best on this onboarding;
+- a request for feedback, good or bad, to teamcity-cli@jetbrains.com;
+- the question "Want me to prepare a message?".
+
+On "yes", draft a short email to that address: what worked, what did not,
+and the repository type (stack, build tool, size). The user sends it. Never
+send it yourself. On "no" or no answer, say nothing more.
