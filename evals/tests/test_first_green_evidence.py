@@ -146,7 +146,8 @@ class FirstGreenEvidenceTest(unittest.TestCase):
         self.assertFalse(missing["vcsDefaultBranch"]["passed"])
         published = runner.publishable_result({"checks": checks, "vcsRoots": tc.vcs_roots.return_value})
         self.assertNotIn(case["repository"]["url"], json.dumps(published))
-        self.assertEqual({"passed": True}, published["checks"]["vcsDefaultBranch"])
+        self.assertEqual({"passed": True, "expected": True, "observed": True},
+                         published["checks"]["vcsDefaultBranch"])
 
     def test_missing_or_conflicting_tree_is_not_green(self):
         tc, tree = self.fixture()

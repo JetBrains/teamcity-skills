@@ -53,7 +53,7 @@ class TeamCityTestReportingTest(unittest.TestCase):
                 raw = result(caseStatus=case_status, status=status, checks=checks)
                 raw["agentOutput"] = "private-agent-output"
                 for check in checks.values():
-                    check["detail"] = "private-build-log"
+                    check.update(expected=True, observed=check["passed"], detail="private-build-log")
                 expected_public = runner.publishable_result(raw)
                 destination = pathlib.Path(directory) / "eval-result.json"
                 output = io.StringIO()
@@ -68,6 +68,7 @@ class TeamCityTestReportingTest(unittest.TestCase):
                 text = output.getvalue()
                 self.assertEqual(test_count, text.count("##teamcity[testStarted "))
                 self.assertEqual(test_count, text.count("##teamcity[testFinished "))
+                self.assertEqual(test_count, text.count("##teamcity[testStdOut "))
                 self.assertEqual(failed_count, text.count("##teamcity[testFailed "))
                 self.assertNotIn("private-agent-output", text)
                 self.assertNotIn("private-build-log", text)
@@ -108,10 +109,62 @@ class TeamCityTestReportingTest(unittest.TestCase):
             caseId="case']\n##teamcity[buildStatus status='SUCCESS']",
             status="failed", checks={"rule|'\r\n[]": {"passed": False}},
         ))
-        self.assertEqual(5, len(text.splitlines()))
+        self.assertEqual(6, len(text.splitlines()))
         self.assertIn(".skill.cli-only.rule|||'|r|n|[|]'", text)
         self.assertNotIn("##teamcity[buildStatus", text)
         self.assertIn("##teamcity|[buildStatus", text)
+
+    def test_passed_and_failed_checks_include_relevant_sanitized_evidence(self):
+        for passed in (True, False):
+            with self.subTest(passed=passed):
+                raw = result(status="passed" if passed else "failed", checks={
+                    "toolchain": {"passed": passed, "expected": "21+",
+                                  "observed": "21+" if passed else "not-evidenced",
+                                  "detail": "private-build-log"},
+                    "requiredTests": {"passed": passed, "expected": True, "observed": passed},
+                }, verificationDiagnostics={
+                    "testCount": 39,
+                    "jdk": {"requiredMajor": 21, "runtimeVerified": passed,
+                            "JAVA_HOME": "private-java-home", "mavenRuntime": [
+                                {"status": "verified" if passed else "mismatch",
+                                 "observedMajors": [21 if passed else 17], "raw": "private-log"}]},
+                    "builds": [{"id": 10, "testCount": 39, "successfulTestCount": 39,
+                                "statusText": "private-status"}],
+                })
+                public = runner.publishable_result(raw)
+                self.assertEqual(public, runner.publishable_result(public))
+                text = self.report(public)
+                self.assertEqual(2, text.count("##teamcity[testStdOut "))
+                self.assertEqual(0 if passed else 2, text.count("##teamcity[testFailed "))
+                self.assertIn('Expected: "21+"', text)
+                self.assertIn('"observedMajors": |[|n    ', text)
+                test_output = next(line for line in text.splitlines()
+                                   if "testStdOut" in line and ".requiredTests'" in line)
+                self.assertIn('"testCount": 39', test_output)
+                self.assertNotIn("observedMajors", test_output)
+                self.assertNotIn("private-", json.dumps(public) + text)
+
+    def test_execution_failure_details_include_category_and_yaml_diagnostics(self):
+        public = runner.publishable_result(result(
+            status="errored", checks={}, errorCategory="verification-invalid-pipeline-yaml",
+            schemaValidationDiagnostics={"status": "invalid", "errorCount": 1,
+                "issues": [{"line": 28, "category": "invalid-enum-value", "path": "private-yaml"}]},
+        ))
+        text = self.report(public)
+        failure = next(line for line in text.splitlines() if "testFailed" in line)
+        self.assertIn("verification-invalid-pipeline-yaml", failure)
+        self.assertIn('"line": 28', failure)
+        self.assertNotIn("private-yaml", text)
+
+    def test_arbitrary_expected_and_observed_values_are_not_published(self):
+        for value in ("private-server-value", {"password": "private-secret"}, ["private-log"]):
+            with self.subTest(value=value):
+                public = runner.publishable_result(result(checks={
+                    "customContractRule": {"passed": False, "expected": value,
+                                           "observed": value, "detail": "private-detail"},
+                }))
+                self.assertEqual({"passed": False}, public["checks"]["customContractRule"])
+                self.assertNotIn("private-", json.dumps(public) + self.report(public))
 
     def test_local_output_stays_json_only(self):
         self.assertEqual("", self.report(result(status="failed"), teamcity=False))

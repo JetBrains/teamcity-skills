@@ -97,7 +97,7 @@ from pipeline_validation import (
 from build_monitor import LiveBuildMonitor, STOP_CATEGORIES, STOP_CATEGORY, safe_monitor_diagnostics
 from maven_version import maven_versions_match, observe_maven_versions
 from maven_arguments import maven_arguments_match, resolve_maven_arguments
-from teamcity_test_reporting import report_checks
+from teamcity_test_reporting import report_checks, safe_check_result
 
 
 class EvalError(RuntimeError):
@@ -2081,7 +2081,7 @@ def publishable_result(result: dict) -> dict:
     if type(max_budget) in (int, float) and math.isfinite(max_budget) and max_budget > 0:
         published["agentMaxBudgetUsd"] = max_budget
     published["checks"] = {
-        name: {"passed": check.get("passed")}
+        name: safe_check_result(check)
         for name, check in (result.get("checks") or {}).items()
         if isinstance(check, dict)
     }

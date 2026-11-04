@@ -654,10 +654,14 @@ case ID, arm, and tool mode, so their histories stay separate. This applies to e
 active case and reports only the checks selected by its contract. An execution
 error adds a failed `evalExecution` test; checks that were not graded are not
 reported as passing. Service messages use only the sanitized public result.
+Each test includes output with its result, safe expected/observed values when
+available, and relevant existing diagnostics. Failed tests include the same
+text in their failure details. Raw grader detail strings are not published.
 `aspirational` and `draft` cases, dry runs, and local runs keep JSON-only output.
 In particular, aspirational failures do not become failed TeamCity tests,
 because pipeline jobs cannot disable failure on failed tests. The runner's exit
-codes and the `eval-result.json` artifact remain unchanged.
+codes remain unchanged. The `eval-result.json` checks also retain these safe
+expected/observed values.
 
 Refresh the evaluation report after the case job reaches a terminal state and
 publishes `eval-result.json`. The dependent `Publish evaluation report` job
