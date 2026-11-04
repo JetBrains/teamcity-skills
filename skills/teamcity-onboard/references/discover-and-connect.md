@@ -40,28 +40,44 @@ one whose URL matches the repository. Read URL, default branch, and auth with
 ## Choose the branch
 
 The safe setup: one branch, a pinned revision with `--branch`, no triggers.
-Read the root's default branch and branch specification from `vcs view`.
+Inspect the VCS roots attached to the pipeline, including its head, and read
+their default branches and branch specifications with `project vcs view`.
+Choose a run selector accepted by those roots. The Git ref used to create a
+root and TeamCity's logical run branch are separate values: `main` and
+`refs/heads/main` are not interchangeable. The default Git ref is not
+necessarily selectable by its literal name. Use the root's branch mapping
+and, when available, a successful head run from
+`run list --job <head-id> --json` to verify the selector for the intended
+Git branch. Green child jobs alone do not verify it.
+
 TeamCity builds the root's default branch unless the run names another one.
 When the checked-out branch is not the default, a run without `--branch`
 builds code you never inspected, and its result proves nothing. Always pass
 the pinned revision and the branch together.
 
-- Pin the checked-out commit with `--revision <root-id>=<sha>@<branch>` and
-  pass `--branch` as well. Without `--branch` the checkout fails with
-  `couldn't find remote ref <unspecified>`. A bare `--revision <sha>` or a
-  literal `--branch main` fails with `invalid_branch_name` when the
-  specification does not list the branch.
-- For a branch with another name, derive the logical name from the
+- Pin the checked-out commit with `--revision <root-id>=<sha>@<git-ref>` and
+  pass `--branch <verified-selector>` as well. Without `--branch` the
+  checkout can fail with `couldn't find remote ref <unspecified>`. Do not
+  guess `--branch main` or `--branch refs/heads/main`, or strip or add
+  `refs/heads/` without evidence from the attached roots.
+- When the checked-out branch matches the attached VCS root's default
+  branch, queue the pipeline head with `--branch '<default>'`. Keep the
+  actual Git ref in the revision pin, for example
+  `--revision <root-id>=<sha>@refs/heads/main`; do not use `<default>` after
+  `@`. The default branch need not be listed in the branch specification.
+- For a non-default branch, derive the logical name from the
   specification: `+:refs/heads/*` names `feature/x` as `feature/x`.
-- When the specification does not cover the checked-out branch, write a
-  [manual prerequisite](manual-prerequisites.md) for the root's branch
-  specification. A run on `main`, a local `git checkout` of another branch,
-  or a wider specification hides the error and is forbidden.
+- When the checked-out branch is neither the default nor covered by the
+  specification, write a [manual prerequisite](manual-prerequisites.md)
+  for the root's branch specification. A run on `main`, a local
+  `git checkout` of another branch, or a wider specification hides the error
+  and is forbidden.
 
-After queueing, read back the run's branch and revision before you wait on
-it. A red head with `invalid_branch_name` and green jobs is a branch binding
-error: fix the branch selection. The steps stay unchanged. That run is not
-green.
+After queueing, read back the head's and jobs' branches and revisions before
+you wait. Confirm that they resolve to the checked-out Git branch and pinned
+SHA. A red head with `invalid_branch_name` and green jobs is a branch binding
+error: inspect the attached roots and correct the demonstrated selector
+mismatch before retrying. The steps stay unchanged. That run is not green.
 
 ## Remote run as the fallback
 
