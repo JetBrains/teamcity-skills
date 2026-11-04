@@ -467,6 +467,24 @@ class TeamCity:
     def build(self, build_id: int):
         return self._run(["run", "view", str(build_id), "--json"], json_output=True)
 
+    def build_problem_count(self, build_id: int) -> int:
+        """Read structured problems for this failed head without retaining details."""
+        summary = self._run(
+            ["run", "log", str(build_id), "--failed", "--json"], json_output=True
+        )
+        if (not isinstance(summary, dict)
+                or type(summary.get("run_id")) not in (int, str)
+                or str(summary["run_id"]) != str(build_id)
+                or summary.get("status") not in ("FAILURE", "ERROR")):
+            raise EvidenceError("verification-observation-failed")
+        problems = summary.get("problems")
+        if (not isinstance(problems, list)
+                or any(not isinstance(item, dict)
+                       or not isinstance(item.get("type"), str) or not item["type"].strip()
+                       for item in problems)):
+            raise EvidenceError("verification-observation-failed")
+        return len(problems)
+
     def build_log(self, build_id: int) -> str:
         """Read the exact child build's full log; never publish the raw text."""
         return self._run(["run", "log", str(build_id), "--raw"])

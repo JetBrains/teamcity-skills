@@ -73,6 +73,14 @@ the pinned revision and the branch together.
   `git checkout` of another branch, or a wider specification hides the error
   and is forbidden.
 
+For a root whose default branch is `refs/heads/development`, queue its pinned
+commit with:
+
+```bash
+teamcity run start <pipeline-id> --branch '<default>' \
+  --revision '<root-id>=<sha>@refs/heads/development' --json
+```
+
 After queueing, read back the head's and jobs' branches and revisions before
 you wait. Confirm that they resolve to the checked-out Git branch and pinned
 SHA. A red head with `invalid_branch_name` and green jobs is a branch binding
