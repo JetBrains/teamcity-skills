@@ -55,13 +55,16 @@ When the checked-out branch is not the default, a run without `--branch`
 builds code you never inspected, and its result proves nothing. Always pass
 the pinned revision and the branch together.
 
-- Pin the checked-out commit with `--revision <root-id>=<sha>@<branch>` and
+- Pin the checked-out commit with `--revision <root-id>=<sha>@<git-ref>` and
   pass `--branch <verified-selector>` as well. Without `--branch` the
   checkout can fail with `couldn't find remote ref <unspecified>`. Do not
   guess `--branch main` or `--branch refs/heads/main`, or strip or add
   `refs/heads/` without evidence from the attached roots.
-- For the root's default branch, use its accepted default-branch selector.
-  The default branch need not be listed in the branch specification.
+- When the checked-out branch matches the attached VCS root's default
+  branch, queue the pipeline head with `--branch '<default>'`. Keep the
+  actual Git ref in the revision pin, for example
+  `--revision <root-id>=<sha>@refs/heads/main`; do not use `<default>` after
+  `@`. The default branch need not be listed in the branch specification.
 - For a non-default branch, derive the logical name from the
   specification: `+:refs/heads/*` names `feature/x` as `feature/x`.
 - When the checked-out branch is neither the default nor covered by the
