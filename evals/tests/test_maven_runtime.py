@@ -190,6 +190,7 @@ class MavenGraderTest(unittest.TestCase):
                      {"id": 10, "state": "finished", "status": "SUCCESS"}, *children]}
         tc = mock.Mock()
         tc.jobs.return_value = jobs
+        tc.builds.return_value = [{"id": 10, "buildTypeId": "pipeline"}]
         tc.build.side_effect = lambda build_id: next(item for item in children if item["id"] == build_id)
         tc.build_log.return_value = launch()
         tc.test_results.return_value = [{"name": "Example.test", "status": "SUCCESS", "ignored": False}]

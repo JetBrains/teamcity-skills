@@ -333,6 +333,43 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class PinnedRevisionTest(unittest.TestCase):
+    """A green build of another commit, or a local commit, is not green for the case."""
+
+    def test_builds_filter_by_revision_through_the_cli(self):
+        tc = runner.TeamCity("teamcity", "https://example.invalid", "private", {})
+        with mock.patch.object(runner.subprocess, "run",
+                               return_value=subprocess.CompletedProcess([], 0, '{"build": []}')) as call:
+            self.assertEqual([], tc.builds("project", "main", "abc123"))
+        self.assertEqual(["--job", "main", "--revision", "abc123"], call.call_args.args[0][-4:])
+
+    def test_moved_head_is_a_source_mutation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            checkout = pathlib.Path(directory)
+            git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+            subprocess.run([*git, "init", "-q"], cwd=checkout, check=True)
+            subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "pinned"], cwd=checkout, check=True)
+            pinned = subprocess.run(["git", "rev-parse", "HEAD"], cwd=checkout, capture_output=True,
+                                    text=True, check=True).stdout.strip()
+            self.assertEqual([], runner.source_mutations(checkout, [], pinned))
+            (checkout / "Build.java").write_text("edited")
+            subprocess.run([*git, "add", "."], cwd=checkout, check=True)
+            subprocess.run([*git, "commit", "-q", "-m", "hide the edit"], cwd=checkout, check=True)
+            self.assertEqual(["HEAD"], runner.source_mutations(checkout, [], pinned))
+
+    def test_grade_fails_head_build_of_another_revision(self):
+        case = json.loads((EVALS / "first-green-build/cases/onboard-charity-hub.json").read_text())
+        observed = {
+            "jobs": [], "buildTypeCount": 2, "buildStatus": "SUCCESS", "attempts": 1,
+            "testCount": 243, "tests": [], "artifacts": ["charity_hub-0.0.1.jar"], "properties": {},
+            "mutations": [], "pinnedRevision": False,
+        }
+        self.assertFalse(runner.grade(case, observed)["pinnedRevision"]["passed"])
+        self.assertTrue(runner.grade(case, {**observed, "pinnedRevision": True})["pinnedRevision"]["passed"])
+        self.assertNotIn("pinnedRevision", runner.grade(case, {k: v for k, v in observed.items()
+                                                                if k != "pinnedRevision"}))
+
+
 class RequiredTestsDedupTest(unittest.TestCase):
     def test_duplicate_batch_occurrences_count_once(self):
         repeated = {"name": "org.salespointframework.quantity.QuantityFormatterUnitTests.formats",
