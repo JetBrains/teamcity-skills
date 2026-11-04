@@ -84,13 +84,20 @@ from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
 from queue_recovery import QueueRecoveryFixture, forbidden_queue_transport, safe_fixture_diagnostics
 from first_green_evidence import (
     EvidenceError, chain_nodes, jdk_evidence, jdk_selectors, observe_chain,
-    safe_verification_diagnostics, safe_verification_error, select_pipeline,
+    resolve_jdk_home, safe_verification_diagnostics, safe_verification_error, select_pipeline,
+    vcs_root_evidence,
 )
+from maven_runtime import maven_runtime_matches
 from pipeline_validation import (
-    ScriptConfigurationError, safe_script_diagnostics, script_step_diagnostics,
+    SCHEMA_STATUS_INVALID, SCHEMA_STATUS_UNAVAILABLE, SCHEMA_STATUS_VALID,
+    PipelineSchemaError, ScriptConfigurationError, pipeline_schema_result,
+    safe_schema_diagnostics, safe_script_diagnostics, script_step_diagnostics,
     validate_pipeline_scripts,
 )
-from build_monitor import LiveBuildMonitor, STOP_CATEGORY, safe_monitor_diagnostics
+from build_monitor import LiveBuildMonitor, STOP_CATEGORIES, STOP_CATEGORY, safe_monitor_diagnostics
+from maven_version import maven_versions_match, observe_maven_versions
+from maven_arguments import maven_arguments_match, resolve_maven_arguments
+from teamcity_test_reporting import report_checks
 
 
 class EvalError(RuntimeError):
@@ -372,7 +379,7 @@ class TeamCity:
         self.command_timeout = command_timeout
         self.deadline = None
 
-    def _run(self, arguments: list, json_output: bool = False) -> str:
+    def _execute(self, arguments: list) -> subprocess.CompletedProcess:
         budget = self.command_timeout
         if self.deadline is not None:
             budget = min(budget, self.deadline - time.monotonic())
@@ -389,6 +396,10 @@ class TeamCity:
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise EvalError("TeamCity CLI lifecycle command could not run") from exc
+        return completed
+
+    def _run(self, arguments: list, json_output: bool = False) -> str:
+        completed = self._execute(arguments)
         if completed.returncode:
             # Do not put CLI output into a published result: it can include
             # server state beyond this one temporary eval project.
@@ -456,10 +467,40 @@ class TeamCity:
     def build(self, build_id: int):
         return self._run(["run", "view", str(build_id), "--json"], json_output=True)
 
+    def build_log(self, build_id: int) -> str:
+        """Read the exact child build's full log; never publish the raw text."""
+        return self._run(["run", "log", str(build_id), "--raw"])
+
     def build_tree(self, build_id: int):
         return self._run(
             ["run", "tree", str(build_id), "--depth", "0", "--json"], json_output=True
         )
+
+    def vcs_roots(self, job_id: str) -> list:
+        """Read only roots attached to this configuration, never project-wide roots."""
+        job = self._run(["job", "view", job_id, "--json"], json_output=True)
+        entries = job.get("vcs-root-entries") if isinstance(job, dict) else None
+        records = self._records(entries, "vcs-root-entry")
+        if (not isinstance(job, dict) or job.get("id") != job_id
+                or not isinstance(entries, dict) or type(entries.get("count")) is not int
+                or entries["count"] != len(records)):
+            raise EvidenceError("verification-observation-failed")
+        roots = []
+        for entry in records:
+            root = entry.get("vcs-root") if isinstance(entry, dict) else None
+            root_id = root.get("id") if isinstance(root, dict) else None
+            if not isinstance(root_id, str) or not root_id:
+                raise EvidenceError("verification-observation-failed")
+            details = self._run(
+                ["project", "vcs", "view", root_id, "--json"], json_output=True
+            )
+            if not isinstance(details, dict) or details.get("id") != root_id:
+                raise EvidenceError("verification-observation-failed")
+            properties = {prop["name"]: prop.get("value")
+                          for prop in self._records(details.get("properties"), "property")
+                          if isinstance(prop, dict) and prop.get("name") in ("url", "branch")}
+            roots.append({"vcsName": details.get("vcsName"), **properties})
+        return roots
 
     def queue_wait_reason(self, build: dict) -> str:
         """Read only this build's queue reason through the first-class CLI."""
@@ -503,6 +544,27 @@ class TeamCity:
             raise EvalError("stored pipeline has no job definitions")
         return parsed
 
+    def validate_pipeline(self, pipeline_id: str, definition: dict) -> dict:
+        """Validate the selected server YAML, independently of the agent's calls."""
+        import yaml
+        try:
+            document = self.pipeline(pipeline_id)["yaml"]
+            # Do not grade a different configuration if the pipeline changed
+            # while its verification chain was running.
+            if yaml.safe_load(document) != definition:
+                raise EvidenceError("verification-pipeline-ambiguous")
+            with tempfile.TemporaryDirectory(prefix="teamcity-eval-validation-") as directory:
+                path = pathlib.Path(directory) / "pipeline.yml"
+                path.write_text(document, encoding="utf-8")
+                completed = self._execute([
+                    "pipeline", "validate", str(path), "--refresh-schema",
+                ])
+                return pipeline_schema_result(completed, path)
+        except (EvalError, OSError) as exc:
+            raise PipelineSchemaError({"status": SCHEMA_STATUS_UNAVAILABLE}) from exc
+        except yaml.YAMLError:
+            raise EvidenceError("verification-pipeline-ambiguous") from None
+
     def jobs(self, project_id: str, pipeline_id: str = None) -> list:
         """The jobs the agent defined, read from the pipeline YAML on the server.
 
@@ -521,6 +583,10 @@ class TeamCity:
             parsed = self.pipeline_definition(pipeline_id)
             for job_id, job in (parsed.get("jobs") or {}).items():
                 job = job or {}
+                environment = {**(parsed.get("environment") or {}),
+                               **(job.get("environment") or {})}
+                parameters = {**(parsed.get("parameters") or {}),
+                              **(job.get("parameters") or {})}
                 steps = [
                     {
                         "type": step.get("type"),
@@ -530,6 +596,17 @@ class TeamCity:
                     }
                     for step in (job.get("steps") or [])
                 ]
+                # Resolve runner references before discarding non-JDK parameters.
+                # Keep the resolved values private, like other step properties.
+                for step in steps:
+                    home = step["properties"].get("jdk-home")
+                    if step["type"] in ("maven", "gradle") and isinstance(home, str) and home.strip():
+                        step["properties"]["jdk-home"] = resolve_jdk_home(home, parameters, environment)
+                    if step["type"] == "maven":
+                        for field in ("goals", "runner-arguments"):
+                            if field in step["properties"]:
+                                step["properties"][field] = resolve_maven_arguments(
+                                    step["properties"][field], parameters, environment)
                 # Pipeline YAML permits the short string form as well as an
                 # object with an explicit ``publish-artifact`` flag. A string
                 # is itself an artifact rule, so it must not be treated as a
@@ -547,12 +624,8 @@ class TeamCity:
                     "steps": steps,
                     "artifactRules": "\n".join(published),
                     "agentRequirements": [str(runs_on)] if runs_on else [],
-                    "environment": jdk_selectors({
-                        **(parsed.get("environment") or {}), **(job.get("environment") or {}),
-                    }),
-                    "parameters": jdk_selectors({
-                        **(parsed.get("parameters") or {}), **(job.get("parameters") or {}),
-                    }, parameter=True),
+                    "environment": jdk_selectors(environment),
+                    "parameters": jdk_selectors(parameters, parameter=True),
                     "jobProperties": {
                         name: job[name]
                         for name in ("enable-dependency-cache", "parallelism")
@@ -562,10 +635,8 @@ class TeamCity:
         return collected
 
     def resulting_properties(self, build_id: int) -> dict:
-        # The first-class CLI has no resulting-properties command.  Toolchain
-        # evidence is therefore taken from the server-stored pipeline YAML
-        # (environment and image declarations) rather than falling back to
-        # direct REST.
+        # The first-class CLI has no resulting-properties command. Maven
+        # runtime evidence comes from `run log`, not the agent JVM properties.
         return {}
 
     def test_count(self, build_id: int) -> int:
@@ -628,9 +699,9 @@ def artifact_matches(pattern: str, published: list) -> bool:
     return False
 
 
-def toolchain_evidence(properties: dict, jdk: str, jobs: list = None) -> tuple:
+def toolchain_evidence(properties: dict, jdk: str, jobs: list = None, jdk_match="exact") -> tuple:
     """Check explicit selections, separately from measured runtime versions."""
-    matched, evidence, _ = jdk_evidence(properties, jdk, jobs)
+    matched, evidence, _ = jdk_evidence(properties, jdk, jobs, jdk_match=jdk_match)
     return matched, evidence
 
 
@@ -666,6 +737,7 @@ def grade(case: dict, observed: dict) -> dict:
     checks["configurationValidated"] = {
         "expected": expected["configurationValidated"],
         "observed": (observed["buildTypeCount"] > 0 and observed["buildStatus"] is not None
+                     and observed.get("schemaValidated") is True
                      and not script_step_diagnostics(observed.get("jobs", []))["issues"]),
         "detail": f"{observed['buildTypeCount']} build configuration(s) created",
     }
@@ -693,11 +765,35 @@ def grade(case: dict, observed: dict) -> dict:
         "detail": f"unmatched: {missing}" if missing else f"{len(observed['artifacts'])} artifact(s)",
     }
     jdk = expected["toolchain"]["jdk"]
-    matched, evidence = toolchain_evidence(observed["properties"], jdk, observed.get("jobs"))
+    jdk_match = expected["toolchain"].get("jdkMatch", "exact")
+    jdk_requirement = f"{jdk}+" if jdk_match == "minimum" else jdk
+    jobs = observed.get("jobs", [])
+    uses_maven = case.get("stack", {}).get("buildTool") == "maven" or any(
+        step.get("type") == "maven" for job in jobs for step in job.get("steps", []))
+    if uses_maven:
+        maven_verified = maven_runtime_matches(observed.get("mavenRuntime"), jobs, jdk, jdk_match=jdk_match)
+        other_jobs = []
+        for job in jobs:
+            steps = job.get("steps", [])
+            if (not any(step.get("type") == "maven" for step in steps)
+                    or any(step.get("type") == "gradle" for step in steps)):
+                other_jobs.append({**job, "steps": [step for step in steps if step.get("type") != "maven"]})
+        others_verified = not other_jobs or toolchain_evidence(
+            observed["properties"], jdk, other_jobs, jdk_match=jdk_match)[0]
+        matched = maven_verified and others_verified
+        if not maven_verified:
+            detail = "Maven JVM missing, ambiguous, unavailable, or does not match the required JDK"
+        elif not others_verified:
+            detail = "Non-Maven jobs do not evidence the required JDK"
+        else:
+            detail = "Maven JVM verified in the build log"
+    else:
+        matched, evidence = toolchain_evidence(observed["properties"], jdk, jobs, jdk_match=jdk_match)
+        detail = f"matched: {evidence}" if matched else f"no JDK {jdk_requirement} among: {evidence}"
     checks["toolchain"] = {
-        "expected": jdk,
-        "observed": jdk if matched else "not-evidenced",
-        "detail": f"matched: {evidence}" if matched else f"no JDK {jdk} among: {evidence}",
+        "expected": jdk_requirement,
+        "observed": jdk_requirement if matched else "not-evidenced",
+        "detail": detail,
     }
     if "requiredContainerImage" in expected:
         has_matching_image = any(
@@ -729,6 +825,10 @@ def grade(case: dict, observed: dict) -> dict:
             "detail": ("head build ran the pinned revision" if observed["pinnedRevision"] is True
                        else "head build did not run the pinned revision"),
         }
+    if expected.get("vcsRootMatchesRepository"):
+        checks.update({name: {"expected": True, "observed": matched}
+                       for name, matched in vcs_root_evidence(
+                           case["repository"], observed.get("vcsRoots", [])).items()})
 
     if "configuration" in expected:
         configuration_observed = {**observed, "toolCalls": []}
@@ -740,6 +840,22 @@ def grade(case: dict, observed: dict) -> dict:
         checks["requiredTests"] = {
             "expected": True,
             "observed": required_tests_pass(expected, observed.get("tests", [])),
+        }
+    if expected.get("allTestsPassed"):
+        tests = observed.get("tests", [])
+        checks["allTestsPassed"] = {
+            "expected": True,
+            "observed": bool(tests) and all(test.get("status") == "SUCCESS"
+                                           and test.get("ignored", False) is False
+                                           for test in tests),
+        }
+    if "minimumMavenVersion" in expected:
+        checks["mavenVersion"] = {
+            "expected": True,
+            "observed": maven_versions_match(observed.get("mavenVersions"),
+                                             observed.get("jobs", []),
+                                             expected["minimumMavenVersion"]),
+            "detail": f"Maven {expected['minimumMavenVersion']}+ required in every native Maven build launch",
         }
     if "jobResults" in expected:
         results = observed.get("jobResults", [])
@@ -767,8 +883,10 @@ def grade(case: dict, observed: dict) -> dict:
 
 
 def required_tests_pass(contract, tests):
-    successful = [test["name"] for test in tests
-                  if test.get("status") == "SUCCESS" and not test.get("ignored", False)]
+    # A test class scheduled into several parallel batches reports once per
+    # batch; count unique successful names so duplicates cannot pad the minimum.
+    successful = {test["name"] for test in tests
+                  if test.get("status") == "SUCCESS" and not test.get("ignored", False)}
     return (len(successful) >= contract.get("minimumTestCount", 0)
             and all(any(re.search(pattern, name) for name in successful)
                     for pattern in contract.get("requiredTestNames", [])))
@@ -817,6 +935,18 @@ def add_transport_checks(
 # Runner
 # --------------------------------------------------------------------------- #
 
+def forbidden_step_property(step, forbidden, pattern):
+    field = forbidden["property"]
+    if step["type"] != forbidden["stepType"] or field not in step["properties"]:
+        return False
+    if pattern is None:
+        return True
+    value = step["properties"][field]
+    if step["type"] == "maven" and field in ("goals", "runner-arguments"):
+        return maven_arguments_match(value, pattern)
+    return bool(pattern.search(str(value)))
+
+
 def grade_configuration(case: dict, observed: dict) -> dict:
     """Grade the pipeline the agent produced, without running it."""
     expected = case["expected"]
@@ -825,7 +955,8 @@ def grade_configuration(case: dict, observed: dict) -> dict:
 
     checks["configurationValidated"] = {
         "expected": True,
-        "observed": bool(jobs) and not script_step_diagnostics(jobs)["issues"],
+        "observed": (bool(jobs) and observed.get("schemaValidated") is True
+                     and not script_step_diagnostics(jobs)["issues"]),
         "detail": f"{len(jobs)} job(s): {[j['name'] for j in jobs]}",
     }
     checks["minimumJobs"] = {
@@ -838,7 +969,8 @@ def grade_configuration(case: dict, observed: dict) -> dict:
 
     if "toolchain" in expected:
         jdk = expected["toolchain"]["jdk"]
-        matched, _ = toolchain_evidence({}, jdk, jobs)
+        matched, _ = toolchain_evidence(
+            {}, jdk, jobs, jdk_match=expected["toolchain"].get("jdkMatch", "exact"))
         checks["toolchain"] = {"expected": True, "observed": matched}
 
     if "expectedJobCount" in expected:
@@ -881,12 +1013,7 @@ def grade_configuration(case: dict, observed: dict) -> dict:
         for forbidden in expected["forbiddenStepProperties"]:
             pattern = re.compile(forbidden["matches"]) if "matches" in forbidden else None
             if any(
-                step["type"] == forbidden["stepType"]
-                and forbidden["property"] in step["properties"]
-                and (
-                    pattern is None
-                    or pattern.search(str(step["properties"][forbidden["property"]]))
-                )
+                forbidden_step_property(step, forbidden, pattern)
                 for job in jobs for step in job["steps"]
             ):
                 used.append(
@@ -975,12 +1102,7 @@ def grade_configuration(case: dict, observed: dict) -> dict:
             for forbidden in contract.get("forbiddenStepProperties", []):
                 pattern = re.compile(forbidden["matches"]) if "matches" in forbidden else None
                 if any(
-                    step["type"] == forbidden["stepType"]
-                    and forbidden["property"] in step["properties"]
-                    and (
-                        pattern is None
-                        or pattern.search(str(step["properties"][forbidden["property"]]))
-                    )
+                    forbidden_step_property(step, forbidden, pattern)
                     for step in job["steps"]
                 ):
                     failures.append(
@@ -1603,15 +1725,15 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
                         category = build_monitor.checkpoint(deadline)
                         if time.monotonic() >= deadline:
                             raise subprocess.TimeoutExpired(command, timeout)
-                        if category == STOP_CATEGORY and process.poll() is None:
+                        if category in STOP_CATEGORIES and process.poll() is None:
                             stop_agent_processes(process)
                             build_monitor.mark_stopped()
-                            print("[eval-build-monitor] stopped agent: " + STOP_CATEGORY,
+                            print("[eval-build-monitor] stopped agent: " + category,
                                   file=sys.stderr, flush=True)
                             return monitored({
                                 "exitCode": process.returncode,
                                 "timedOut": False, "timeoutSeconds": timeout,
-                                "failureCategory": STOP_CATEGORY,
+                                "failureCategory": category,
                             })
         except subprocess.TimeoutExpired:
             stop_agent_processes(process)
@@ -1928,6 +2050,9 @@ def publishable_result(result: dict) -> dict:
     configuration = safe_script_diagnostics(result.get("configurationDiagnostics"))
     if configuration:
         published["configurationDiagnostics"] = configuration
+    schema = safe_schema_diagnostics(result.get("schemaValidationDiagnostics"))
+    if schema:
+        published["schemaValidationDiagnostics"] = schema
     verification_error = safe_verification_error(result.get("verificationErrorCategory"))
     if verification_error:
         published["verificationErrorCategory"] = verification_error
@@ -1958,17 +2083,8 @@ def harness_revision() -> Optional[str]:
     return revision if SAFE_REVISION.fullmatch(revision) else None
 
 
-def wait_for_build(
-    tc: TeamCity, project_id: str, timeout: int, poll: int = 15,
-    queue_check_after: int = 120, queue_stall_timeout: int = 600,
-    case: dict = None, checkout: pathlib.Path = None,
-    no_build_timeout: int = None,
-) -> dict:
-    """Freeze one verification head and wait for its entire dependency DAG."""
-    deadline = time.time() + timeout
-    no_build_deadline = time.time() + (timeout if no_build_timeout is None else no_build_timeout)
-    if timeout <= 0:
-        raise NoBuildQueued("no verification head observed within the wait budget")
+def verification_pipeline(tc, project_id, case=None, checkout=None):
+    """Select the saved configuration that matches the agent's final deliverable."""
     definitions = {key: tc.pipeline_definition(key) for key in tc.pipeline_ids(project_id)}
     if not definitions:
         raise NoBuildQueued("the agent created no pipeline in the temporary project",
@@ -1988,10 +2104,26 @@ def wait_for_build(
             if not isinstance(source, dict):
                 raise EvidenceError("verification-pipeline-ambiguous")
     pipeline_id, selection = select_pipeline(definitions, source)
+    return pipeline_id, selection, definitions[pipeline_id]
+
+
+def wait_for_build(
+    tc: TeamCity, project_id: str, timeout: int, poll: int = 15,
+    queue_check_after: int = 120, queue_stall_timeout: int = 600,
+    case: dict = None, checkout: pathlib.Path = None,
+    no_build_timeout: int = None,
+) -> dict:
+    """Freeze one verification head and wait for its entire dependency DAG."""
+    if timeout <= 0:
+        raise NoBuildQueued("no verification head observed within the wait budget")
+    pipeline_id, selection, definition = verification_pipeline(tc, project_id, case, checkout)
+    schema_diagnostics = tc.validate_pipeline(pipeline_id, definition)
     # Stored YAML, not virtual job metadata, is authoritative for script fields.
     # Check only the selected verification pipeline; unrelated probes are not
     # evidence about it. Fail before querying builds or sleeping in the queue.
-    configuration_diagnostics = validate_pipeline_scripts(definitions[pipeline_id])
+    configuration_diagnostics = validate_pipeline_scripts(definition)
+    deadline = time.time() + timeout
+    no_build_deadline = time.time() + (timeout if no_build_timeout is None else no_build_timeout)
     latest, attempts = None, 0
     queued = {}
     while time.time() < deadline:
@@ -2010,6 +2142,8 @@ def wait_for_build(
                     raise EvidenceError("verification-chain-incomplete")
                 return {**latest, "state": "finished", "nodes": nodes,
                         "configurationDiagnostics": configuration_diagnostics,
+                        "schemaValidationDiagnostics": schema_diagnostics,
+                        "pipelineDefinition": definition,
                         "pipelineId": pipeline_id, "selection": selection, "attempts": attempts,
                         "status": "SUCCESS" if all(node["status"] == "SUCCESS" for node in nodes)
                         else "FAILURE"}
@@ -2249,11 +2383,11 @@ def run(
         # gets the full (unpaid) build wait rather than an early partial grade.
         budget = int(env.get("EVAL_BUILD_TIMEOUT", "3600"))
         result["buildTimeoutSeconds"] = budget
-        if agent_run.get("failureCategory") == STOP_CATEGORY:
+        if agent_run.get("failureCategory") in STOP_CATEGORIES:
             # The paid process has stopped. Preserve the incident, do not grade
             # partial output, wait for another build, repair a target or retry.
             result["status"] = "errored"
-            result["verificationErrorCategory"] = STOP_CATEGORY
+            result["verificationErrorCategory"] = agent_run["failureCategory"]
             result["verificationDiagnostics"] = {
                 "terminalChain": result["buildMonitorDiagnostics"].get("lastChain", {}),
             }
@@ -2292,8 +2426,11 @@ def run(
             # No build is run: the case asks what the agent configured, which is
             # answerable in minutes and without a build agent.
             phases.enter("grading")
+            pipeline_id, _, definition = verification_pipeline(tc, project_id, case, checkout)
+            result["schemaValidationDiagnostics"] = tc.validate_pipeline(pipeline_id, definition)
             observed = {
-                "jobs": tc.jobs(project_id),
+                "jobs": tc.jobs(project_id, pipeline_id),
+                "schemaValidated": result["schemaValidationDiagnostics"].get("status") == SCHEMA_STATUS_VALID,
                 "mutations": source_mutations(checkout, allowed, revision),
                 "toolCalls": tool_calls(trace),
             }
@@ -2340,18 +2477,28 @@ def run(
             raise
         result["configurationDiagnostics"] = build["configurationDiagnostics"]
         phases.enter("grading")
+        result["schemaValidationDiagnostics"] = build["schemaValidationDiagnostics"]
         # How many builds it took to get green is a quality signal in itself:
         # green on the first attempt and green on the sixth are not the same
         # work, and the graded checks alone cannot tell them apart.
         try:
+            if tc.pipeline_definition(build["pipelineId"]) != build["pipelineDefinition"]:
+                raise EvidenceError("verification-pipeline-ambiguous")
             chain_observed, result["verificationDiagnostics"] = observe_chain(
-                tc, project_id, build, case["expected"]["toolchain"]["jdk"]
+                tc, project_id, build, case["expected"]["toolchain"]["jdk"],
+                jdk_match=case["expected"]["toolchain"].get("jdkMatch", "exact"),
+                verify_vcs_root=case["expected"].get("vcsRootMatchesRepository", False),
             )
+            if "minimumMavenVersion" in case["expected"]:
+                chain_observed["mavenVersions"] = observe_maven_versions(
+                    tc, chain_observed["jobResults"], case["expected"]["minimumMavenVersion"]
+                )
         except EvalError:
             result["verificationErrorCategory"] = "verification-observation-failed"
             raise
         observed = {
             **chain_observed,
+            "schemaValidated": result["schemaValidationDiagnostics"].get("status") == SCHEMA_STATUS_VALID,
             "buildTypeCount": len(tc.build_types(project_id)),
             "buildStatus": build.get("status"),
             "statusText": build.get("statusText"),
@@ -2378,6 +2525,16 @@ def run(
 
       except _Graded:
         pass
+      except PipelineSchemaError as exc:
+        result["schemaValidationDiagnostics"] = exc.diagnostics
+        result["verificationErrorCategory"] = exc.category
+        result["errorCategory"] = result.get("errorCategory") or exc.category
+        result["error"] = exc.category
+        if exc.diagnostics.get("status") == SCHEMA_STATUS_INVALID:
+            result["checks"]["configurationValidated"] = {
+                "expected": True, "observed": False, "passed": False,
+            }
+            set_graded_status(result, agent_run)
       except ScriptConfigurationError as exc:
         result["configurationDiagnostics"] = exc.diagnostics
         result["verificationErrorCategory"] = exc.category
@@ -2464,10 +2621,12 @@ def main() -> int:
             "error": str(exc),
         }
 
-    rendered = json.dumps(publishable_result(result), indent=2)
+    published = publishable_result(result)
+    rendered = json.dumps(published, indent=2)
     print(rendered)
     if args.result:
         args.result.write_text(rendered + "\n")
+    report_checks(published)
 
     if result["status"] in ("passed", "dry-run"):
         return 0

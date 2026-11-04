@@ -174,7 +174,10 @@ class EvalReportTest(unittest.TestCase):
             "checks": {
                 private: {"passed": False},
                 "firstBuild": {"passed": False},
+                "vcsRepository": {"passed": False},
+                "vcsDefaultBranch": {"passed": True},
             },
+            "vcsRoots": [{"url": private, "branch": private}],
         }
 
         def cli(_server, *arguments):
@@ -197,13 +200,15 @@ class EvalReportTest(unittest.TestCase):
             result,
         )
         self.assertEqual("skill-output-failed", category)
-        self.assertEqual("failed assertions: firstBuild", detail)
+        self.assertEqual("failed assertions: firstBuild, vcsRepository", detail)
         self.assertIsNone(result["caseId"])
         self.assertIsNone(result["caseStatus"])
         self.assertIsNone(result["harnessRevision"])
         self.assertIsNone(result["gradeStatus"])
         self.assertIsNone(result["agentExitCode"])
-        self.assertEqual({"firstBuild": {"passed": False}}, result["checks"])
+        self.assertEqual({"firstBuild": {"passed": False},
+                          "vcsRepository": {"passed": False},
+                          "vcsDefaultBranch": {"passed": True}}, result["checks"])
         self.assertNotIn(private, json.dumps(result))
 
     def test_shareable_report_excludes_internal_teamcity_details(self):

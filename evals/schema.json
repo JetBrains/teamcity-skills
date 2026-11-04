@@ -794,6 +794,10 @@
         "firstBuild"
       ],
       "properties": {
+        "vcsRootMatchesRepository": {
+          "description": "Check that the selected pipeline has one attached Git VCS root matching repository.url, and that this root's default branch equals repository.defaultBranch as a full Git ref. This checks current configuration, not the ref or commit used by a completed build.",
+          "const": true
+        },
         "configurationValidated": {
           "const": true
         },
@@ -816,7 +820,14 @@
           "required": ["jdk"],
           "properties": {
             "jdk": {
-              "type": "string"
+              "description": "Required Java major version; jdkMatch selects an exact version or a minimum.",
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,2}$"
+            },
+            "jdkMatch": {
+              "description": "exact requires the specified major; minimum also accepts newer majors. Omission preserves exact matching.",
+              "enum": ["exact", "minimum"],
+              "default": "exact"
             }
           }
         },
@@ -826,6 +837,15 @@
         "minimumTestCount": {
           "type": "integer",
           "minimum": 1
+        },
+        "allTestsPassed": {
+          "description": "Every imported test occurrence must have SUCCESS status and must not be ignored.",
+          "const": true
+        },
+        "minimumMavenVersion": {
+          "description": "Minimum Maven release, verified from the version banner of each native Maven build launch in the selected chain. Configuration-only cases do not measure runtime versions.",
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+(?:\\.\\d+)?$"
         },
         "requiredTestNames": {
           "type": "array",

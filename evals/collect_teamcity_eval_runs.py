@@ -31,7 +31,7 @@ import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from first_green_evidence import safe_verification_diagnostics, safe_verification_error
-from pipeline_validation import safe_script_diagnostics
+from pipeline_validation import safe_schema_diagnostics, safe_script_diagnostics
 from build_monitor import STOP_CATEGORY, safe_monitor_diagnostics
 
 
@@ -64,6 +64,7 @@ SAFE_ERROR_CATEGORIES = {
     "agent-budget-exhausted", "agent-result-failed",
     "verification-pipeline-ambiguous", "verification-chain-incomplete",
     "verification-invalid-script-steps",
+    "verification-invalid-pipeline-yaml", "verification-schema-validation-unavailable",
     "verification-unexplained-head-failure",
     "build-not-queued", "build-wait-timeout", "build-queue-stalled",
     "mcp-not-invoked", "mcp-cli-invoked", "mcp-no-configuration",
@@ -83,10 +84,11 @@ SAFE_GRADE_STATUSES = {"passed", "failed"}
 SAFE_CHECK_NAMES = {
     "configurationValidated", "firstBuild", "testsExecutedAndReported",
     "artifactsPublished", "toolchain", "sourceMutations",
+    "vcsRepository", "vcsDefaultBranch",
     "requiredMcpToolUse", "forbiddenCliToolUse", "requiredLocalMcpProbeUse",
     "minimumJobs", "jobCount", "requiredStepTypes", "requiredStepProperties",
     "forbiddenStepProperties", "requiredArtifactRules", "requiredAgentRequirements",
-    "requiredJobs", "requiredTests", "jobResults", "toolUse",
+    "requiredJobs", "requiredTests", "allTestsPassed", "mavenVersion", "jobResults", "toolUse",
     "requiredJobProperties", "pinnedRevision",
     "compatibilityCheckpoint", "statusCheckLimit",
     "diagnosticAgentInventory", "diagnosticAgentRuntimeCapabilities",
@@ -314,6 +316,7 @@ def inventory():
             "testsExecutedAndReported": "test reporting",
             "artifactsPublished": "artifact publication",
             "sourceMutations": "source fidelity",
+            "vcsRootMatchesRepository": "attached repository and VCS default branch",
             "minimumJobs": "job topology",
             "jobCount": "exact job count",
             "requiredStepTypes": "runner selection",
@@ -322,6 +325,8 @@ def inventory():
             "requiredJobs": "per-job topology and outputs",
             "configuration": "per-job configuration contract",
             "requiredTestNames": "required test identities",
+            "allTestsPassed": "no failed or ignored tests",
+            "minimumMavenVersion": "Maven runtime version",
             "jobResults": "per-job runtime tests and artifacts",
             "toolUse": "CLI/tool choice",
             "diagnosticAgentInventory": "agent inventory diagnostic",
@@ -457,6 +462,7 @@ def download_result(warnings, server, run_id, known_case_ids=None):
             "verificationDiagnostics": safe_verification_diagnostics(result.get("verificationDiagnostics")),
             **({"buildMonitorDiagnostics": monitor} if monitor else {}),
             "configurationDiagnostics": safe_script_diagnostics(result.get("configurationDiagnostics")),
+            "schemaValidationDiagnostics": safe_schema_diagnostics(result.get("schemaValidationDiagnostics")),
             "verificationErrorCategory": safe_verification_error(result.get("verificationErrorCategory")),
             **{name: result[name] for name in ("agentTimeoutSeconds", "buildTimeoutSeconds")
                if type(result.get(name)) is int and result[name] > 0},
@@ -518,6 +524,8 @@ def classify(server, run, result):
             return "agent-result-failed", "Claude reported an unsuccessful completion"
         if result.get("errorCategory") == "verification-invalid-script-steps":
             return "verification-invalid-script-steps", "stored Pipeline has invalid script source parameters"
+        if result.get("errorCategory") == "verification-schema-validation-unavailable":
+            return "verification-schema-validation-unavailable", "grader could not validate saved Pipeline YAML against the target server schema"
         if result.get("errorCategory") in ("verification-pipeline-ambiguous", "verification-chain-incomplete"):
             return result["errorCategory"], "verification chain could not be bound unambiguously"
         if (

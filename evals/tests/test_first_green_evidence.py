@@ -66,6 +66,14 @@ class FirstGreenEvidenceTest(unittest.TestCase):
                 with self.assertRaises(evidence.EvidenceError):
                     evidence.select_pipeline(definitions, source)
 
+    def test_source_binding_uses_dependencies_and_allows_display_name_changes(self):
+        source = {"name": "Agent display name", "jobs": {"test": {}}, "dependencies": ["Required"]}
+        definitions = {
+            "probe": {**source, "dependencies": ["Other"]},
+            "main": {**source, "name": "Server display name"},
+        }
+        self.assertEqual(("main", "source-matched"), evidence.select_pipeline(definitions, source))
+
     def test_local_source_binds_multiple_pipelines(self):
         tc, _ = self.fixture()
         tc.pipeline_ids.return_value = ["main", "probe"]
@@ -113,6 +121,32 @@ class FirstGreenEvidenceTest(unittest.TestCase):
         self.assertEqual([101, 102], [item["id"] for item in diagnostics["builds"]])
         self.assertTrue(diagnostics["jdk"]["declaredMatch"])
         self.assertFalse(diagnostics["jdk"]["runtimeVerified"])
+        tc.vcs_roots.assert_not_called()
+
+    def test_vcs_settings_come_from_selected_pipeline_head(self):
+        case = json.loads((EVALS / "first-green-build/cases/clean-spring-boot-maven.json").read_text())
+        tc, _ = self.fixture()
+        tc.vcs_roots.return_value = [{"vcsName": "jetbrains.git",
+                                     "url": case["repository"]["url"],
+                                     "branch": "refs/heads/development"}]
+        for job in tc.jobs.return_value:
+            job.update(steps=[], artifactRules="")
+        build = runner.wait_for_build(tc, "project", 10)
+        observed, _ = evidence.observe_chain(tc, "project", build, "21",
+                                             verify_vcs_root=True)
+        observed.update(buildTypeCount=3, mutations=[])
+        checks = runner.grade(case, observed)
+        self.assertTrue(checks["vcsRepository"]["passed"])
+        self.assertTrue(checks["vcsDefaultBranch"]["passed"])
+        tc.vcs_roots.assert_called_once_with("main")
+        # Missing observation cannot silently satisfy the opt-in case contract.
+        del observed["vcsRoots"]
+        missing = runner.grade(case, observed)
+        self.assertFalse(missing["vcsRepository"]["passed"])
+        self.assertFalse(missing["vcsDefaultBranch"]["passed"])
+        published = runner.publishable_result({"checks": checks, "vcsRoots": tc.vcs_roots.return_value})
+        self.assertNotIn(case["repository"]["url"], json.dumps(published))
+        self.assertEqual({"passed": True}, published["checks"]["vcsDefaultBranch"])
 
     def test_missing_or_conflicting_tree_is_not_green(self):
         tc, tree = self.fixture()
@@ -157,17 +191,23 @@ class FirstGreenEvidenceTest(unittest.TestCase):
     def test_available_jdk_wrong_version_or_unconfigured_job_is_not_selection(self):
         for jobs in [[{"parameters": {"env.JDK_21_0": "/jdk-21"}}],
                      [{"parameters": {"env.JAVA_HOME": "%env.JDK_121_0%"}}],
+                     [{"parameters": {"env.JAVA_HOME": "%env.JDK_17_21%"}}],
+                     [{"environment": {"JAVA_HOME": "/opt/jdk-17.0.21"}}],
                      [{"environment": {"JAVA_HOME": "/jdk-21"}}, {}]]:
             with self.subTest(jobs=jobs):
                 self.assertFalse(evidence.jdk_evidence({}, "21", jobs)[0])
 
     def test_runtime_version_is_separate_and_overrides_declaration(self):
         jobs = [{"environment": {"JAVA_HOME": "/jdk-21"}}]
-        matched, _, diagnostic = evidence.jdk_evidence({"java.version": "17.0.1"}, "21", jobs)
-        self.assertFalse(matched)
-        self.assertTrue(diagnostic["declaredMatch"])
-        self.assertFalse(diagnostic["runtimeVerified"])
-        self.assertTrue(evidence.jdk_evidence({"java.version": "21.0.1"}, "21", jobs)[2]["runtimeVerified"])
+        for mode in ("exact", "minimum"):
+            for version, expected in (("17.0.1", False), ("17.0.21", False),
+                                      ("21.0.1", True), ("25.0.1", mode == "minimum")):
+                with self.subTest(mode=mode, version=version):
+                    matched, _, diagnostic = evidence.jdk_evidence(
+                        {"java.version": version}, "21", jobs, jdk_match=mode)
+                    self.assertEqual(expected, matched)
+                    self.assertTrue(diagnostic["declaredMatch"])
+                    self.assertEqual(expected, diagnostic["runtimeVerified"])
 
     def test_safe_diagnostics_strip_private_values(self):
         published = runner.publishable_result({"checks": {}, "verificationDiagnostics": {
@@ -177,6 +217,76 @@ class FirstGreenEvidenceTest(unittest.TestCase):
         }})
         self.assertNotIn("canary", json.dumps(published))
         self.assertEqual(10, published["verificationDiagnostics"]["headId"])
+
+
+class VcsRootEvidenceTest(unittest.TestCase):
+    def setUp(self):
+        self.repository = {"url": "https://github.com/example/application.git",
+                           "defaultBranch": "development"}
+        self.root = {"vcsName": "jetbrains.git", "url": self.repository["url"],
+                     "branch": "refs/heads/development"}
+
+    def test_equivalent_remotes_do_not_require_branch_spec_or_logical_name(self):
+        for url in ("https://github.com/example/application",
+                    "git@github.com:example/application.git",
+                    "ssh://git@github.com:22/Example/Application.git"):
+            with self.subTest(url=url):
+                self.assertEqual({"vcsRepository": True, "vcsDefaultBranch": True},
+                                 evidence.vcs_root_evidence(self.repository, [
+                                     {**self.root, "url": url, "teamcity:branchSpec": "",
+                                      "branchName": "<default>"}]))
+        self.repository["defaultBranch"] = "refs/heads/development"
+        self.assertTrue(evidence.vcs_root_evidence(self.repository, [self.root])["vcsDefaultBranch"])
+
+    def test_wrong_repository_missing_or_ambiguous_root_fails_closed(self):
+        for roots in ([], [{}], [self.root, self.root],
+                      [{**self.root, "url": "https://github.com/other/application.git"}],
+                      [{**self.root, "url": "https://elsewhere.invalid/example/application.git"}],
+                      [{**self.root, "url": "ssh://git@github.com:2222/example/application.git"}],
+                      [{**self.root, "url": None}], [{**self.root, "vcsName": "svn"}]):
+            with self.subTest(roots=roots):
+                self.assertEqual({"vcsRepository": False, "vcsDefaultBranch": False},
+                                 evidence.vcs_root_evidence(self.repository, roots))
+
+    def test_branch_must_belong_to_matching_repository_root(self):
+        other = {**self.root, "url": "https://github.com/example/settings.git"}
+        for branch in (None, "development", "refs/heads/main"):
+            with self.subTest(branch=branch):
+                wrong = {**self.root, "branch": branch, "branchName": "development",
+                         "teamcity:branchSpec": "+:refs/heads/development"}
+                self.assertEqual({"vcsRepository": True, "vcsDefaultBranch": False},
+                                 evidence.vcs_root_evidence(self.repository, [wrong, other]))
+        self.assertTrue(evidence.vcs_root_evidence(
+            self.repository, [self.root, other])["vcsDefaultBranch"])
+
+    def test_cli_adapter_reads_attached_roots_and_discards_other_properties(self):
+        tc = runner.TeamCity("teamcity", "https://example.invalid", "private", {})
+        job = {"id": "selected", "vcs-root-entries": {
+            "count": 1, "vcs-root-entry": [{"vcs-root": {"id": "attached"}}]}}
+        root = {"id": "attached", "vcsName": "jetbrains.git", "properties": {"property": [
+            {"name": "url", "value": self.root["url"]},
+            {"name": "branch", "value": self.root["branch"]},
+            {"name": "secure:password", "value": "private-canary"}]}}
+        with mock.patch.object(tc, "_run", side_effect=[job, root]) as invoked:
+            self.assertEqual([self.root], tc.vcs_roots("selected"))
+        self.assertEqual([
+            mock.call(["job", "view", "selected", "--json"], json_output=True),
+            mock.call(["project", "vcs", "view", "attached", "--json"], json_output=True),
+        ], invoked.call_args_list)
+
+    def test_cli_adapter_rejects_partial_or_foreign_metadata(self):
+        tc = runner.TeamCity("teamcity", "https://example.invalid", "private", {})
+        job = {"id": "selected", "vcs-root-entries": {
+            "count": 1, "vcs-root-entry": [{"vcs-root": {"id": "attached"}}]}}
+        for responses in ([{"id": "selected"}],
+                          [{**job, "id": "foreign"}],
+                          [{**job, "vcs-root-entries": {"count": 1, "vcs-root-entry": []}}],
+                          [{**job, "vcs-root-entries": {"count": 1, "vcs-root-entry": [{}]}}],
+                          [job, {"id": "foreign"}]):
+            with self.subTest(responses=responses), \
+                    mock.patch.object(tc, "_run", side_effect=responses), \
+                    self.assertRaises(evidence.EvidenceError):
+                tc.vcs_roots("selected")
 
 
 class AgentBudgetTest(unittest.TestCase):
@@ -258,3 +368,23 @@ class PinnedRevisionTest(unittest.TestCase):
         self.assertTrue(runner.grade(case, {**observed, "pinnedRevision": True})["pinnedRevision"]["passed"])
         self.assertNotIn("pinnedRevision", runner.grade(case, {k: v for k, v in observed.items()
                                                                 if k != "pinnedRevision"}))
+
+
+class RequiredTestsDedupTest(unittest.TestCase):
+    def test_duplicate_batch_occurrences_count_once(self):
+        repeated = {"name": "org.salespointframework.quantity.QuantityFormatterUnitTests.formats",
+                    "status": "SUCCESS", "ignored": False}
+        tests = [repeated] * 3 + [
+            {"name": "org.salespointframework.catalog.CatalogIntegrationTests.finds",
+             "status": "SUCCESS", "ignored": False},
+            {"name": "org.salespointframework.order.OrderManagementTests.skipped",
+             "status": "UNKNOWN", "ignored": True},
+        ]
+        contract = {"minimumTestCount": 2, "requiredTestNames": [
+            r"^org\.salespointframework\.quantity\.QuantityFormatterUnitTests",
+            r"^org\.salespointframework\.catalog\.CatalogIntegrationTests\.",
+        ]}
+        self.assertTrue(runner.required_tests_pass(contract, tests))
+        self.assertFalse(runner.required_tests_pass({"minimumTestCount": 3}, tests))
+        self.assertFalse(runner.required_tests_pass(
+            {"requiredTestNames": [r"^org\.salespointframework\.order\.OrderManagementTests\."]}, tests))

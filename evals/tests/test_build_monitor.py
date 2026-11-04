@@ -16,7 +16,9 @@ from unittest import mock
 
 EVALS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(EVALS))
-from build_monitor import LiveBuildMonitor, STOP_CATEGORY, safe_monitor_diagnostics
+from build_monitor import (
+    INCOMPLETE_CHAIN_CATEGORY, LiveBuildMonitor, STOP_CATEGORIES, STOP_CATEGORY, safe_monitor_diagnostics,
+)
 from first_green_evidence import terminal_chain_diagnostics, observe_chain
 
 
@@ -102,9 +104,74 @@ class BuildMonitorTest(unittest.TestCase):
                 self.assertIsNone(self.monitor.checkpoint(7200))
         self.tc.build.assert_not_called()
 
-    def test_missing_child_cannot_trigger_intervention(self):
+    def test_missing_children_require_a_grace_period_and_confirming_read(self):
         self.tree["dependencies"] = []
+        for status in ("SUCCESS", "FAILURE"):
+            with self.subTest(status=status):
+                self.tree["status"] = status
+                self.monitor.incomplete_observation = None
+                self.monitor.clock = lambda: 100
+                self.assertIsNone(self.monitor.checkpoint(7200))
+                self.monitor.clock = lambda: 219
+                self.assertIsNone(self.monitor.checkpoint(7200))
+                self.tc.build_tree.reset_mock()
+                self.monitor.clock = lambda: 220
+                self.assertEqual(INCOMPLETE_CHAIN_CATEGORY, self.monitor.checkpoint(7200))
+                self.assertEqual([mock.call(10), mock.call(10)], self.tc.build_tree.call_args_list)
+                chain = self.monitor.diagnostics()["lastChain"]
+                self.assertEqual("head-without-children", chain["failurePattern"])
+                self.assertEqual(0, chain["childCount"])
+                self.assertEqual(10, chain["headId"])
+                self.assertTrue(chain["requiresInvestigation"])
+        self.tc.build.assert_not_called()
+
+    def test_late_children_or_nonterminal_head_do_not_stop_agent(self):
+        self.tree.update(status="SUCCESS", dependencies=[])
         self.assertIsNone(self.monitor.checkpoint(7200))
+        for state, children in (("running", []), ("finished", [node(11, "verify")])):
+            with self.subTest(state=state, children=children):
+                self.tree.update(state=state, dependencies=children)
+                self.monitor.clock = lambda: 400
+                self.assertIsNone(self.monitor.checkpoint(7200))
+                self.assertIsNone(self.monitor.incomplete_observation)
+
+    def test_children_appearing_during_confirmation_prevent_intervention(self):
+        self.tree.update(status="SUCCESS", dependencies=[])
+        self.assertIsNone(self.monitor.checkpoint(7200))
+        complete = {**self.tree, "dependencies": [node(11, "verify")]}
+        self.tc.build_tree.side_effect = [self.tree, complete]
+        self.monitor.clock = lambda: 220
+        self.assertIsNone(self.monitor.checkpoint(7200))
+        self.assertIsNone(self.monitor.incomplete_observation)
+
+    def test_new_attempt_or_source_gets_its_own_missing_children_grace(self):
+        self.tree.update(status="SUCCESS", dependencies=[])
+        self.assertIsNone(self.monitor.checkpoint(7200))
+        self.monitor.clock = lambda: 220
+        self.tree["id"] = 12
+        self.assertIsNone(self.monitor.checkpoint(7200))
+        self.monitor.clock = lambda: 340
+        self.definition["jobs"]["verify"]["name"] = "Changed"
+        self.path.write_text("jobs:\n  verify:\n    name: Changed\n")
+        self.assertIsNone(self.monitor.checkpoint(7200))
+
+    def test_new_attempt_during_confirmation_prevents_intervention(self):
+        self.tree.update(status="SUCCESS", dependencies=[])
+        self.assertIsNone(self.monitor.checkpoint(7200))
+        self.monitor.clock = lambda: 220
+        self.tc.builds.side_effect = [[self.tree], [self.tree, node(12, "pipeline", state="running")]]
+        self.assertIsNone(self.monitor.checkpoint(7200))
+
+    def test_read_failure_restarts_missing_children_grace(self):
+        self.tree.update(status="SUCCESS", dependencies=[])
+        self.assertIsNone(self.monitor.checkpoint(7200))
+        self.tc.build_tree.side_effect = RuntimeError("canary private payload")
+        self.monitor.clock = lambda: 220
+        self.assertIsNone(self.monitor.checkpoint(7200))
+        self.tc.build_tree.side_effect = None
+        self.monitor.clock = lambda: 400
+        self.assertIsNone(self.monitor.checkpoint(7200))
+        self.assertNotIn("canary", self.output.getvalue())
 
     def test_ignores_unbound_probe_and_ambiguous_source(self):
         for definitions in (
@@ -217,7 +284,7 @@ class AgentInterventionTest(unittest.TestCase):
     def monitor(self, category=STOP_CATEGORY):
         monitor = mock.Mock(interval_seconds=60)
         monitor.checkpoint.return_value = category
-        monitor.diagnostics.return_value = {"stoppedAgent": category == STOP_CATEGORY}
+        monitor.diagnostics.return_value = {"stoppedAgent": category in STOP_CATEGORIES}
         return monitor
 
     def test_stops_whole_agent_group_without_claiming_timeout_or_grade(self):
@@ -232,6 +299,17 @@ class AgentInterventionTest(unittest.TestCase):
         self.assertFalse(result["timedOut"])
         self.assertEqual(7200, result["timeoutSeconds"])
         self.assertNotIn("agentUsage", result)  # Missing usage is never fabricated as zero.
+
+    def test_missing_chain_stops_agent_with_its_own_category(self):
+        process = mock.Mock(returncode=-15)
+        process.poll.return_value = None
+        process.communicate.side_effect = subprocess.TimeoutExpired("synthetic", 60)
+        monitor = self.monitor(INCOMPLETE_CHAIN_CATEGORY)
+        result, stop = self.invoke(process, monitor)
+        stop.assert_called_once_with(process)
+        monitor.mark_stopped.assert_called_once()
+        self.assertEqual(INCOMPLETE_CHAIN_CATEGORY, result["failureCategory"])
+        self.assertFalse(result["timedOut"])
 
     def test_polling_never_resends_prompt(self):
         process = mock.Mock(returncode=0)
@@ -303,6 +381,18 @@ class AgentInterventionTest(unittest.TestCase):
         self.assertIn("cause unavailable through CLI", detail)
 
     def test_runner_intervention_skips_build_wait_grade_and_retry(self):
+        self.runner_intervention(STOP_CATEGORY)
+
+    def test_missing_chain_intervention_skips_build_wait_grade_and_retry(self):
+        self.runner_intervention(INCOMPLETE_CHAIN_CATEGORY)
+
+    def runner_intervention(self, category):
+        incomplete = category == INCOMPLETE_CHAIN_CATEGORY
+        chain = {"headId": 10, "headState": "finished",
+                 "headStatus": "SUCCESS" if incomplete else "FAILURE",
+                 "childCount": 0 if incomplete else 1,
+                 "failurePattern": "head-without-children" if incomplete else "head-failed-children-succeeded",
+                 "problemEvidence": "unavailable", "statusText": "canary"}
         with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
             root = pathlib.Path(directory)
             case = root / "case.json"
@@ -321,6 +411,7 @@ class AgentInterventionTest(unittest.TestCase):
             stack.enter_context(mock.patch.object(runner, "TeamCity", return_value=tc))
             stack.enter_context(mock.patch.object(runner, "TeamCityCliBridge", return_value=bridge))
             stack.enter_context(mock.patch.object(runner.shutil, "which", return_value="teamcity"))
+            stack.enter_context(mock.patch.object(runner, "harness_revision", return_value=None))
             stack.enter_context(mock.patch.object(runner, "checkout_repository"))
             stack.enter_context(mock.patch.object(runner.sys, "stderr", io.StringIO()))
             for name, value in (("agent_usage", {}), ("agent_tool_summary", {}),
@@ -328,21 +419,24 @@ class AgentInterventionTest(unittest.TestCase):
                 stack.enter_context(mock.patch.object(runner, name, return_value=value))
             invoke = stack.enter_context(mock.patch.object(runner, "invoke_agent", return_value={
                 "exitCode": -15, "timedOut": False, "timeoutSeconds": 3600,
-                "failureCategory": STOP_CATEGORY,
+                "failureCategory": category,
                 "buildMonitorDiagnostics": {"stoppedAgent": True, "state": "intervened",
-                    "lastChain": {"headId": 10, "headStatus": "FAILURE", "problemEvidence": "unavailable"}},
+                    "lastChain": chain},
             }))
             wait = stack.enter_context(mock.patch.object(runner, "wait_for_build"))
             grade = stack.enter_context(mock.patch.object(runner, "grade"))
             result = runner.publishable_result(runner.run(case, False, False, "baseline", "cli-only"))
             self.assertIsInstance(invoke.call_args.kwargs["build_monitor"], LiveBuildMonitor)
             self.assertEqual("errored", result["status"])
-            self.assertEqual(STOP_CATEGORY, result["errorCategory"])
-            self.assertEqual(STOP_CATEGORY, result["verificationErrorCategory"])
+            self.assertEqual(category, result["errorCategory"])
+            self.assertEqual(category, result["verificationErrorCategory"])
             self.assertEqual({}, result["checks"])
             self.assertNotIn("gradeStatus", result)
             self.assertNotIn("agentUsage", result)
             self.assertNotIn("canary", json.dumps(result))
+            self.assertEqual(chain["failurePattern"],
+                             result["verificationDiagnostics"]["terminalChain"]["failurePattern"])
+            self.assertEqual(category, collector.classify(None, {"state": "finished"}, result)[0])
             wait.assert_not_called()
             grade.assert_not_called()
             invoke.assert_called_once()
