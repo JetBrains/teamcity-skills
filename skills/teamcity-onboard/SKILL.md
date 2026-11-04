@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.1.0
+version: 0.1.1
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first basic green build with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
@@ -92,10 +92,11 @@ the CLI skill's pipelines workflow shows. The project ID, the root, the
 
 ## 5. Run it until green
 
-Read [Verify a build](references/verify-build.md). Start the first run at
-once, without asking. Announce every run as that guide says. Classify each
-failure. Fix pipeline causes only. After every run, check each test job's
-test count.
+Read [Verify a build](references/verify-build.md). Verify the pipeline head's
+branch selector before queueing. Start the first run at once, without asking,
+then read back the queued branch and pinned revision before polling.
+Announce every run as that guide says. Classify each failure. Fix pipeline
+causes only. After every run, check each test job's test count.
 
 ## 6. Report and offer follow-ups
 
