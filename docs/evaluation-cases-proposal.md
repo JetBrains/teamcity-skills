@@ -614,8 +614,19 @@ occupying a scarce compatible agent.
 
 A build that TeamCity marks failed because its requested branch is not
 monitored is never a first-green success, even if tests passed. In that state
-TeamCity may have substituted a default revision. The skill must repair the
-VCS root branch specification and rerun on a monitored branch.
+TeamCity may have substituted a default revision. The skill must correct the
+demonstrated mismatch between the run's branch selector and the attached VCS
+roots, then rerun on the intended branch and pinned revision. A default branch
+can require the logical selector `<default>` even when its Git ref is
+`refs/heads/development`; its branch specification need not change.
+
+When a terminal head fails and all its jobs succeed, the live eval monitor and
+final observation read `teamcity run log <head-id> --failed --json` if
+`run view --json` has no structured problem evidence. They verify the summary's
+run ID and problem records and retain only the problem count. A recorded
+problem lets the agent continue diagnosis and repair. An empty valid summary
+leaves the unexplained-failure guard in force; a failed or invalid summary read
+cannot justify stopping the agent. A failed head still fails the build check.
 
 `expected.vcsRootMatchesRepository` opts a first-green case into two configuration
 checks: `vcsRepository` requires one attached Git VCS root matching the case's

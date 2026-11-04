@@ -262,6 +262,11 @@ def observe_chain(tc, project_id, build, required_jdk, jdk_match="exact", verify
             metadata.get(key) != head[key] for key in ("id", "buildTypeId", "state", "status")
         ):
             raise EvidenceError("verification-chain-incomplete")
+    terminal = terminal_chain_diagnostics(build["nodes"], build["id"], metadata)
+    try:
+        terminal = read_terminal_chain_diagnostics(tc, build["nodes"], build["id"], metadata)
+    except (RuntimeError, OSError, ValueError):
+        pass  # Preserve the failed head and the unavailable diagnostics.
     return {
         "testCount": len(all_tests), "tests": all_tests, "jobResults": job_results,
         "artifacts": artifacts, "properties": {}, "mavenRuntime": maven,
@@ -272,8 +277,20 @@ def observe_chain(tc, project_id, build, required_jdk, jdk_match="exact", verify
         "headId": build["id"], "selection": build["selection"], "builds": diagnostics,
         "testCount": len(all_tests), "artifactCount": len(artifacts),
         "attempts": build["attempts"], "jdk": jdk,
-        "terminalChain": terminal_chain_diagnostics(build["nodes"], build["id"], metadata),
+        "terminalChain": terminal,
     }
+
+
+def read_terminal_chain_diagnostics(tc, nodes, head_id, metadata=None):
+    """Fall back to the CLI failure summary when run view omits problems."""
+    snapshot = terminal_chain_diagnostics(nodes, head_id, metadata)
+    if (snapshot["requiresInvestigation"] and snapshot["headStatus"] in ("FAILURE", "ERROR")
+            and snapshot["problemEvidence"] == "unavailable"):
+        count = tc.build_problem_count(head_id)
+        if type(count) is not int or count < 0:
+            raise EvidenceError("verification-observation-failed")
+        snapshot.update(problemCount=count, problemEvidence="recorded" if count else "unavailable")
+    return snapshot
 
 
 def terminal_chain_diagnostics(nodes, head_id, metadata=None):
