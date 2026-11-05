@@ -139,4 +139,3 @@ teamcity agent exec <agent> "sh -c 'exit 0'"
 
 `agent term` reports connection status, hands status ownership to the remote shell,
 and clears remote child-status records when the session closes.
-
