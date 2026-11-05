@@ -1,73 +1,83 @@
 # Discover and connect
 
-Confirm the server, inspect it, and find the VCS root and the branch the
-pipeline uses. Commands: the `teamcity-cli` skill's "Project connections &
-VCS roots" and "Working with pipelines" workflows.
+Confirm the server, inspect it, and run the pipeline on the VCS root and the
+branch from your task. Commands: the `teamcity-cli` skill's
+`connections-and-vcs.md` and `pipelines.md` workflows.
 
 ## Confirm the server and the project
 
-The flow authenticated the CLI against the target server before this skill
-started. Confirm once with `teamcity auth status`. The parent project is the
-project ID from the hand-over context. Without one, run `project list` and
-ask the user which project the pipeline belongs to. Confirm the ID with
-`project view <project-id>`.
+Confirm the login once with a bare `teamcity auth status`: the default server
+is the target. The parent project is
+the project ID from your task. Read its pipelines with
+`pipeline list --project <project-id>`, and the schema with
+`pipeline schema --refresh`. Agents: see
+[Agents and runtimes](agents-and-runtimes.md).
 
-## Inspect the server
+## Use the VCS root
 
-List the project's pipelines and VCS roots, the connected agents, and the
-Pipeline schema: `pipeline list --project <project-id>`,
-`project vcs list --project <project-id>`, `agent list`,
-`pipeline schema --refresh`. When a pipeline for this repository exists,
-update it. One repository, one pipeline.
+Your task says `VCS root: exists` or `VCS root: none`.
 
-## Find the VCS root
+- `exists`: the flow created the root. Take it from
+  `project vcs list --project <project-id>`: the one whose URL matches the
+  repository. Do not create another one. `project vcs view <id>` shows its
+  default branch as a full ref, such as `refs/heads/main`, and no branch
+  specification. Run on it as below.
+- `none`: do not create a root. Create the pipeline and run it as
+  [No VCS root](#no-vcs-root) shows.
 
-Use the VCS root ID from the hand-over context. Without one, list the roots
-in the project with `project vcs list --project <project-id>` and reuse the
-one whose URL matches the repository. Read URL, default branch, and auth with
-`project vcs view <id>`.
+## Run on the root
 
-- A matching authorized root: use it.
-- No root, public repository: create one in the project with
-  `--project <project-id>`, `--auth anonymous`, and
-  `--branch refs/heads/<checked-out-branch>`. Without `--branch` the CLI
-  assumes `main`. This is the only root this skill creates.
-- No authorized root, private repository: the pipeline cannot read the
-  sources. Write a [manual prerequisite](manual-prerequisites.md) for the
-  repository App or a project-scoped connection, then stop. Connections,
-  token-based roots, and token requests are out of scope.
-
-## Choose the branch
-
-The safe setup: one branch, a pinned revision with `--branch`, no triggers.
-Read the root's default branch and branch specification from `vcs view`.
-TeamCity builds the root's default branch unless the run names another one.
-When the checked-out branch is not the default, a run without `--branch`
-builds code you never inspected, and its result proves nothing. Always pass
-the pinned revision and the branch together.
-
-- Pin the checked-out commit with `--revision <root-id>=<sha>@<branch>` and
-  pass `--branch` as well. Without `--branch` the checkout fails with
-  `couldn't find remote ref <unspecified>`. A bare `--revision <sha>` or a
-  literal `--branch main` fails with `invalid_branch_name` when the
-  specification does not list the branch.
-- For a branch with another name, derive the logical name from the
-  specification: `+:refs/heads/*` names `feature/x` as `feature/x`.
-- When the specification does not cover the checked-out branch, write a
-  [manual prerequisite](manual-prerequisites.md) for the root's branch
-  specification. A run on `main`, a local `git checkout` of another branch,
-  or a wider specification hides the error and is forbidden.
+- The checkout is on the default branch, its commit is pushed, and
+  `git status` is clean: run on the root. Pass the full ref to both flags:
+  `--revision <root-id>=<sha>@<default-ref> --branch <default-ref>`. A short
+  `main` leaves the jobs green and the head red with `invalid_branch_name`.
+  Without `--branch` the checkout fails with
+  `couldn't find remote ref <unspecified>`.
+- Another branch, unpushed commits, or uncommitted changes: use a
+  [remote run](#remote-run). Never `git checkout` another branch.
 
 After queueing, read back the run's branch and revision before you wait on
-it. A red head with `invalid_branch_name` and green jobs is a branch binding
-error: fix the branch selection. The steps stay unchanged. That run is not
-green.
+it: `teamcity api '/app/rest/builds/id:<id>?fields=branchName,personal,revisions(revision(version,vcsBranchName))'`.
+`run view --json` has none of these. `version` is the pinned SHA,
+`vcsBranchName` the full ref, and `personal: true` a remote run. No
+`branchName` means the default branch. Branch errors:
+[Verify a build](verify-build.md#decide-what-a-failure-means).
 
-## Remote run as the fallback
+## No VCS root
 
-When the root exists but the branch or the latest commit is not pushed, run a
-personal build from the local checkout:
-`run start --local-changes=git --no-push --personal` with the chosen
-`--branch` (CLI skill, "Personal Builds"). It gives early evidence. The
-pipeline still needs the root for ordinary runs. A missing custom-patch
-permission is a [manual prerequisite](manual-prerequisites.md).
+For `VCS root: none`. Create the pipeline without `--vcs-root`. Every run is
+a [remote run](#remote-run).
+
+## Remote run
+
+A personal build with the checkout sent as a patch. Write the patch outside
+the checkout. **Always** pass `--personal --no-push`: without `--no-push` the
+CLI pushes the branch. When the checkout has uncommitted changes, tell the
+user in one line that the run includes them: a red run may come from
+unfinished work.
+
+With a root, base the patch on the default branch:
+
+```bash
+base=$(git merge-base HEAD origin/<default-branch>)
+git diff --binary "$base" > <tmp>/branch.patch
+teamcity run start <pipeline-id> --revision <root-id>="$base"@<default-ref> \
+  --branch <default-ref> --local-changes=<tmp>/branch.patch --personal --no-push
+```
+
+Without a root, send the whole repository:
+
+```bash
+git diff --binary $(git hash-object -t tree /dev/null) > <tmp>/full.patch
+teamcity run start <pipeline-id> --local-changes=<tmp>/full.patch --personal --no-push
+```
+
+- Keep the `=` in `--local-changes=<file>`.
+- The patch holds the tracked files as they are on disk. Untracked files are
+  left out.
+- TeamCity drops file modes from the patch: a script the patch adds fails
+  with `Permission denied`. List the executable files with
+  `git ls-files -s | awk '$1 == "100755" {print $4}'` and start each job
+  with a script step that runs `chmod +x` on them.
+- A missing custom-patch permission is a
+  [manual prerequisite](manual-prerequisites.md).

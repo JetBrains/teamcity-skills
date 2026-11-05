@@ -1,9 +1,10 @@
 # Manual prerequisites
 
-Write one when the CLI cannot complete a required operation safely. Be
-specific. "Configure the connection" and "grant access" are too vague.
+Write one when the CLI cannot complete a required operation safely. Be specific.
 
-For each prerequisite give:
+In the chat, say it in one plain sentence with a link: what the user does,
+and where. The full form below goes to the report file. For each
+prerequisite give:
 
 1. **Owner**: the role or team with the required permission.
 2. **Scope**: the exact TeamCity server and the project, by ID.
