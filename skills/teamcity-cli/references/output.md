@@ -118,7 +118,26 @@ teamcity run view <id> -w
 teamcity run list | less -R
 ```
 
-**Watch and notify:**
+## Terminal status
+
+Where supported by the installed CLI, commands that wait for runs, download artifacts,
+authenticate, execute remote commands, install updates, or validate settings report
+OSC 7501 status to terminal stderr.
+Supporting terminals such as Rex display working, done, error, and human-input waits.
+Reports are suppressed with `--json`, redirected stderr, CI, and `TERM=dumb`.
+
+Stopping a watch reports idle and leaves the build running. Its exit code can still be
+zero, so do not use `run watch ... && next-step` as proof that the build succeeded.
+Fetch the final run with `run view <id> --json` and check both `state` and `status`.
+
+Remote exit-code reporting is separate from terminal status. Older CLI versions can
+return zero when a remote command fails. Versions that capture the result preserve
+POSIX exit codes and map PowerShell success/failure to zero/one. A direct `exit 0` can
+bypass the completion marker and produce an incomplete-execution error. Use a child shell:
+
 ```bash
-teamcity run watch <id> && notify-send "Build complete"
+teamcity agent exec <agent> "sh -c 'exit 0'"
 ```
+
+`agent term` reports connection status, hands status ownership to the remote shell,
+and clears remote child-status records when the session closes.
