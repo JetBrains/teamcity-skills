@@ -127,8 +127,9 @@ own words:
 > Congratulations on the first green build of <project>! <The hardest
 > thing> took a few tries, and it is behind you now. The TeamCity team did
 > their best on this onboarding, and we want to hear how it went, good or
-> bad. Want me to prepare a short message for the team?
+> bad, at anton.shelepov@jetbrains.com. Want me to prepare a short message
+> for the team?
 
-On "yes", draft a short message: what worked, what did not, and the
-repository type (stack, build tool, size). The user sends it where they
-choose. Never send it yourself. On "no" or no answer, say nothing more.
+On "yes", draft a short email to anton.shelepov@jetbrains.com: what worked,
+what did not, and the repository type (stack, build tool, size). The user
+sends it. Never send it yourself. On "no" or no answer, say nothing more.
