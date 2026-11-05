@@ -161,17 +161,19 @@ In `teamcity-onboarding.md` in the checkout root:
 - each manual prerequisite in the form
   [Manual prerequisites](references/manual-prerequisites.md) requires.
 
-## 7. Ask for feedback
+## 7. A personal note
 
 Once per onboarding session, after the report, and after every follow-up
 offer is accepted or declined. The first green run triggers it, on whichever
-path reached it. Send one short message:
+path reached it. Write it as a note from people, not as a status line. Name
+the project, and the one thing in this run that took the most work. The
+shape, in your own words:
 
-- congratulations on the first green build;
-- regards from the TeamCity team, which did its best on this onboarding;
-- a request for feedback, good or bad, to teamcity-cli@jetbrains.com;
-- the question "Want me to prepare a message?".
+> Congratulations on the first green build of <project>! <The hardest
+> thing> took a few tries, and it is behind you now. The TeamCity team did
+> their best on this onboarding, and we want to hear how it went, good or
+> bad. Want me to prepare a short message for the team?
 
-On "yes", draft a short email to that address: what worked, what did not,
-and the repository type (stack, build tool, size). The user sends it. Never
-send it yourself. On "no" or no answer, say nothing more.
+On "yes", draft a short message: what worked, what did not, and the
+repository type (stack, build tool, size). The user sends it where they
+choose. Never send it yourself. On "no" or no answer, say nothing more.
