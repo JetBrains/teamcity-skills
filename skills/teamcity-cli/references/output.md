@@ -120,8 +120,9 @@ teamcity run list | less -R
 
 ## Terminal status
 
-Commands that wait for runs, download artifacts, authenticate, execute remote commands,
-install updates, or validate settings report OSC 7501 status to terminal stderr.
+Where supported by the installed CLI, commands that wait for runs, download artifacts,
+authenticate, execute remote commands, install updates, or validate settings report
+OSC 7501 status to terminal stderr.
 Supporting terminals such as Rex display working, done, error, and human-input waits.
 Reports are suppressed with `--json`, redirected stderr, CI, and `TERM=dumb`.
 
@@ -129,9 +130,10 @@ Stopping a watch reports idle and leaves the build running. Its exit code can st
 zero, so do not use `run watch ... && next-step` as proof that the build succeeded.
 Fetch the final run with `run view <id> --json` and check both `state` and `status`.
 
-`agent exec` preserves POSIX shell exit codes and maps PowerShell success/failure to
-zero/one. A shell that exits before reporting its result, including a direct `exit 0`,
-produces an incomplete-execution error. Use a child shell when needed:
+Remote exit-code reporting is separate from terminal status. Older CLI versions can
+return zero when a remote command fails. Versions that capture the result preserve
+POSIX exit codes and map PowerShell success/failure to zero/one. A direct `exit 0` can
+bypass the completion marker and produce an incomplete-execution error. Use a child shell:
 
 ```bash
 teamcity agent exec <agent> "sh -c 'exit 0'"
