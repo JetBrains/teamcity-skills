@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.1.2
+version: 0.1.3
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first basic green build with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
@@ -44,11 +44,35 @@ skill and the CLI skill differ, this skill wins:
 
 ## Say what you are doing
 
-The user sees only your messages. Report the whole time, in short lines:
+Before every terminal command, explain its purpose and effects in one or two
+short sentences, in the user's language. Put the explanation before the tool
+call so the user sees it before any approval request:
+
+- Say what the command accomplishes and why it is needed now.
+- State what it reads or changes: server data, the local cache, a temporary
+  file, TeamCity settings, or a new build. Name the relevant project,
+  pipeline, or branch.
+
+Use the tool's title or description too, when supported. An `echo` inside a
+command is not a substitute: the user must approve it before that text runs.
+Keep the agent's normal approval flow; explanations do not require extra
+confirmation questions.
+
+Keep commands easy to review. Run independent actions separately instead of
+joining them with `&&` or `;`. Prefer the CLI's output selection when
+available over extra parsing. If a pipe or script is needed, explain what
+that processing does.
+
+For example, before `teamcity pipeline schema --refresh`:
+
+> I'll fetch the build steps supported by your server so I can write a
+> compatible pipeline. This refreshes the local schema cache.
+
+Report progress throughout, in short lines:
 
 - At the start of each numbered step: the step and what you do next.
-- Before each server read, validation, push, or queue command: what it is
-  for. After it: what you found, in one line.
+- After each server read, validation, push, or queue command: what you found,
+  in one line.
 - Before each decision: the evidence and the choice. Agent type, JDK, build
   commands, a fix.
 - During a run: one line per change of state, as
