@@ -166,8 +166,9 @@ In `teamcity-onboarding.md` in the checkout root:
 Once per onboarding session, after the report, and after every follow-up
 offer is accepted or declined. The first green run triggers it, on whichever
 path reached it. Write it as a note from people, not as a status line. Name
-the project, and the one thing in this run that took the most work. The
-shape, in your own words:
+the project, and the one thing in this run that took the most work. When
+nothing did, say that instead: the first run was green. The shape, in your
+own words:
 
 > Congratulations on the first green build of <project>! <The hardest
 > thing> took a few tries, and it is behind you now. The TeamCity team did
