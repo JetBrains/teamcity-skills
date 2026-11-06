@@ -17,6 +17,18 @@ Each run starts without confirmation. On every start:
   `run list --json=id,webUrl`: "here it is, if you want to watch";
 - note the run's `queuedDate` for the cancel guard below.
 
+Only after the first run is queued tell the user in their language:
+
+> Your first build is running on TeamCity. It takes a few minutes.
+> You have a couple of options:
+> * Watch it live and explore TeamCity UI: <run webUrl>
+> * or grab a coffee and relax while I'm setting the things up. TeamCity will notify you when it's done.
+
+Your own words are fine. The message must have the full `webUrl`, on its
+own line, so the user can click it at once and watch the run in the UI.
+Never write "the link" without the URL. The link is the run page, not the
+pipeline or the project.
+
 Poll `run tree <id>` and `run view <id> --json`. A queued run has to be
 noticed early. After each poll that shows a change, one line: a job queued
 and its wait reason, a job started, a job finished with its state and test
