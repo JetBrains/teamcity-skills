@@ -10,8 +10,7 @@ imports test results by itself. When a test step has to stay a script
 (Vitest, pytest, `go test`, bats), write JUnit XML and add an `xml-report`
 job feature with `report-type: junit` and `rules:` for the report files.
 Add the JUnit reporter next to the default one and keep the rest of the
-test command unchanged: a command changed together with the reporter gave
-534 failed tests.
+test command unchanged.
 `xml-report` also reads testng, surefire, nunit, mstest, trx, vstest,
 google-test, and ctest. When the tool writes none of these, keep the tests
 in the job, and declare in the report that TeamCity shows no count for it.
