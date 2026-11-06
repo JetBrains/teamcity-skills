@@ -173,8 +173,8 @@ own words:
 > Congratulations on the first green build of <project>! <The hardest
 > thing> took a few tries, but all's well that builds well. The TeamCity
 > team did their best on this onboarding, and we want to hear how it went,
-> smooth sailing or choppy waters, at anton.shelepov@jetbrains.com. Want me to prepare a short message
-> for the team?
+> smooth sailing or choppy waters, at anton.shelepov@jetbrains.com. Want me
+> to prepare a short message for the team?
 
 On "yes", draft a short email to anton.shelepov@jetbrains.com: what worked,
 what did not, and the repository type (stack, build tool, size). The user
