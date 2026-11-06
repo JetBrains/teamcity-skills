@@ -1,7 +1,8 @@
 """Read-only, source-bound checkpoints while a paid first-green agent runs.
 
-Only fixed categories, counts and build IDs leave this module. No logs, traces,
-parameters, tests, project mutations, build cancellations or retries are used.
+Only fixed categories, counts and build IDs leave this module. Failure summaries
+are read as structured JSON; raw logs, traces, parameters, tests, project
+mutations, build cancellations or retries are not used.
 """
 
 import json
@@ -11,7 +12,7 @@ import time
 
 from first_green_evidence import (
     EvidenceError, chain_nodes, pipeline_signature, select_pipeline,
-    safe_terminal_chain_diagnostics, terminal_chain_diagnostics,
+    read_terminal_chain_diagnostics, safe_terminal_chain_diagnostics, terminal_chain_diagnostics,
 )
 
 
@@ -120,7 +121,7 @@ class LiveBuildMonitor:
             head = next(node for node in nodes if node["id"] == head_id)
             if any(metadata.get(k) != head[k] for k in ("id", "buildTypeId", "state", "status")):
                 raise EvidenceError("verification-chain-incomplete")
-            snapshot = terminal_chain_diagnostics(nodes, head_id, metadata)
+            snapshot = read_terminal_chain_diagnostics(self.tc, nodes, head_id, metadata)
         self.data.update(state="observed", lastChain=snapshot)
         # State-change output contains no free-form TeamCity text or source.
         encoded = json.dumps(snapshot, sort_keys=True)

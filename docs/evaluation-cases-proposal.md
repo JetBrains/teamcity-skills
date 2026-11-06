@@ -614,8 +614,19 @@ occupying a scarce compatible agent.
 
 A build that TeamCity marks failed because its requested branch is not
 monitored is never a first-green success, even if tests passed. In that state
-TeamCity may have substituted a default revision. The skill must repair the
-VCS root branch specification and rerun on a monitored branch.
+TeamCity may have substituted a default revision. The skill must correct the
+demonstrated mismatch between the run's branch selector and the attached VCS
+roots, then rerun on the intended branch and pinned revision. A default branch
+can require the logical selector `<default>` even when its Git ref is
+`refs/heads/development`; its branch specification need not change.
+
+When a terminal head fails and all its jobs succeed, the live eval monitor and
+final observation read `teamcity run log <head-id> --failed --json` if
+`run view --json` has no structured problem evidence. They verify the summary's
+run ID and problem records and retain only the problem count. A recorded
+problem lets the agent continue diagnosis and repair. An empty valid summary
+leaves the unexplained-failure guard in force; a failed or invalid summary read
+cannot justify stopping the agent. A failed head still fails the build check.
 
 `expected.vcsRootMatchesRepository` opts a first-green case into two configuration
 checks: `vcsRepository` requires one attached Git VCS root matching the case's
@@ -636,6 +647,21 @@ infrastructure state does not affect grading.
 A failing `active` case exits non-zero. A failing `aspirational` case is
 reported and exits zero. `--dry-run` resolves the case without touching the
 server; `--keep` leaves the project and checkout in place for debugging.
+
+When `TEAMCITY_VERSION` is set, the runner also publishes each completed
+`active`-case grader check as a TeamCity test. Suite and test names include the
+case ID, arm, and tool mode, so their histories stay separate. This applies to every
+active case and reports only the checks selected by its contract. An execution
+error adds a failed `evalExecution` test; checks that were not graded are not
+reported as passing. Service messages use only the sanitized public result.
+Each test includes output with its result, safe expected/observed values when
+available, and relevant existing diagnostics. Failed tests include the same
+text in their failure details. Raw grader detail strings are not published.
+`aspirational` and `draft` cases, dry runs, and local runs keep JSON-only output.
+In particular, aspirational failures do not become failed TeamCity tests,
+because pipeline jobs cannot disable failure on failed tests. The runner's exit
+codes remain unchanged. The `eval-result.json` checks also retain these safe
+expected/observed values.
 
 Refresh the evaluation report after the case job reaches a terminal state and
 publishes `eval-result.json`. The dependent `Publish evaluation report` job

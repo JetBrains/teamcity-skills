@@ -28,11 +28,12 @@ Your task says `VCS root: exists` or `VCS root: none`.
 ## Run on the root
 
 - The checkout is on the default branch, its commit is pushed, and
-  `git status` is clean: run on the root. Pass the full ref to both flags:
-  `--revision <root-id>=<sha>@<default-ref> --branch <default-ref>`. A short
-  `main` leaves the jobs green and the head red with `invalid_branch_name`.
-  Without `--branch` the checkout fails with
-  `couldn't find remote ref <unspecified>`.
+  `git status` is clean: run on the root with
+  `--revision <root-id>=<sha>@<default-ref> --branch '<default>'`. The
+  `<default-ref>` is the root's full default ref, such as `refs/heads/main`;
+  never put `<default>` after `@`. A guessed `--branch main` can leave the
+  jobs green and the head red with `invalid_branch_name`. Without `--branch`
+  the checkout fails with `couldn't find remote ref <unspecified>`.
 - Another branch, unpushed commits, or uncommitted changes: use a
   [remote run](#remote-run). Never `git checkout` another branch.
 
@@ -62,7 +63,7 @@ With a root, base the patch on the default branch:
 base=$(git merge-base HEAD origin/<default-branch>)
 git diff --binary "$base" > <tmp>/branch.patch
 teamcity run start <pipeline-id> --revision <root-id>="$base"@<default-ref> \
-  --branch <default-ref> --local-changes=<tmp>/branch.patch --personal --no-push
+  --branch '<default>' --local-changes=<tmp>/branch.patch --personal --no-push
 ```
 
 Without a root, send the whole repository:

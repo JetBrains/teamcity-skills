@@ -89,6 +89,7 @@ SAFE_CHECK_NAMES = {
     "minimumJobs", "jobCount", "requiredStepTypes", "requiredStepProperties",
     "forbiddenStepProperties", "requiredArtifactRules", "requiredAgentRequirements",
     "requiredJobs", "requiredTests", "allTestsPassed", "mavenVersion", "jobResults", "toolUse",
+    "requiredJobProperties", "pinnedRevision",
     "compatibilityCheckpoint", "statusCheckLimit",
     "diagnosticAgentInventory", "diagnosticAgentRuntimeCapabilities",
     "diagnosticJobIncompatibility",

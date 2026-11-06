@@ -97,6 +97,7 @@ from pipeline_validation import (
 from build_monitor import LiveBuildMonitor, STOP_CATEGORIES, STOP_CATEGORY, safe_monitor_diagnostics
 from maven_version import maven_versions_match, observe_maven_versions
 from maven_arguments import maven_arguments_match, resolve_maven_arguments
+from teamcity_test_reporting import report_checks, safe_check_result
 
 
 class EvalError(RuntimeError):
@@ -451,10 +452,12 @@ class TeamCity:
         )
         return self._records(found, "buildType")
 
-    def builds(self, project_id: str, pipeline_id: str = None):
+    def builds(self, project_id: str, pipeline_id: str = None, revision: str = None):
         arguments = ["run", "list", "--project", project_id, "--limit", "0", "--json"]
         if pipeline_id:
             arguments.extend(["--job", pipeline_id])
+        if revision:
+            arguments.extend(["--revision", revision])
         found = self._run(
             arguments,
             json_output=True,
@@ -463,6 +466,24 @@ class TeamCity:
 
     def build(self, build_id: int):
         return self._run(["run", "view", str(build_id), "--json"], json_output=True)
+
+    def build_problem_count(self, build_id: int) -> int:
+        """Read structured problems for this failed head without retaining details."""
+        summary = self._run(
+            ["run", "log", str(build_id), "--failed", "--json"], json_output=True
+        )
+        if (not isinstance(summary, dict)
+                or type(summary.get("run_id")) not in (int, str)
+                or str(summary["run_id"]) != str(build_id)
+                or summary.get("status") not in ("FAILURE", "ERROR")):
+            raise EvidenceError("verification-observation-failed")
+        problems = summary.get("problems")
+        if (not isinstance(problems, list)
+                or any(not isinstance(item, dict)
+                       or not isinstance(item.get("type"), str) or not item["type"].strip()
+                       for item in problems)):
+            raise EvidenceError("verification-observation-failed")
+        return len(problems)
 
     def build_log(self, build_id: int) -> str:
         """Read the exact child build's full log; never publish the raw text."""
@@ -623,6 +644,11 @@ class TeamCity:
                     "agentRequirements": [str(runs_on)] if runs_on else [],
                     "environment": jdk_selectors(environment),
                     "parameters": jdk_selectors(parameters, parameter=True),
+                    "jobProperties": {
+                        name: job[name]
+                        for name in ("enable-dependency-cache", "parallelism")
+                        if name in job
+                    },
                 })
         return collected
 
@@ -697,8 +723,12 @@ def toolchain_evidence(properties: dict, jdk: str, jobs: list = None, jdk_match=
     return matched, evidence
 
 
-def source_mutations(checkout: pathlib.Path, allowed: list) -> list:
-    """Paths the agent changed in the disposable checkout, minus allowed ones."""
+def source_mutations(checkout: pathlib.Path, allowed: list, revision: str = None) -> list:
+    """Paths the agent changed in the disposable checkout, minus allowed ones.
+
+    A local commit hides tracked-file edits from ``git status``, so a HEAD that
+    moved away from the pinned revision counts as a mutation too.
+    """
     porcelain = subprocess.run(
         ["git", "status", "--porcelain", "--untracked-files=all"],
         cwd=checkout, capture_output=True, text=True, check=True,
@@ -709,6 +739,11 @@ def source_mutations(checkout: pathlib.Path, allowed: list) -> list:
         if any(path == a or path.startswith(a.rstrip("/") + "/") for a in allowed):
             continue
         changed.append(path)
+    if revision is not None:
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=checkout,
+                              capture_output=True, text=True, check=True).stdout.strip()
+        if head != revision:
+            changed.append("HEAD")
     return sorted(changed)
 
 
@@ -800,6 +835,14 @@ def grade(case: dict, observed: dict) -> dict:
         "observed": "none" if not observed["mutations"] else "changed",
         "detail": f"changed: {observed['mutations']}" if observed["mutations"] else "clean checkout",
     }
+    if "pinnedRevision" in observed:
+        # A green build of some other commit is not a green build of the case.
+        checks["pinnedRevision"] = {
+            "expected": True,
+            "observed": observed["pinnedRevision"] is True,
+            "detail": ("head build ran the pinned revision" if observed["pinnedRevision"] is True
+                       else "head build did not run the pinned revision"),
+        }
     if expected.get("vcsRootMatchesRepository"):
         checks.update({name: {"expected": True, "observed": matched}
                        for name, matched in vcs_root_evidence(
@@ -858,8 +901,10 @@ def grade(case: dict, observed: dict) -> dict:
 
 
 def required_tests_pass(contract, tests):
-    successful = [test["name"] for test in tests
-                  if test.get("status") == "SUCCESS" and not test.get("ignored", False)]
+    # A test class scheduled into several parallel batches reports once per
+    # batch; count unique successful names so duplicates cannot pad the minimum.
+    successful = {test["name"] for test in tests
+                  if test.get("status") == "SUCCESS" and not test.get("ignored", False)}
     return (len(successful) >= contract.get("minimumTestCount", 0)
             and all(any(re.search(pattern, name) for name in successful)
                     for pattern in contract.get("requiredTestNames", [])))
@@ -1006,6 +1051,21 @@ def grade_configuration(case: dict, observed: dict) -> dict:
             "expected": True,
             "observed": not missing,
             "detail": f"missing {missing} in {rules!r}" if missing else f"rules: {rules!r}",
+        }
+
+    if "requiredJobProperties" in expected:
+        missing = [
+            f"{want['property']}={want['value']!r}"
+            for want in expected["requiredJobProperties"]
+            if not any(
+                job.get("jobProperties", {}).get(want["property"]) == want["value"]
+                for job in jobs
+            )
+        ]
+        checks["requiredJobProperties"] = {
+            "expected": True,
+            "observed": not missing,
+            "detail": f"missing {missing}" if missing else "all present",
         }
 
     if "requiredAgentRequirements" in expected:
@@ -2021,7 +2081,7 @@ def publishable_result(result: dict) -> dict:
     if type(max_budget) in (int, float) and math.isfinite(max_budget) and max_budget > 0:
         published["agentMaxBudgetUsd"] = max_budget
     published["checks"] = {
-        name: {"passed": check.get("passed")}
+        name: safe_check_result(check)
         for name, check in (result.get("checks") or {}).items()
         if isinstance(check, dict)
     }
@@ -2354,6 +2414,7 @@ def run(
         if agent_exit != 0 or agent_run.get("failureCategory"):
             no_build_budget = min(budget, int(env.get("EVAL_FAILED_AGENT_GRACE", "120")))
         allowed = [".claude/"]
+        revision = case.get("repository", {}).get("revision")
         if "requestedConfiguration" in case:
             allowed.extend([case["requestedConfiguration"]["sourcePath"], ".teamcity/"])
 
@@ -2362,7 +2423,7 @@ def run(
             if recovery_case:
                 calls = tool_calls(trace)
                 result["checks"] = recovery_fixture.grade(
-                    source_mutations(checkout, allowed), forbidden_queue_transport(calls)
+                    source_mutations(checkout, allowed, revision), forbidden_queue_transport(calls)
                 )
                 result["evaluationEnvironment"] = "simulated"
                 result["queueRecoveryDiagnostics"] = recovery_fixture.diagnostics()
@@ -2372,7 +2433,7 @@ def run(
             observed = {
                 "toolCalls": calls,
                 "finalText": agent_final_text(trace),
-                "mutations": source_mutations(checkout, allowed),
+                "mutations": source_mutations(checkout, allowed, revision),
             }
             result["diagnosticCallCount"] = len(calls)
             result["checks"] = grade_queue_stall(case, observed)
@@ -2388,7 +2449,7 @@ def run(
             observed = {
                 "jobs": tc.jobs(project_id, pipeline_id),
                 "schemaValidated": result["schemaValidationDiagnostics"].get("status") == SCHEMA_STATUS_VALID,
-                "mutations": source_mutations(checkout, allowed),
+                "mutations": source_mutations(checkout, allowed, revision),
                 "toolCalls": tool_calls(trace),
             }
             result["toolCalls"] = observed["toolCalls"]
@@ -2459,7 +2520,10 @@ def run(
             "buildTypeCount": len(tc.build_types(project_id)),
             "buildStatus": build.get("status"),
             "statusText": build.get("statusText"),
-            "mutations": source_mutations(checkout, allowed),
+            "mutations": source_mutations(checkout, allowed, revision),
+            "pinnedRevision": build["id"] in {
+                item.get("id") for item in tc.builds(project_id, build["pipelineId"], revision)
+            },
         }
         result["buildAttempts"] = build["attempts"]
         result["build"] = {
@@ -2575,10 +2639,12 @@ def main() -> int:
             "error": str(exc),
         }
 
-    rendered = json.dumps(publishable_result(result), indent=2)
+    published = publishable_result(result)
+    rendered = json.dumps(published, indent=2)
     print(rendered)
     if args.result:
         args.result.write_text(rendered + "\n")
+    report_checks(published)
 
     if result["status"] in ("passed", "dry-run"):
         return 0

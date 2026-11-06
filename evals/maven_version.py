@@ -2,8 +2,9 @@
 
 import re
 
+from maven_runtime import log_messages
 
-STEP = re.compile(r"\bStep (\d+)/(\d+)\b")
+
 MAVEN_MAIN = re.compile(
     r"\borg\.(?:codehaus\.plexus\.classworlds\.launcher\.Launcher"
     r"|apache\.maven\.cli\.MavenCli|apache\.maven\.cling\.MavenCling)(?=\s|$)"
@@ -34,16 +35,10 @@ def maven_version(log, job, minimum):
         return result
     launches, current_step, active, container_command = [], None, None, None
     in_container_script = False
-    for line in log.splitlines():
-        line = re.sub(r"\x1b\[[0-9;]*m", "", line).strip()
-        line = re.sub(r"^\[[\d:.]+\]\s*(?:[A-Za-z]?:\s*)?", "", line)
-        match = STEP.search(line)
-        if match:
-            step = (int(match[1]), int(match[2]))
-            if step != current_step:
-                active, container_command, in_container_script = None, None, False
-            current_step = step
-        line = re.sub(r"^\[Step \d+/\d+\]\s*", "", line)
+    for step, line in log_messages(log):
+        if step != current_step:
+            active, container_command, in_container_script = None, None, False
+        current_step = step
         if line == "Container script (to be run inside container):":
             in_container_script, container_command = True, None
         elif in_container_script and line.startswith("exec "):

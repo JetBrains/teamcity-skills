@@ -47,12 +47,14 @@ class BuildMonitorTest(unittest.TestCase):
         self.path.write_text("jobs:\n  verify: {}\n")
         self.definition = {"jobs": {"verify": {}}}
         self.tree = node(10, "pipeline", "FAILURE", children=[node(11, "verify")])
-        self.tc = mock.Mock(spec=["pipeline_ids", "pipeline_definition", "builds", "build_tree", "build"])
+        self.tc = mock.Mock(spec=["pipeline_ids", "pipeline_definition", "builds", "build_tree", "build",
+                                  "build_problem_count"])
         self.tc.pipeline_ids.return_value = ["pipeline"]
         self.tc.pipeline_definition.return_value = self.definition
         self.tc.builds.return_value = [self.tree]
         self.tc.build_tree.return_value = self.tree
         self.tc.build.return_value = {**self.tree, "statusText": "canary secret, Tests passed: 39"}
+        self.tc.build_problem_count.return_value = 0
         self.monitor = LiveBuildMonitor(self.tc, "only-project", self.root, ".teamcity.yml", clock=lambda: 100)
         self.output = io.StringIO()
         self.addCleanup(mock.patch.stopall)
@@ -68,10 +70,11 @@ class BuildMonitorTest(unittest.TestCase):
         self.assertEqual([{"id": 11, "state": "finished", "status": "SUCCESS"}],
                          diagnostic["lastChain"]["children"])
         self.assertEqual("unavailable", diagnostic["lastChain"]["problemEvidence"])
-        self.assertNotIn("problemCount", diagnostic["lastChain"])
+        self.assertEqual(0, diagnostic["lastChain"]["problemCount"])
         self.assertNotIn("canary", json.dumps(diagnostic) + self.output.getvalue())
         self.assertFalse(diagnostic["stoppedAgent"])  # Only the process owner marks it.
         self.tc.pipeline_ids.assert_called_once_with("only-project")
+        self.tc.build_problem_count.assert_called_once_with(10)
         for call in self.tc.builds.call_args_list:
             self.assertEqual(("only-project", "pipeline"), call.args)
 
@@ -89,6 +92,33 @@ class BuildMonitorTest(unittest.TestCase):
         self.assertEqual("recorded", chain["problemEvidence"])
         self.assertTrue(chain["requiresInvestigation"])
         self.assertNotIn("canary", json.dumps(chain))
+        self.tc.build_problem_count.assert_not_called()
+
+    def test_failure_summary_leaves_time_to_repair_branch_and_rerun(self):
+        self.tc.build_problem_count.return_value = 1
+        self.assertIsNone(self.monitor.checkpoint(7200))
+        chain = self.monitor.diagnostics()["lastChain"]
+        self.assertEqual("FAILURE", chain["headStatus"])
+        self.assertEqual("recorded", chain["problemEvidence"])
+        self.assertEqual(1, chain["problemCount"])
+        self.assertTrue(chain["requiresInvestigation"])
+        self.assertFalse(self.monitor.diagnostics()["stoppedAgent"])
+        self.tc.build_problem_count.assert_called_once_with(10)
+
+        self.tree.update(id=12, status="SUCCESS", dependencies=[node(13, "verify")])
+        self.assertIsNone(self.monitor.checkpoint(7200))
+        self.assertEqual("SUCCESS", self.monitor.diagnostics()["lastChain"]["headStatus"])
+        self.tc.build_problem_count.assert_called_once_with(10)
+
+    def test_failure_summary_read_errors_do_not_stop_agent(self):
+        for error in (RuntimeError("canary payload"), OSError("canary payload"),
+                      ValueError("canary payload")):
+            with self.subTest(error=type(error).__name__):
+                self.tc.build_problem_count.side_effect = error
+                self.assertIsNone(self.monitor.checkpoint(7200))
+                self.assertEqual("read-unavailable", self.monitor.diagnostics()["state"])
+        self.assertEqual(3, self.monitor.diagnostics()["readFailureCount"])
+        self.assertNotIn("canary", self.output.getvalue())
 
     def test_regular_build_failures_and_nonterminal_states_do_not_stop_agent(self):
         for head_status, head_state, child_status, child_state in (
@@ -103,6 +133,7 @@ class BuildMonitorTest(unittest.TestCase):
                 self.tree["dependencies"][0].update(status=child_status, state=child_state)
                 self.assertIsNone(self.monitor.checkpoint(7200))
         self.tc.build.assert_not_called()
+        self.tc.build_problem_count.assert_not_called()
 
     def test_missing_children_require_a_grace_period_and_confirming_read(self):
         self.tree["dependencies"] = []
@@ -248,15 +279,28 @@ class BuildMonitorTest(unittest.TestCase):
         )
         tc = mock.Mock()
         tc.build = self.tc.build
+        tc.build_problem_count = self.tc.build_problem_count
         tc.jobs.return_value = [{"name": "Verify"}]
         tc.test_results.return_value = []
         tc.artifacts.return_value = []
         build = {"id": 10, "pipelineId": "pipeline", "selection": "source-matched",
                  "attempts": 1, "status": "FAILURE", "nodes": [self.tree, self.tree["dependencies"][0]]}
-        observed, diagnostic = observe_chain(tc, "only-project", build, "21")
-        self.assertEqual("FAILURE", observed["buildStatus"])
-        self.assertTrue(diagnostic["terminalChain"]["requiresInvestigation"])
-        self.assertEqual("unavailable", diagnostic["terminalChain"]["problemEvidence"])
+        case = {"expected": {"configurationValidated": True, "firstBuild": "SUCCESS",
+                             "testsExecutedAndReported": True, "artifactsPublished": True,
+                             "toolchain": {"jdk": "21"}, "sourceMutations": "none"},
+                "verification": {"artifactPaths": []}}
+        for count in (0, 1, None):
+            with self.subTest(problem_count=count):
+                tc.build_problem_count.return_value = count
+                tc.build_problem_count.side_effect = RuntimeError("canary payload") if count is None else None
+                observed, diagnostic = observe_chain(tc, "only-project", build, "21")
+                self.assertEqual("FAILURE", observed["buildStatus"])
+                self.assertTrue(diagnostic["terminalChain"]["requiresInvestigation"])
+                self.assertEqual("recorded" if count else "unavailable",
+                                 diagnostic["terminalChain"]["problemEvidence"])
+                self.assertFalse(runner.grade(case, {**observed, "buildTypeCount": 1,
+                                                    "mutations": []})["firstBuild"]["passed"])
+                self.assertNotIn("canary", json.dumps(diagnostic))
 
     def test_missing_problem_metadata_is_distinct_from_measured_zero(self):
         nodes = [self.tree, self.tree["dependencies"][0]]
@@ -266,6 +310,60 @@ class BuildMonitorTest(unittest.TestCase):
         self.assertEqual(0, zero["problemCount"])
         self.assertEqual("unavailable", missing["problemEvidence"])
         self.assertEqual("unavailable", zero["problemEvidence"])
+
+
+class HeadFailureSummaryTest(unittest.TestCase):
+    def setUp(self):
+        self.tc = runner.TeamCity("teamcity", "https://example.invalid", "private", {})
+        self.summary = {"run_id": "10", "status": "FAILURE", "problems": [
+            {"type": "invalid_branch_name", "details": "canary private branch"}]}
+
+    def test_reads_exact_head_and_returns_only_problem_count(self):
+        for identifier in (10, "10"):
+            with self.subTest(identifier=identifier), mock.patch.object(
+                self.tc, "_run", return_value={**self.summary, "run_id": identifier}
+            ) as invoked:
+                self.assertEqual(1, self.tc.build_problem_count(10))
+                invoked.assert_called_once_with(
+                    ["run", "log", "10", "--failed", "--json"], json_output=True)
+        with mock.patch.object(self.tc, "_run", return_value={**self.summary, "problems": []}):
+            self.assertEqual(0, self.tc.build_problem_count(10))
+
+    def test_foreign_or_malformed_summaries_do_not_explain_head_failure(self):
+        summaries = [None, [], {}, {**self.summary, "run_id": "11"},
+                     {**self.summary, "run_id": True}, {**self.summary, "status": "SUCCESS"}]
+        summaries.extend({**self.summary, "problems": problems}
+                         for problems in (None, {}, "canary", [None], [{}], [{"type": " "}]))
+        for summary in summaries:
+            with self.subTest(summary=summary), mock.patch.object(self.tc, "_run", return_value=summary), \
+                    self.assertRaises(runner.EvidenceError):
+                self.tc.build_problem_count(10)
+        with mock.patch.object(runner.subprocess, "run", return_value=
+                               subprocess.CompletedProcess([], 0, "canary malformed JSON")), \
+                self.assertRaises(runner.EvalError):
+            self.tc.build_problem_count(10)
+
+    def test_branch_problem_details_stay_out_of_monitor_output(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = pathlib.Path(folder)
+            (root / ".teamcity.yml").write_text("jobs:\n  verify: {}\n")
+            tree = node(10, "pipeline", "FAILURE", children=[node(11, "verify")])
+            self.tc.pipeline_ids = mock.Mock(return_value=["pipeline"])
+            self.tc.pipeline_definition = mock.Mock(return_value={"jobs": {"verify": {}}})
+            self.tc.builds = mock.Mock(return_value=[tree])
+            self.tc.build_tree = mock.Mock(return_value=tree)
+            self.tc.build = mock.Mock(return_value=tree)
+            monitor = LiveBuildMonitor(self.tc, "project", root, ".teamcity.yml")
+            output = io.StringIO()
+            for summary, state in ((self.summary, "observed"),
+                                   ({**self.summary, "run_id": "11"}, "read-unavailable")):
+                with self.subTest(state=state), mock.patch.object(self.tc, "_run", return_value=summary), \
+                        mock.patch("build_monitor.sys.stderr", output):
+                    self.assertIsNone(monitor.checkpoint(time.monotonic() + 60))
+                    self.assertEqual(state, monitor.diagnostics()["state"])
+            published = runner.publishable_result({"buildMonitorDiagnostics": monitor.diagnostics()})
+            self.assertNotIn("canary", json.dumps(published) + output.getvalue())
+            self.assertNotIn("invalid_branch_name", json.dumps(published) + output.getvalue())
 
 
 class AgentInterventionTest(unittest.TestCase):
