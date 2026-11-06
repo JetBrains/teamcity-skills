@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.3.0
+version: 0.3.1
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first green build, test, and package pipeline with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
@@ -138,9 +138,13 @@ failure. Fix pipeline problems only.
 Read [Show the value](references/show-the-value.md). The chat keeps what the
 user reads or acts on. The file keeps what someone checks later.
 
-In the chat, short and in plain words:
+In the chat, short and in plain words. The first line is the link to the
+run page: the green run's `webUrl`, or the red run's with its cause in one
+line. The second line is the link to the pipeline, from
+`pipeline list --json=id,webUrl`, where the user finds every run. The user
+is still on the "Continue in the terminal" page in the browser; these links
+are where they go next. Then:
 
-- the green run's `webUrl`, or the red run and its cause in one line;
 - the artifact: what is published, its size, and the Artifacts tab link;
 - the path to the report file;
 - the value summary that guide describes;
