@@ -171,9 +171,9 @@ nothing did, say that instead: the first run was green. The shape, in your
 own words:
 
 > Congratulations on the first green build of <project>! <The hardest
-> thing> took a few tries, and it is behind you now. The TeamCity team did
-> their best on this onboarding, and we want to hear how it went, good or
-> bad, at anton.shelepov@jetbrains.com. Want me to prepare a short message
+> thing> took a few tries, but all's well that builds well. The TeamCity
+> team did their best on this onboarding, and we want to hear how it went,
+> smooth sailing or choppy waters, at anton.shelepov@jetbrains.com. Want me to prepare a short message
 > for the team?
 
 On "yes", draft a short email to anton.shelepov@jetbrains.com: what worked,
