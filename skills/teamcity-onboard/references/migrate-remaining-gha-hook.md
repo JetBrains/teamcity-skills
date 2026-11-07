@@ -23,6 +23,8 @@ On continuation, read the current hook from disk and recover every unresolved it
 
 Compare behavior, not names or job counts. Inspect commands, relevant flags/environment, test scope, matrix, outputs, dependencies, execution conditions, and failure-time behavior. Different build flags can produce distinct deliverables: a production build and an E2E-specific build need separate coverage even when they share a job name. Reuse an existing job only when the required behavior matches.
 
+Build the inventory from the source, not from the TeamCity jobs already created or the first-run subset. Read referenced reusable workflows and local actions where they define executable behavior. Assign every source job, expanded matrix combination, and required capability a coverage row or a reasoned scope exclusion. A workflow omitted by onboarding is still a migration candidate.
+
 Inspect all source workflows for:
 
 - build, packaging, lint, formatting, static analysis, and tests;
@@ -35,6 +37,8 @@ Inspect all source workflows for:
 ### Scope boundaries
 
 Reproduce source behavior. Concurrency, caching, new performance optimizations, project-code fixes, and legacy-pipeline refactoring are outside this hook.
+
+Classify individual operations by what they do, not by workflow names. Compiling documentation, building packages, generating reports, and storing downloadable artifacts are build/check work even when their workflow later deploys or publishes them. Keep those operations in scope and separate their downstream deployment or external publication. Exclude a whole mixed workflow only when separation is demonstrably impossible; explain the dependency that prevents it.
 
 Do not migrate, configure, or run deployment operations. Mark them **Separate deploy hook**. For mixed jobs, separate the checks from deployment; if they cannot be separated, record the blocker. Resolve ownership of publishing/release operations before including them in the executable plan. Do not publish externally during validation.
 
@@ -64,6 +68,8 @@ Use the source workflow, local actions, and test configuration to reproduce requ
 
 Preserve accepted source combinations, include/exclude rules, and explicit shards as separate jobs. Do not collapse, sample, or replace them without agreement. Running the whole suite in one job proves neither OS/runtime variants nor shard coverage.
 
+Expand the source matrix using its actual axes, expressions, and include/exclude rules. Record the expected combinations before implementing them, then compare that set with mapped TeamCity combinations. Account for each missing combination individually. Coverage collection on one combination does not replace the ordinary test variants, and a passing test count does not justify dropping a build configuration or runtime axis.
+
 Check each shard's command, index, total, execution, and test report. Compare combined test identities with the expected suite at the same revision, accounting for repeats and test projects. Counts alone do not prove completeness. Reuse shared build outputs where the source does.
 
 ### Execution conditions
@@ -91,6 +97,12 @@ Check control flow outside the checkout using a synthetic failing command and te
 ### Secrets and manual prerequisites
 
 Never ask for, receive, read, or print secret values. Follow the shared secret policy. For each required secret, provide the exact verified pipeline secrets settings link, parameter name, what to store, and numbered setup steps immediately. Explain that TeamCity stores it as a secure parameter, outside the repository, logs, and agent-visible output. Wait for confirmation and verify availability without reading the value.
+
+### Resolve prerequisites before declaring blockers
+
+Before declaring a prerequisite blocked or unsupported, assess supported alternatives that preserve the source behavior: an eligible agent type, a compatible container, installation of the required runtime/tools within the job, or an equivalent supported runner/condition. Choose and verify a viable alternative within scope. A missing preinstalled SDK, unavailable dedicated runner, or missing YAML field alone is not a blocker. Do not silently substitute another OS/architecture, weaken assertions, or remove required output. Pin any introduced runtime/container to a concrete version or digest where supported; record floating references as such rather than calling them pinned.
+
+For alternatives ruled out, record the relevant capability, permission, or failed-attempt evidence. Exhaust reasonable supported options; do not make speculative infrastructure changes or repeat the same failed approach. Continue independent work when no viable option is available.
 
 Do supported configuration work yourself. Manual action requires a verified permission, UI-only setting, secret, or other user prerequisite. Provide the evidence, owner, exact verified settings link/steps, effect of leaving it unchanged, and verification needed afterward. If the setup path is unverified, say so; do not invent URLs. For unsupported behavior, explain the limitation and possible alternative.
 
@@ -124,6 +136,8 @@ Apply confirmed migration corrections within scope. For a verified provisioning/
 A queue block affects only work needing those agents. Continue independent checks and fixes. Keep at most one monitor for the same run. After an unchanged diagnostic pass, record the runtime block and move to other actionable rows; resume when new evidence appears. Follow the continuation rules above for cancellation and replacement runs.
 
 ## 4. Reconcile and report
+
+Before declaring completion, reread the source inventory and compare it with the stored TeamCity configuration and verification evidence. Compute the unmatched source items, including matrix combinations and operations inside mixed workflows. Add any omissions back to the worklist and continue actionable migration. Do not shrink accepted scope to the implemented subset, reinterpret an unresolved item as an optional follow-up, or equate all created jobs being green with full migration.
 
 Account for every initial worklist row, including inherited gaps. Do not finish with a list containing only queued jobs. For each accepted item, finish with verified behavior, an agreed exclusion/deviation, a documented blocker with next action, or the retry-limit outcome. Unattempted or unverified work remains visible.
 
