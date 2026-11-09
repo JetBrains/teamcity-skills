@@ -1,10 +1,19 @@
 ---
 name: teamcity-cli
-version: 1.5.0
+version: 1.6.0
 description: Use when working with TeamCity CI/CD or when a user provides a TeamCity build URL — drives the `teamcity` CLI for builds, logs, jobs, queues, agents, pools, projects, and pipelines.
 ---
 
 # TeamCity CLI (`teamcity`)
+
+## Run outside the agent sandbox
+
+`teamcity` needs the system keychain and the server, and a command sandbox blocks both.
+In a sandbox, ask to run `teamcity` outside it from the first command. If the user declines, stop and say why. Do not work around the sandbox with a token: no `TEAMCITY_TOKEN`, `--insecure-storage`, or asking for one. The sandbox still blocks the server, and the token ends up in plain text.
+
+- Run each as a plain `teamcity …` command on its own: no env-var prefix, pipe, `&&`, redirect, or `$(…)`, or the allow rule does not match. Use `--json=<fields>`, and filter in a separate step.
+- Codex: propose `prefix_rule: ["teamcity"]`, and say that approving it for good allows `teamcity` outside the sandbox in all future sessions.
+- Claude Code: the user can add `teamcity *` to `sandbox.excludedCommands` to skip the prompts.
 
 ## Quick Start
 
