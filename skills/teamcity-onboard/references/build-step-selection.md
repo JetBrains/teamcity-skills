@@ -7,8 +7,13 @@
   `xml-report`, as [Pipeline features](pipeline-features.md) describes.
 - A new job when it runs in parallel with another, or uses another job's
   output. Every job pays its own agent start, checkout, and setup, so short
-  work stays as steps in one job. Add `dependencies:` only when the job reads
-  the other job's files; otherwise run the jobs in parallel.
+  work stays as steps in one job.
+- With several jobs, the pipeline is a chain. The package job depends on
+  the test jobs, so a package is built only from green code: a plain
+  `- <test-job>` in `dependencies:` orders the jobs. Pass the build output with `files:` only
+  when the next job uses it without rebuilding, such as a published
+  package, `dist/`, or .NET binaries. Otherwise jobs with no order between
+  them, such as tests on several versions, run in parallel.
 - No parallel tests on the first run, as
   [Show the value](show-the-value.md#follow-ups) describes.
 - A build status that shows what happens, as

@@ -17,8 +17,8 @@ You start with:
 You deliver, fast:
 
 - one pipeline in that project that builds, tests, and packages the
-  repository with native runners, in jobs where they run in parallel or
-  pass output, steps otherwise;
+  repository with native runners, in jobs that run in parallel or as a
+  chain, steps otherwise;
 - a green run, or a red one caused by the project and backed by evidence,
   with a link to watch it;
 - nothing committed to the repository;
