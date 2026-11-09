@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.2.0
+version: 0.3.0
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first green build, test, and package pipeline with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
@@ -160,3 +160,22 @@ In `teamcity-onboarding.md` in the checkout root:
 - what was left out, and why;
 - each manual prerequisite in the form
   [Manual prerequisites](references/manual-prerequisites.md) requires.
+
+## 7. A personal note
+
+Once per onboarding session, after the report, and after every follow-up
+offer is accepted or declined. The first green run triggers it, on whichever
+path reached it. Write it as a note from people, not as a status line. Name
+the project, and the one thing in this run that took the most work. When
+nothing did, say that instead: the first run was green. The shape, in your
+own words:
+
+> Congratulations on the first green build of <project>! <The hardest
+> thing> took a few tries, but all's well that builds well. The TeamCity
+> team did their best on this onboarding, and we want to hear how it went,
+> smooth sailing or choppy waters, at anton.shelepov@jetbrains.com. Want me
+> to prepare a short message for the team?
+
+On "yes", draft a short email to anton.shelepov@jetbrains.com: what worked,
+what did not, and the repository type (stack, build tool, size). The user
+sends it. Never send it yourself. On "no" or no answer, say nothing more.
