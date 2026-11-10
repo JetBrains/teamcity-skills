@@ -174,8 +174,11 @@ are where they go next. Then:
 - the value summary that guide describes;
 - one line per TeamCity feature to look at: what the user gets and where;
 - each manual prerequisite in a short sentence, with a link;
-- what was left out, in one line;
-- the next steps that apply: the full suite when a subset ran, and the follow-ups from that guide.
+- follow-ups: everything the user can do next, one line each, such as
+  the full suite when a subset ran, the follow-ups from that guide, and
+  each part of the repository's CI left out of the pipeline. Say what each
+  one needs from the user, such as signing secrets or a VCS root. Leave out
+  only what the user cannot do at all. No separate "left out" list.
 
 In `teamcity-onboarding.md` in the checkout root:
 
