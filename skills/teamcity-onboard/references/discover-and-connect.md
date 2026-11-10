@@ -87,3 +87,35 @@ teamcity run start <pipeline-id> --local-changes=<tmp>/full.patch --personal --n
   with a script step that runs `chmod +x` on them.
 - A missing custom-patch permission is a
   [manual prerequisite](manual-prerequisites.md).
+
+### A patch over 64 MB
+
+TeamCity does not take a patch over 64 MB for remote run. Check the size of the patch file
+before `run start`. If it is bigger, stop and ask the user, in plain words.
+Say that the limit is only technical, and give two choices, for example:
+
+> Your repository is bigger than 64 MB, and TeamCity can't take that much
+> in one upload. That's only a technical limit of uploading files from your
+> computer. I can:
+> 1. Run the build without some big files that the build doesn't use, such
+>    as images or docs. Then those files are not in the build, and may be
+>    missing from the packages.
+> 2. Connect the repository to TeamCity. Then TeamCity gets all files
+>    itself, with no limit.
+> Which one do you prefer?
+
+Wait for the answer.
+
+- **Run without some files**: find the biggest tracked files with
+  `git ls-files -z | xargs -0 du -k | sort -n | tail -20`. Leave out only
+  files the build does not read, with `':(exclude)<path>'` after `--` in
+  `git diff`, until the patch is under 64 MB. Tell the user which files are
+  left out, and put the list in the report file.
+- **Connect the repository**: it needs a remote on a Git host. Without one,
+  the user pushes the repository first. Find the connection with
+  `teamcity project connection list` (connections are in the root project), and let the user sign in with
+  `teamcity project connection authorize <conn-id> -p <conn-project-id>`.
+  Connections always exist. Then create the root with
+  `teamcity project vcs create --url <https-url> -p <project-id> --auth token --connection-id <conn-id> --json`,
+  create the pipeline again with `--vcs-root <root-id>`, and run on the
+  root as [Run on the root](#run-on-the-root) says.
