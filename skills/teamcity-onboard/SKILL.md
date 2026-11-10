@@ -8,7 +8,7 @@ description: Use when onboarding a project to TeamCity with an authenticated `te
 
 You start with:
 
-- the `teamcity` CLI, logged in to the target TeamCity server;
+- the `teamcity` CLI, logged in to the target TeamCity Cloud server;
 - the user's repository, checked out in the working directory, on the
   branch and commit the user chose;
 - a TeamCity project for the pipeline, with or without a VCS root for the
@@ -26,6 +26,12 @@ You deliver, fast:
   [Show the value](references/show-the-value.md) that applies, set up and
   named in one line each;
 - a short report in the chat, and the details in a report file.
+
+This flow always runs on TeamCity Cloud. Answer every question and fix
+every problem for TeamCity Cloud: JetBrains-hosted agents, credits, the
+Cloud limits, and no access to the server machine. Do not suggest what
+only an on-premises server has, such as changing server files, server
+plugins, or a server restart.
 
 ## Before the first command
 
