@@ -178,7 +178,10 @@ are where they go next. Then:
   the full suite when a subset ran, the follow-ups from that guide, and
   each part of the repository's CI left out of the pipeline. Say what each
   one needs from the user, such as signing secrets or a VCS root. Leave out
-  only what the user cannot do at all. No separate "left out" list.
+  only what the user cannot do at all. No separate "left out" list. After
+  the first green run, the last follow-up is the
+  [personal note](#7-a-personal-note), as one list item, not a separate
+  paragraph.
 
 In `teamcity-onboarding.md` in the checkout root:
 
@@ -194,18 +197,17 @@ In `teamcity-onboarding.md` in the checkout root:
 
 ## 7. A personal note
 
-Once per onboarding session, after the report, and after every follow-up
-offer is accepted or declined. The first green run triggers it, on whichever
-path reached it. Write it as a note from people, not as a status line. Name
-the project, and the one thing in this run that took the most work. When
-nothing did, say that instead: the first run was green. The shape, in your
-own words:
+Once per onboarding session, as the last item of the follow-ups list in the
+report. The first green run triggers it, on whichever path reached it.
+Write it as a note from people, not as a status line. Name the project, and
+the one thing in this run that took the most work. When nothing did, say
+that instead: the first run was green. The shape, in your own words:
 
-> Congratulations on the first green build of <project>! <The hardest
-> thing> took a few tries, but all's well that builds well. The TeamCity
-> team did their best on this onboarding, and we want to hear how it went,
-> smooth sailing or choppy waters, at anton.shelepov@jetbrains.com. Want me
-> to prepare a short message for the team?
+> - Congratulations on the first green build of <project>! <The hardest
+>   thing> took a few tries, but all's well that builds well. The TeamCity
+>   team did their best on this onboarding, and we want to hear how it
+>   went, smooth sailing or choppy waters, at anton.shelepov@jetbrains.com.
+>   Want me to prepare a short message for the team?
 
 On "yes", draft a short email to anton.shelepov@jetbrains.com: what worked,
 what did not, and the repository type (stack, build tool, size). The user
