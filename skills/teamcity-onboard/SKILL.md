@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.2.2
+version: 0.2.3
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first green build, test, and package pipeline with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
@@ -133,7 +133,36 @@ Read [Verify a build](references/verify-build.md). Start the first run at
 once, without asking. Announce every run as that guide says. Classify each
 failure. Fix pipeline problems only.
 
-## 6. Report and offer follow-ups
+## 6. Offer remaining GitHub Actions migration
+
+After the first green core build:
+
+- Compare `.github/workflows/` with the created TeamCity jobs: commands,
+  tests, matrix variants, artifacts, dependencies, triggers, and conditions.
+- Check shards and matrix variants separately from test-suite coverage.
+  A full suite in one job leaves matrix variants unverified. A PR-only check
+  running on every build leaves its condition uncovered.
+- Exclude concurrency, caching, and deployment operations, including deploy
+  steps inside mixed jobs.
+- Assign each item a status: **Covered**, **Partially covered**, **Not migrated**,
+  **Separate deploy hook**, or **Unsupported or blocked by manual setup**.
+  Include evidence and explain blockers.
+
+| Condition | Offer | Action after explicit agreement |
+| --- | --- | --- |
+| Non-deploy GHA jobs or capabilities are partially covered or not migrated | List the remaining workflows, jobs, and variants, describe changes needed in existing jobs, then ask: **“Want me to migrate the rest of your pipeline?”** | Read [Migrate remaining GitHub Actions workflows](references/migrate-remaining-gha-hook.md) and execute only the accepted scope. |
+
+Do not read or execute the migration hook before an explicit yes. Pass it the
+project, pipeline, VCS root, branch, revision, existing configuration and job
+IDs, coverage assessment, accepted scope, proposed changes, blockers, and
+exclusions. Preserve this context in the session.
+
+If the user declines or does not answer, do nothing. Say: “When you are ready,
+ask: ‘Migrate the remaining GitHub Actions workflows into the existing
+TeamCity pipeline.’” If everything is covered, report that. If only blocked
+or unsupported items remain, explain their next actions.
+
+## 7. Report and offer follow-ups
 
 Read [Show the value](references/show-the-value.md). The chat keeps what the
 user reads or acts on. The file keeps what someone checks later.
@@ -160,32 +189,3 @@ In `teamcity-onboarding.md` in the checkout root:
 - what was left out, and why;
 - each manual prerequisite in the form
   [Manual prerequisites](references/manual-prerequisites.md) requires.
-
-## 7. Offer remaining GitHub Actions migration
-
-After the first green core build and its report, compare `.github/workflows/`
-with the created TeamCity configuration. Compare behavior, not job names:
-commands, test scope, matrix variants, artifacts, dependencies, triggers,
-and conditions. Track explicit shards and matrix variants separately from
-test-suite coverage. A full suite in one job does not cover a source matrix;
-a PR-only check running on every build does not preserve its conditions.
-Exclude concurrency settings and caching.
-
-Assign each item a status: **Covered**, **Partially covered**, **Not migrated**,
-**Separate deploy hook**, or **Unsupported or blocked by manual setup**.
-Include evidence and explain blockers. Exclude deployment operations from
-this migration, including deployment steps inside mixed jobs.
-
-| Condition | Offer | Action after explicit agreement |
-| --- | --- | --- |
-| Non-deploy GHA jobs or capabilities are partially covered or not migrated | List the remaining workflows, jobs, and variants, describe changes needed in existing jobs, then ask: **“Want me to migrate the rest of your pipeline?”** | Read [Migrate remaining GitHub Actions workflows](references/migrate-remaining-gha-hook.md) and execute only the accepted scope. |
-
-Do not read or execute the migration hook before an explicit yes. Pass it the
-project, pipeline, VCS root, branch, revision, existing configuration and job
-IDs, coverage assessment, accepted scope, proposed changes, blockers, and
-exclusions. Preserve this context in the session.
-
-If the user declines or does not answer, do nothing. Say: “When you are ready,
-ask: ‘Migrate the remaining GitHub Actions workflows into the existing
-TeamCity pipeline.’” If everything is covered, report that. If only blocked
-or unsupported items remain, explain their next actions.
