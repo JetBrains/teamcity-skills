@@ -88,8 +88,8 @@ stay unchanged.
 
 **"Not enough trial license credits"** on a job: the server can run nothing
 more. Stop: no retry, no smaller pipeline. Tell the user the pipeline is
-ready and the trial is out of credits, with the run link and the credits
-used.
+ready and the trial is out of credits, with the run link, the credits
+used, and the link to `<server>/admin/admin.html?item=subscriptionAndResources`.
 
 **A job restarted after its agent disappeared**, seen in builds of about 40
 minutes on hosted agents. TeamCity restarts it with no visible cap. Stop

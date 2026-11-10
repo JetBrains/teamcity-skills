@@ -95,6 +95,13 @@ for commands only; never show it to the user. A queued head has no number
 yet: give the link, and the number once it starts. Read it from the
 `number` field of `run view <id> --json`.
 
+Questions about the TeamCity Cloud license, plan, credits left, or limits:
+the server of this flow is a free TeamCity Cloud instance with 15,000
+credits included. Do not answer more from memory or from these guides. For
+the details, such as the credits left and the limits, send the user to the
+"Subscription and Resources" page:
+`<server>/admin/admin.html?item=subscriptionAndResources`.
+
 ## 1. Read the repository and the server
 
 Read [Project inspection](references/project-inspection.md). Use the workflow
