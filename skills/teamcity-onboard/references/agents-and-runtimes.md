@@ -80,14 +80,13 @@ Always pin the JDK: Gradle 8.x cannot run on the default JDK 25.
   real key from the agent type's parameters. Set the step's `jdk-home` or
   the job's `parameters.env.JAVA_HOME` to it, for example `%env.JDK_21_0%`.
   A step's `jdk-home` overrides `JAVA_HOME`: check both on every job in the
-  stored YAML. A key no agent has blocks dispatch, and no build step can fix
-  it: a hard-coded host path, a download script, or `setParameter` run too
-  late.
-- When no agent has the needed JDK, run the Maven or Gradle step in a pinned
-  `docker-image` on a Linux agent with Docker. The job then needs Docker on
-  the agent, not a host `env.JDK_*` key. The image must contain every tool
-  the build runs: a bare `eclipse-temurin` image has no `git`, so a build
-  with `git-commit-id` needs an image that ships git.
+  stored YAML. A key no agent has blocks dispatch, and no build step can
+  make the key appear: a hard-coded host path, a download script, or
+  `setParameter` run too late. Do not refer to a key no agent has.
+- When no agent has the needed JDK, install the JDK inside the build as
+  [Other runtimes](#other-runtimes) recommends. Set `env.JAVA_HOME` to it
+  with `setParameter` and the Maven or Gradle step's `jdk-home` to
+  `%env.JAVA_HOME%`; the job then has no `env.JDK_*` requirement.
 - macOS and iOS work needs a native runtime. Containers do not apply.
 - Check the Java the build really uses: `"$JAVA_HOME/bin/java" -version` in
   a script step, or the version in the Maven or Gradle output, inside the
@@ -96,10 +95,30 @@ Always pin the JDK: Gradle 8.x cannot run on the default JDK 25.
 
 ## Other runtimes
 
-Take the version from `global.json`, `.nvmrc`, `engines`, or
-`.python-version`, and find it in the type's parameters:
-`dotnetcore.versions`, `node.22.version`, `python.312.version`. A version
-no type has needs a pinned `docker-image`, as for the JDK.
+Take the version from `go.mod` (`go` and `toolchain`), `global.json`,
+`.nvmrc`, `engines`, or `.python-version`, and find it in the type's
+parameters: `dotnetcore.versions`, `node.22.version`, `python.312.version`.
+For a version no type has, compare two ways and take the faster one:
+
+- **Install it in the job.** The first script step downloads the runtime
+  into `%system.teamcity.build.tempDir%` and puts it first on `PATH` for the
+  next steps:
+  `##teamcity[setParameter name='env.PATH' value='<dir>/bin:%env.PATH%']`
+  (`;` instead of `:` on Windows). Point the runtime's home variable at the
+  new folder too: hosted agents set `GOROOT` to their old Go, and a new Go
+  then uses the old standard library, so set
+  `##teamcity[setParameter name='env.GOROOT' value='<dir>']`. Each job that
+  needs the runtime installs it. Fast when the runtime is one archive or one install script, for
+  example Go (`https://go.dev/dl/go<version>.<os>-<arch>.tar.gz`), .NET
+  (`dotnet-install.sh --version <version>`), Node.js, or a JDK.
+- **Run the steps in a pinned `docker-image`.** Linux agents only: macOS
+  agents have no Docker, and Windows containers are slow and limited. Good
+  when the repository already has a Dockerfile with the right image, or the
+  runtime needs many system packages.
+
+To compare, count what each run downloads: a clean hosted agent pulls the
+image on every run (often 300 MB or more, 20–60 s), while a Go archive is
+about 70 MB and 5–15 s. On macOS and Windows agents, install in the job.
 
 ## Check compatibility before queueing
 
