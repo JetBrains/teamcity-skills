@@ -30,8 +30,11 @@ Your task says `VCS root: exists` or `VCS root: none`.
 - The checkout is on the default branch, its commit is pushed, and
   `git status` is clean: run on the root with
   `--revision <root-id>=<sha>@<default-ref> --branch '<default>'`. The
-  `<default-ref>` is the root's full default ref, such as `refs/heads/main`;
-  never put `<default>` after `@`. A guessed `--branch main` can leave the
+  `<default-ref>` is the root's full default ref, such as `refs/heads/main`.
+  `'<default>'` is not a placeholder: pass it as is, with the angle brackets
+  and the quotes. It is TeamCity's name for the default branch. Never
+  replace it with `main` or another branch name, and never put `<default>`
+  after `@`. A guessed `--branch main` can leave the
   jobs green and the head red with `invalid_branch_name`. Without `--branch`
   the checkout fails with `couldn't find remote ref <unspecified>`.
 - Another branch, unpushed commits, or uncommitted changes: use a
@@ -66,6 +69,8 @@ teamcity run start <pipeline-id> --revision <root-id>="$base"@<default-ref> \
   --branch '<default>' --local-changes=<tmp>/branch.patch --personal --no-push
 ```
 
+Here too, `'<default>'` is passed as is, not replaced with a branch name.
+
 Without a root, send the whole repository:
 
 ```bash
@@ -82,3 +87,35 @@ teamcity run start <pipeline-id> --local-changes=<tmp>/full.patch --personal --n
   with a script step that runs `chmod +x` on them.
 - A missing custom-patch permission is a
   [manual prerequisite](manual-prerequisites.md).
+
+### A patch over 64 MB
+
+TeamCity does not take a patch over 64 MB for remote run. Check the size of the patch file
+before `run start`. If it is bigger, stop and ask the user, in plain words.
+Say that the limit is only technical, and give two choices, for example:
+
+> Your repository is bigger than 64 MB, and TeamCity can't take that much
+> in one upload. That's only a technical limit of uploading files from your
+> computer. I can:
+> 1. Run the build without some big files that the build doesn't use, such
+>    as images or docs. Then those files are not in the build, and may be
+>    missing from the packages.
+> 2. Connect the repository to TeamCity. Then TeamCity gets all files
+>    itself, with no limit.
+> Which one do you prefer?
+
+Wait for the answer.
+
+- **Run without some files**: find the biggest tracked files with
+  `git ls-files -z | xargs -0 du -k | sort -n | tail -20`. Leave out only
+  files the build does not read, with `':(exclude)<path>'` after `--` in
+  `git diff`, until the patch is under 64 MB. Tell the user which files are
+  left out, and put the list in the report file.
+- **Connect the repository**: it needs a remote on a Git host. Without one,
+  the user pushes the repository first. Find the connection with
+  `teamcity project connection list` (connections are in the root project), and let the user sign in with
+  `teamcity project connection authorize <conn-id> -p <conn-project-id>`.
+  Connections always exist. Then create the root with
+  `teamcity project vcs create --url <https-url> -p <project-id> --auth token --connection-id <conn-id> --json`,
+  create the pipeline again with `--vcs-root <root-id>`, and run on the
+  root as [Run on the root](#run-on-the-root) says.
