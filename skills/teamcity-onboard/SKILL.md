@@ -127,6 +127,17 @@ defaults to `.teamcity.yml` in the checkout. The root, the `--branch`
 value, and the remote run come from
 [Discover and connect](references/discover-and-connect.md).
 
+After the pipeline is created, show its jobs as a small diagram in a code
+block: each job by name, arrows for the dependencies, parallel jobs side by
+side. Under it, one line with the agent size and its credits per minute.
+For example:
+
+```text
+Checks ─┐
+        ├─▶ Package
+Test ───┘
+```
+
 ## 5. Run it until green
 
 Read [Verify a build](references/verify-build.md). Start the first run at
