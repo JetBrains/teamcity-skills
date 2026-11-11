@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.6.1
+version: 0.6.2
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first green build, test, and package pipeline with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
@@ -171,7 +171,7 @@ non-deploy work in mixed jobs. Mark behavior Covered only with configuration
 and execution evidence; missing evidence means Partially covered. One full-suite
 run does not cover a version or OS matrix. Use URLs returned by the CLI.
 
-Offer one implemented, eligible hook at a time, in this order:
+Select one implemented, eligible hook at a time, in this order:
 red-build → migrate → feedback → speed-up → deploy. Red-build requires a proven
 project failure; the others require green. Each hook ticket adds its own row.
 
@@ -179,7 +179,8 @@ project failure; the others require green. Each hook ticket adds its own row.
 | --- | --- | --- |
 | 2 — migrate | Core is green; non-deploy GHA jobs, variants, or capabilities remain partial or missing | `teamcity-migrate-remaining-gha` |
 
-Only migration is bundled. The personal note below is part of the report.
+Only migration is bundled. Prepare the offer here; present it after the
+report and personal note in steps 7–8.
 
 ### Consent and handoff
 
@@ -202,13 +203,16 @@ Replace every placeholder with the actual value:
 Record the offer once:
 `teamcity skill hook-event teamcity-migrate-remaining-gha offered`.
 Ask: "Want me to migrate the rest of your pipeline?" Stop for an answer.
+Make this the final question in the response. Include no feedback-draft or
+other optional question while waiting for the hook decision.
 
 - **Yes:** record `teamcity skill hook-event teamcity-migrate-remaining-gha accepted`.
   Load the full `teamcity skill guide teamcity-migrate-remaining-gha` before
   any hook action. Pass the saved handoff and accepted scope; follow the guide
   in this session. No installation or restart is required.
 - **No:** record `teamcity skill hook-event teamcity-migrate-remaining-gha declined`.
-  Repeat the concrete later request and end offers for this turn.
+  Repeat the concrete later request and end hook offers for this turn.
+  A separate feedback offer may follow, as described in step 8.
 - **No answer:** emit no response event and stop. The offer contains the later request.
 
 No or no answer means no hook loading or actions. An initial onboarding request
@@ -266,10 +270,10 @@ In `teamcity-onboarding.md` in the checkout root:
 
 ## 8. A personal note
 
-Once per onboarding session, after the report and the follow-up decision,
-as the last item of the report's follow-ups list. The first green run triggers
-it, on whichever path reached it. Write it as a note from people, not as a
-status line. Name the project and the thing in this run that took the most
+Once per onboarding session, as the last item of the report's follow-ups list,
+before the hook question. The first green run triggers it, on whichever path
+reached it. Write it as a note from people, not as a status line. Name the
+project and the thing in this run that took the most
 work. When nothing did, say that instead: the first run was green. The shape,
 in your own words:
 
@@ -277,10 +281,19 @@ in your own words:
 >   thing> took a few tries, but all's well that builds well. The TeamCity
 >   team did their best on this onboarding, and we want to hear how it
 >   went, smooth sailing or choppy waters, at anton.shelepov@jetbrains.com.
->   Want me to prepare a short message for the team?
 
-If a hook offer is pending or was declined, give the contact details without
-asking to draft an email. Keep one consent question at a time.
+Keep one pending question at a time. Choose when to offer feedback:
+
+- **Hook awaiting an answer:** ask only the hook question, then wait.
+- **Hook accepted:** finish the accepted hooks and report their outcomes
+  before offering feedback. Defer while another hook or user decision is pending.
+- **Hook declined:** acknowledge the refusal and show the later request;
+  you may then offer to draft feedback in that reply.
+- **No eligible hook:** you may offer feedback with the core report.
+
+When eligible, ask: "Want me to prepare a short message for the team?"
+When offering feedback later, do not repeat the personal note. A yes to a hook
+authorizes that hook only.
 
 On an explicit yes to the email-draft offer, draft a short email to
 anton.shelepov@jetbrains.com: what worked, what did not, and the repository type (stack, build tool, size). The user

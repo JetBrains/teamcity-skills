@@ -19,11 +19,19 @@ red-build → migrate → feedback → speed-up → deploy. Red-build applies to
 proven project failure; other hooks require green. Only implemented, bundled
 hooks get executable map rows; each hook's ticket adds its own condition and
 skill. Reserve the order without fabricating instructions for future hooks.
-Offer one matching hook with its evidence, proposed changes, and scope. Stop
+Present the core report and any personal note before the hook question. Offer one
+matching hook with its evidence, proposed changes, and scope. Stop
 for a response. Explicit consent names this hook and scope; an initial
 onboarding request, guide read, or skill installation does not grant consent.
 No or no response means no guide loading and no hook actions. A refusal ends
-offers for that turn. Another hook needs separate consent.
+hook offers for that turn. Another hook needs separate consent.
+
+Keep one pending question at a time. While awaiting a hook answer, offer no
+feedback draft. After acceptance, finish the accepted hooks and report their
+outcomes before offering feedback. After refusal, a feedback offer may follow
+in the reply. With no eligible hook, it may accompany the core report. Defer
+feedback while another user decision is pending. Draft only after an explicit
+yes to the separate feedback offer; hook consent does not authorize a draft.
 
 After consent, load the full guide in the current session before changing
 anything. Hand over server, project, pipeline, VCS root, branch, revision,
@@ -71,6 +79,9 @@ Run in Claude Code and Junie with an isolated, logged CLI fixture:
 - Yes: record acceptance, load the complete guide, then start within scope.
 - No: record refusal; no hook read/change; show a concrete return request.
 - No answer: no response event, hook read, or action.
+- Final report: personal note before the hook question, with no feedback
+  question while waiting. After refusal or completed accepted hooks, a separate
+  feedback offer is allowed; hook consent alone produces no draft.
 - Fresh-session return: reload guide; recover report and current configuration
   before changes; preserve core jobs.
 - Missing hook: readable CLI error, upgrade advice, no hook changes or fallback.

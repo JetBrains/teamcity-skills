@@ -1,6 +1,6 @@
 ---
 name: teamcity-migrate-remaining-gha
-version: 0.2.1
+version: 0.2.2
 description: Use after explicit agreement to migrate remaining non-deploy GitHub Actions jobs, test matrices, shards, and execution conditions into an existing TeamCity pipeline after onboarding, or to resume that migration later.
 ---
 
@@ -273,3 +273,8 @@ execution. Reused results need matching revision and variant evidence; queued
 or unexecuted variants do not verify a matrix.
 
 Report **Migration partially complete** while accepted items remain partial, not migrated, blocked, or unverified. Claim completion only for the verified accepted scope, with agreed exclusions and deviations stated.
+
+After reporting the outcome, follow onboarding's feedback-offer rules in
+`teamcity skill guide teamcity-onboard references/follow-up-hooks`. Defer the
+offer while another hook or user decision is pending. Migration consent does
+not authorize a feedback draft.
