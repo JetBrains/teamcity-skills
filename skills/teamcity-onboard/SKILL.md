@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.4.0
+version: 0.5.0
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first green build, test, and package pipeline with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
@@ -157,7 +157,36 @@ Read [Verify a build](references/verify-build.md). Start the first run at
 once, without asking. Announce every run as that guide says. Classify each
 failure. Fix pipeline problems only.
 
-## 6. Report and offer follow-ups
+## 6. Offer remaining GitHub Actions migration
+
+After the first green core build:
+
+- Compare `.github/workflows/` with the created TeamCity jobs: commands,
+  tests, matrix variants, artifacts, dependencies, triggers, and conditions.
+- Check shards and matrix variants separately from test-suite coverage.
+  A full suite in one job leaves matrix variants unverified. A PR-only check
+  running on every build leaves its condition uncovered.
+- Exclude concurrency, caching, and deployment operations, including deploy
+  steps inside mixed jobs.
+- Assign each item a status: **Covered**, **Partially covered**, **Not migrated**,
+  **Separate deploy hook**, or **Unsupported or blocked by manual setup**.
+  Include evidence and explain blockers.
+
+| Condition | Offer | Action after explicit agreement |
+| --- | --- | --- |
+| Non-deploy GHA jobs or capabilities are partially covered or not migrated | List the remaining workflows, jobs, and variants, describe changes needed in existing jobs, then ask: **“Want me to migrate the rest of your pipeline?”** | Read [Migrate remaining GitHub Actions workflows](references/migrate-remaining-gha-hook.md) and execute only the accepted scope. |
+
+Do not read or execute the migration hook before an explicit yes. Pass it the
+project, pipeline, VCS root, branch, revision, existing configuration and job
+IDs, coverage assessment, accepted scope, proposed changes, blockers, and
+exclusions. Preserve this context in the session.
+
+If the user declines or does not answer, do nothing. Say: “When you are ready,
+ask: ‘Migrate the remaining GitHub Actions workflows into the existing
+TeamCity pipeline.’” If everything is covered, report that. If only blocked
+or unsupported items remain, explain their next actions.
+
+## 7. Report and offer follow-ups
 
 Read [Show the value](references/show-the-value.md). The chat keeps what the
 user reads or acts on. The file keeps what someone checks later.
@@ -180,7 +209,7 @@ are where they go next. Then:
   one needs from the user, such as signing secrets or a VCS root. Leave out
   only what the user cannot do at all. No separate "left out" list. After
   the first green run, the last follow-up is the
-  [personal note](#7-a-personal-note), as one list item, not a separate
+  [personal note](#8-a-personal-note), as one list item, not a separate
   paragraph.
 
 In `teamcity-onboarding.md` in the checkout root:
@@ -195,7 +224,7 @@ In `teamcity-onboarding.md` in the checkout root:
 - each manual prerequisite in the form
   [Manual prerequisites](references/manual-prerequisites.md) requires.
 
-## 7. A personal note
+## 8. A personal note
 
 Once per onboarding session, as the last item of the follow-ups list in the
 report. The first green run triggers it, on whichever path reached it.
