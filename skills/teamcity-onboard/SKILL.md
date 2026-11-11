@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.5.0
+version: 0.6.0
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first green build, test, and package pipeline with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
@@ -35,9 +35,9 @@ plugins, or a server restart.
 
 ## Before the first command
 
-Load the `teamcity-cli` skill. If it is not installed, run
-`teamcity skill install teamcity-cli`. It owns command syntax, output
-formats, failure investigation, and the pipeline pull, validate, push loop.
+Load `teamcity skill guide teamcity-cli` directly. No installation is
+required to read its instructions in this session. It owns command syntax,
+output formats, failure investigation, and the pipeline pull, validate, push loop.
 Use only the flags it documents.
 
 Read [Tool policy and secrets](references/teamcity-tool-policy.md). Where this
@@ -155,36 +155,98 @@ Test ───┘
 
 Read [Verify a build](references/verify-build.md). Start the first run at
 once, without asking. Announce every run as that guide says. Classify each
-failure. Fix pipeline problems only.
+failure. Fix pipeline problems only. A queued or running build, including one
+watched by a background monitor, is not completion. Keep the session working
+until a terminal result or a proven blocker; then report the checked outcome.
 
-## 6. Offer remaining GitHub Actions migration
+## 6. Assess follow-ups
 
-After the first green core build:
+Finish the core pipeline work before assessing follow-ups. A green result
+requires the head and every required job to pass, with expected test reports.
+A proven project failure is a separate terminal outcome: report its evidence;
+never call it green or change project code as part of onboarding.
 
-- Compare `.github/workflows/` with the created TeamCity jobs: commands,
-  tests, matrix variants, artifacts, dependencies, triggers, and conditions.
-- Check shards and matrix variants separately from test-suite coverage.
-  A full suite in one job leaves matrix variants unverified. A PR-only check
-  running on every build leaves its condition uncovered.
-- Exclude concurrency, caching, and deployment operations, including deploy
-  steps inside mixed jobs.
-- Assign each item a status: **Covered**, **Partially covered**, **Not migrated**,
-  **Separate deploy hook**, or **Unsupported or blocked by manual setup**.
-  Include evidence and explain blockers.
+Compare source workflows with stored TeamCity jobs:
 
-| Condition | Offer | Action after explicit agreement |
+- Commands, test scope, matrix combinations and explicit shards.
+- Artifacts, dependencies, triggers, and execution conditions.
+- Non-deploy work in mixed jobs; classify deployment separately.
+- Covered behavior, partial coverage, missing behavior, and verified blockers.
+
+Mark behavior Covered only when configuration and run evidence establish it.
+Unconfirmed commands, reports, or variants remain Partially covered. Use real
+URLs returned by the CLI; never construct a run link from an assumed run ID.
+
+A full test suite in one job does not cover a source version or OS matrix.
+Use this decision map only after core work ends. Hook tickets add their own
+rows and bundled skill names; do not offer hooks that are not available.
+
+| Order | Condition | Hook skill |
 | --- | --- | --- |
-| Non-deploy GHA jobs or capabilities are partially covered or not migrated | List the remaining workflows, jobs, and variants, describe changes needed in existing jobs, then ask: **“Want me to migrate the rest of your pipeline?”** | Read [Migrate remaining GitHub Actions workflows](references/migrate-remaining-gha-hook.md) and execute only the accepted scope. |
+| 2 — migrate | Core is green and non-deploy GitHub Actions jobs, variants, or capabilities remain partial or missing | `teamcity-migrate-remaining-gha` |
 
-Do not read or execute the migration hook before an explicit yes. Pass it the
-project, pipeline, VCS root, branch, revision, existing configuration and job
-IDs, coverage assessment, accepted scope, proposed changes, blockers, and
-exclusions. Preserve this context in the session.
+The fixed order for matching hooks is red-build, migrate, feedback, speed-up,
+then deploy. Red-build may be offered only after a proven project failure;
+other hooks require green. Only migration is supplied here. The personal note
+below remains part of the report, not an installed feedback hook.
 
-If the user declines or does not answer, do nothing. Say: “When you are ready,
-ask: ‘Migrate the remaining GitHub Actions workflows into the existing
-TeamCity pipeline.’” If everything is covered, report that. If only blocked
-or unsupported items remain, explain their next actions.
+## Follow-up consent and loading
+
+Before offering, persist the handoff in `teamcity-onboarding.md`: server,
+project/pipeline/VCS/job IDs, branch/revision, completed work and run evidence,
+coverage worklist, proposed scope, exclusions, blockers, and this report's path.
+Record the decision as pending, accepted, or declined when observed; a previous
+report does not grant consent. A fresh session must verify current settings.
+
+In the final report, offer one matching hook at a time. For migration, list
+the remaining jobs and matrix variants, proposed changes, and exclusions,
+and include a ready-to-copy later request before the consent question. Fill
+every placeholder from the actual context, so it also works without a reply:
+
+> Continue migrating remaining GitHub Actions for pipeline `<pipeline ID>`
+> in project `<project ID>` on `<server URL>`, checkout `<checkout path>`.
+> Load `teamcity skill guide teamcity-migrate-remaining-gha`.
+> Recover context from `<absolute report path>` and current stored pipeline
+> settings. Preserve existing core jobs; continue within `<scope>`.
+
+Record the offer with
+`teamcity skill hook-event teamcity-migrate-remaining-gha offered` once when
+presenting it. This records the offer only; it is not hook execution.
+Then ask: "Want me to migrate the rest of your pipeline?" and stop for an answer.
+
+- Wait for an explicit yes to that offer. Do not load or execute the hook
+  before agreement. No answer is not consent. An initial onboarding request
+  does not authorize follow-ups; honor explicit prior authorization when it
+  names this hook and scope.
+- On explicit yes, record
+  `teamcity skill hook-event teamcity-migrate-remaining-gha accepted`,
+  then run `teamcity skill guide teamcity-migrate-remaining-gha` and follow
+  its output in the current session. No skill installation or agent restart
+  is required. Do not assume newly installed skills become discoverable.
+  Prior authorization satisfies consent only: still load the full hook guide
+  before the first follow-up change. A plan or previous summary is not the guide.
+- Pass server, project, pipeline, VCS root, branch, revision, existing job IDs,
+  completed work and its run evidence, report path, coverage assessment, accepted scope, proposed changes, blockers, and
+  exclusions. The hook owns accepted follow-up actions; core onboarding rules
+  continue to apply except where the hook explicitly overrides them.
+- On explicit no, record
+  `teamcity skill hook-event teamcity-migrate-remaining-gha declined`.
+  On no answer, record no response event. In both cases stop; do not load
+  the hook or make follow-up changes. Repeat the concrete later request after
+  refusal. The offer already contains it for the no-answer case.
+- Consent applies to one hook only. After it ends, reassess remaining matches
+  in order; ask separately before another hook. After a refusal, end the
+  offers for this turn. Never silently continue to the next hook.
+- If the named hook is unavailable, report the CLI version limitation and
+  stop that follow-up. Show the failed command and advise upgrading the CLI
+  to a release bundling the hook. Do not invent instructions or install unrelated skills.
+- Telemetry is best effort and follows CLI analytics opt-out. A telemetry error
+  must not change the consent decision or block loading an available guide.
+  Installation and `guide.viewed` are separate events; neither means consent.
+  Record actual offers and explicit answers only, never infer them from reads.
+
+Hook authors follow [the hook contract](references/follow-up-hooks.md).
+
 
 ## 7. Report and offer follow-ups
 
@@ -226,11 +288,12 @@ In `teamcity-onboarding.md` in the checkout root:
 
 ## 8. A personal note
 
-Once per onboarding session, as the last item of the follow-ups list in the
-report. The first green run triggers it, on whichever path reached it.
-Write it as a note from people, not as a status line. Name the project, and
-the one thing in this run that took the most work. When nothing did, say
-that instead: the first run was green. The shape, in your own words:
+Once per onboarding session, after the report and the follow-up decision,
+as the last item of the report's follow-ups list. The first green run triggers
+it, on whichever path reached it. Write it as a note from people, not as a
+status line. Name the project and the thing in this run that took the most
+work. When nothing did, say that instead: the first run was green. The shape,
+in your own words:
 
 > - Congratulations on the first green build of <project>! <The hardest
 >   thing> took a few tries, but all's well that builds well. The TeamCity
@@ -238,6 +301,9 @@ that instead: the first run was green. The shape, in your own words:
 >   went, smooth sailing or choppy waters, at anton.shelepov@jetbrains.com.
 >   Want me to prepare a short message for the team?
 
-On "yes", draft a short email to anton.shelepov@jetbrains.com: what worked,
-what did not, and the repository type (stack, build tool, size). The user
+If a hook offer is pending or was declined, give the contact details without
+asking to draft an email. Keep one consent question at a time.
+
+On an explicit yes to the email-draft offer, draft a short email to
+anton.shelepov@jetbrains.com: what worked, what did not, and the repository type (stack, build tool, size). The user
 sends it. Never send it yourself. On "no" or no answer, say nothing more.

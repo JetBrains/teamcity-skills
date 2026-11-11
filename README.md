@@ -62,6 +62,7 @@ others.
 | [`teamcity-intellij`](skills/teamcity-intellij/) | Work with TeamCity from an IntelliJ-based IDE: where the bundled CLI is, and when to use it or the MCP tools. |
 | [`migrate-to-teamcity`](skills/migrate-to-teamcity/) | Convert GitHub Actions or Bamboo pipelines to TeamCity. |
 | [`teamcity-onboard`](skills/teamcity-onboard/) | Analyze a repo and its GitHub Actions workflows, create a TeamCity pipeline from YAML, and babysit it until green. |
+| [`teamcity-migrate-remaining-gha`](skills/teamcity-migrate-remaining-gha/) | Extend an existing pipeline with remaining GitHub Actions checks and test matrix variants after consent. |
 
 Also: [`prompts/`](prompts/) for reusable prompts, and [`examples/`](examples/)
 for a small project you can try the skills against.
@@ -91,6 +92,12 @@ long file: an agent loads only the file it needs, so a 900-line reference costs
 every task while a short index plus one focused document does not.
 
 ## Contributing
+
+For onboarding follow-ups, follow the [hook contract](skills/teamcity-onboard/references/follow-up-hooks.md).
+Each hook is a separate skill embedded in the CLI. Agents load it after consent
+with `teamcity skill guide <name>`; installing a discovery stub is optional.
+Adding or changing a bundled hook requires a skills release and a CLI release.
+
 
 Pull requests are welcome, including new skills.
 
