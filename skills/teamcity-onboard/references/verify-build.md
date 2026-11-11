@@ -12,10 +12,26 @@ Queue on the branch from [Discover and connect](discover-and-connect.md).
 Each run starts without confirmation. On every start:
 
 - say why this run happens;
+- put the short reason on the run with `--comment`, so the run page shows
+  it: what the run checks and what changed since the last one, such as
+  `--comment 'Onboarding: first run of the new pipeline'` or
+  `--comment 'Onboarding: rerun after pinning JDK 17'`;
 - say that nothing is committed or pushed;
 - give the run's `webUrl` from `run start --json` or
   `run list --json=id,webUrl`: "here it is, if you want to watch";
 - note the run's `queuedDate` for the cancel guard below.
+
+Only after the first run is queued tell the user in their language:
+
+> Your first build is running on TeamCity. It takes a few minutes.
+> You have a couple of options:
+> * Watch it live and explore TeamCity UI: <run webUrl>
+> * or grab a coffee and relax while I'm setting the things up. TeamCity will notify you when it's done.
+
+Your own words are fine. The message must have the full `webUrl`, on its
+own line, so the user can click it at once and watch the run in the UI.
+Never write "the link" without the URL. The link is the run page, not the
+pipeline or the project.
 
 Poll `run tree <id>` and `run view <id> --json`. A queued run has to be
 noticed early. After each poll that shows a change, one line: a job queued
@@ -76,8 +92,8 @@ stay unchanged.
 
 **"Not enough trial license credits"** on a job: the server can run nothing
 more. Stop: no retry, no smaller pipeline. Tell the user the pipeline is
-ready and the trial is out of credits, with the run link and the credits
-used.
+ready and the trial is out of credits, with the run link, the credits
+used, and the link to `<server>/admin/admin.html?item=subscriptionAndResources`.
 
 **A job restarted after its agent disappeared**, seen in builds of about 40
 minutes on hosted agents. TeamCity restarts it with no visible cap. Stop

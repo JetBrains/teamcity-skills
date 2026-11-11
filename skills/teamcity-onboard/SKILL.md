@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.2.3
+version: 0.5.0
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first green build, test, and package pipeline with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
@@ -8,7 +8,7 @@ description: Use when onboarding a project to TeamCity with an authenticated `te
 
 You start with:
 
-- the `teamcity` CLI, logged in to the target TeamCity server;
+- the `teamcity` CLI, logged in to the target TeamCity Cloud server;
 - the user's repository, checked out in the working directory, on the
   branch and commit the user chose;
 - a TeamCity project for the pipeline, with or without a VCS root for the
@@ -17,8 +17,8 @@ You start with:
 You deliver, fast:
 
 - one pipeline in that project that builds, tests, and packages the
-  repository with native runners, in jobs where they run in parallel or
-  pass output, steps otherwise;
+  repository with native runners, in jobs that run in parallel or as a
+  chain, steps otherwise;
 - a green run, or a red one caused by the project and backed by evidence,
   with a link to watch it;
 - nothing committed to the repository;
@@ -26,6 +26,12 @@ You deliver, fast:
   [Show the value](references/show-the-value.md) that applies, set up and
   named in one line each;
 - a short report in the chat, and the details in a report file.
+
+This flow always runs on TeamCity Cloud. Answer every question and fix
+every problem for TeamCity Cloud: JetBrains-hosted agents, credits, the
+Cloud limits, and no access to the server machine. Do not suggest what
+only an on-premises server has, such as changing server files, server
+plugins, or a server restart.
 
 ## Before the first command
 
@@ -95,6 +101,13 @@ for commands only; never show it to the user. A queued head has no number
 yet: give the link, and the number once it starts. Read it from the
 `number` field of `run view <id> --json`.
 
+Questions about the TeamCity Cloud license, plan, credits left, or limits:
+the server of this flow is a free TeamCity Cloud instance with 15,000
+credits included. Do not answer more from memory or from these guides. For
+the details, such as the credits left and the limits, send the user to the
+"Subscription and Resources" page:
+`<server>/admin/admin.html?item=subscriptionAndResources`.
+
 ## 1. Read the repository and the server
 
 Read [Project inspection](references/project-inspection.md). Use the workflow
@@ -126,6 +139,17 @@ with `--vcs-root <root-id>` for `VCS root: exists`. Always pass `--file`: it
 defaults to `.teamcity.yml` in the checkout. The root, the `--branch`
 value, and the remote run come from
 [Discover and connect](references/discover-and-connect.md).
+
+After the pipeline is created, show its jobs as a small diagram in a code
+block: each job by name, arrows for the dependencies, parallel jobs side by
+side. Under it, one line with the agent size and its credits per minute.
+For example:
+
+```text
+Checks ─┐
+        ├─▶ Package
+Test ───┘
+```
 
 ## 5. Run it until green
 
@@ -167,16 +191,26 @@ or unsupported items remain, explain their next actions.
 Read [Show the value](references/show-the-value.md). The chat keeps what the
 user reads or acts on. The file keeps what someone checks later.
 
-In the chat, short and in plain words:
+In the chat, short and in plain words. The first line is the link to the
+run page: the green run's `webUrl`, or the red run's with its cause in one
+line. The second line is the link to the pipeline, from
+`pipeline list --json=id,webUrl`, where the user finds every run. The user
+is still on the "Continue in the terminal" page in the browser; these links
+are where they go next. Then:
 
-- the green run's `webUrl`, or the red run and its cause in one line;
 - the artifact: what is published, its size, and the Artifacts tab link;
 - the path to the report file;
 - the value summary that guide describes;
 - one line per TeamCity feature to look at: what the user gets and where;
 - each manual prerequisite in a short sentence, with a link;
-- what was left out, in one line;
-- the next steps that apply: the full suite when a subset ran, and the follow-ups from that guide.
+- follow-ups: everything the user can do next, one line each, such as
+  the full suite when a subset ran, the follow-ups from that guide, and
+  each part of the repository's CI left out of the pipeline. Say what each
+  one needs from the user, such as signing secrets or a VCS root. Leave out
+  only what the user cannot do at all. No separate "left out" list. After
+  the first green run, the last follow-up is the
+  [personal note](#8-a-personal-note), as one list item, not a separate
+  paragraph.
 
 In `teamcity-onboarding.md` in the checkout root:
 
@@ -189,3 +223,21 @@ In `teamcity-onboarding.md` in the checkout root:
 - what was left out, and why;
 - each manual prerequisite in the form
   [Manual prerequisites](references/manual-prerequisites.md) requires.
+
+## 8. A personal note
+
+Once per onboarding session, as the last item of the follow-ups list in the
+report. The first green run triggers it, on whichever path reached it.
+Write it as a note from people, not as a status line. Name the project, and
+the one thing in this run that took the most work. When nothing did, say
+that instead: the first run was green. The shape, in your own words:
+
+> - Congratulations on the first green build of <project>! <The hardest
+>   thing> took a few tries, but all's well that builds well. The TeamCity
+>   team did their best on this onboarding, and we want to hear how it
+>   went, smooth sailing or choppy waters, at anton.shelepov@jetbrains.com.
+>   Want me to prepare a short message for the team?
+
+On "yes", draft a short email to anton.shelepov@jetbrains.com: what worked,
+what did not, and the repository type (stack, build tool, size). The user
+sends it. Never send it yourself. On "no" or no answer, say nothing more.

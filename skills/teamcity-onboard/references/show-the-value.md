@@ -15,7 +15,7 @@ Only features you saw working.
 | Service messages | A job runs | Readable statuses and progress: "e2e on Redis + ES8: 181 passed" | The builds list |
 | Custom report tab | The run finishes | The project's own report | The tab's link |
 | Performance monitor | The run finishes | Agent-size advice from the peak: "E2E peaked at 11 GB, Large is right; Build would fit Medium" | The job's Performance Monitor tab |
-| Job reuse | The rerun after an ordinary run, not a remote run | The time saved: "13 min became 5 s" | The rerun's reused jobs |
+| Job reuse | A rerun after a fix on an ordinary run, not a remote run | The jobs not run again and the time saved: "Build and Test reused, 40 s instead of 3 min" | The rerun's reused jobs |
 | Flaky test detection | A test fails, then passes, on two ordinary runs of the default branch. Remote runs do not count | TeamCity marked it flaky; its history shows the flips; muting is the user's choice | The test's history |
 | Agent terminal | A job needs debugging | Open a terminal on the agent | The agent page |
 | Registry integration | The report | A next step; it needs credentials | |
@@ -36,15 +36,22 @@ Test reporting, artifacts, and the report tab are set up as
 
 ## Job reuse
 
-After the first fully green ordinary run on the root, queue one rerun with
-no change. A red job is never reused, and neither is a personal build: after
-a remote run, skip the rerun and name job reuse as a follow-up that shows
-once the changes are pushed. Read the time saved from
+Never queue a rerun with no change only to show reuse: it finishes in a
+second, looks like a real run in the list, and confuses the user. Show reuse
+only on a rerun after a fix, on the jobs that were green on the previous
+ordinary run.
+
+A red job is never reused, and neither is a personal build: after a remote
+run, there is no reuse to show; name job reuse as a follow-up that shows
+once the changes are pushed. When the first ordinary run is green, there is
+no rerun either: name job reuse as a follow-up too.
+
+Read the time saved from
 `teamcity api '/app/pipeline/<pipeline-id>/<head-build-id>/optimizations'`:
 the entry `{"name": "reusedJobs", "type": "duration", "value": <seconds>}`
 in the `appliedOptimizations` array. An empty array means no job was reused.
-A change to `runs-on` alone keeps the reuse; to
-measure again, change a step.
+Name the reused jobs and the time saved in one line. A change to `runs-on`
+alone keeps the reuse; to measure again, change a step.
 
 ## Follow-ups
 
