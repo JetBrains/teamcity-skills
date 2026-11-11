@@ -3,17 +3,14 @@
 ## Delivery
 
 Each hook is a separate `skills/<name>/SKILL.md` with an `embed.go` package.
-The CLI imports and registers that package in `skills.go`, including its hook
-classification, and lists its name in the FUS skill enum. Instructions and
-references ship in the binary; no network download or agent skill rediscovery
-is needed. Load the complete overview with `teamcity skill guide <name>` after
-consent, and load referenced topics when needed. `skill install` installs an
-optional discovery stub, not the execution mechanism.
+Register its package and hook classification in CLI `skills.go`; add its name
+to the FUS skill enum. Embed instructions and references in the binary.
+After consent, load the complete `teamcity skill guide <name>`, then needed
+topics. `skill install` provides an optional discovery stub.
 
-A new or changed embedded hook needs a teamcity-skills release, an updated CLI
-dependency, and a CLI release. An older binary cannot discover it from GitHub.
-If loading fails, show the error, recommend a CLI release bundling that hook,
-and stop. Never invent missing instructions or silently substitute another skill.
+Ship hook changes through a skills revision, CLI dependency update, and CLI
+release. If guide loading fails, show the error and stop. For a missing hook,
+recommend a release bundling it. Never invent instructions or substitute another skill.
 
 ## Decision map and consent
 
@@ -56,15 +53,15 @@ teamcity skill hook-event <name> declined
 
 Report offered when showing an offer; accepted only after an explicit yes;
 declined only after an explicit no. No response emits neither response event.
-Direct continuation is an acceptance without a fabricated offer. Record once
-per actual offer/answer; onboarding records the handoff acceptance, so the hook
-does not repeat it. Do not emit events while merely explaining these commands.
-The CLI records `hook.offered`, `hook.accepted`, and `hook.declined`, with the
-bundled skill name only. Events are agent-reported observations, not proof or
-enforcement of consent. `guide.viewed` stays separate, as do install events.
-Respect existing analytics opt-out; telemetry failure must not block work.
-No project IDs, paths, revisions, conversation text, or secret values are sent
-in these hook events.
+Record a direct continuation as acceptance without inventing an offer.
+Record each observation once; the hook must not repeat onboarding's acceptance.
+Explaining these commands emits no event.
+
+FUS events are `hook.offered`, `hook.accepted`, and `hook.declined`, with only
+the bundled `skill` name. They report agent observations, not proof or enforcement
+of consent. Guide reads and installations stay separate. Respect analytics
+opt-out; telemetry failure must not block work. Exclude project IDs, paths,
+revisions, conversation text, and secrets from hook events.
 
 ## Acceptance checks
 
