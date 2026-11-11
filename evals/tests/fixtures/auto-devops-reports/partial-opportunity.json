@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "target": {
+    "serverUrl": "https://synthetic.invalid",
+    "jobId": "Example_Verify",
+    "branch": "main",
+    "revisions": [],
+    "revisionNote": "Sampled revision was not available in the collected run view.",
+    "configuration": {
+      "source": "current-settings",
+      "revision": null,
+      "association": "unverified",
+      "reason": "Current settings have not been matched to the sampled run."
+    }
+  },
+  "sample": {
+    "since": "2026-10-28T00:00:00Z",
+    "until": "2026-11-11T00:00:00Z",
+    "rootRunIds": [101],
+    "runIds": [101],
+    "successfulRootRunIds": [101],
+    "limits": {"rootRuns": 30, "days": 14, "jobs": 100, "runs": 200, "logRuns": 5, "logLinesPerRun": 2000}
+  },
+  "coverage": {
+    "state": "partial",
+    "truncated": false,
+    "gaps": ["One successful run only; graph and settings-to-run association are unverified."]
+  },
+  "conclusion": "opportunity",
+  "evidence": [
+    {"id": "e1", "sourceCommand": "teamcity job step list Example_Verify --json", "runIds": [], "observation": "Current settings include a shell step that waits 120 seconds."}
+  ],
+  "recommendations": [
+    {
+      "id": "r1", "rank": 1, "title": "Review the explicit wait step",
+      "evidenceIds": ["e1"],
+      "proposedChange": "If it has no synchronization purpose, remove the wait step in a separate reviewed change.",
+      "expectedImpact": {
+        "feedbackTimeSeconds": null,
+        "aggregateExecutionTimeSeconds": null,
+        "basis": "estimate",
+        "reason": "The configured wait is 120 seconds, but its execution in the sampled run is unverified.",
+        "monetaryCost": {"value": null, "currency": null, "reason": "No agent pricing or billing model was provided."}
+      },
+      "tradeoffs": ["Removing a required synchronization delay could cause test failures."],
+      "manualVerification": ["Confirm why the wait exists and match settings to the run; compare successful runs with and without the wait on the same revision and branch."]
+    }
+  ]
+}

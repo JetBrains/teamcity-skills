@@ -1,0 +1,137 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Auto DevOps local report, version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "target", "sample", "coverage", "conclusion", "evidence", "recommendations"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "required": ["serverUrl", "jobId", "branch", "revisions", "revisionNote", "configuration"],
+      "properties": {
+        "serverUrl": {"$ref": "#/definitions/text"},
+        "jobId": {"$ref": "#/definitions/text"},
+        "branch": {"$ref": "#/definitions/text"},
+        "revisionNote": {"$ref": "#/definitions/text"},
+        "revisions": {
+          "type": "array", "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["runId", "vcsRootId", "revision"],
+            "properties": {
+              "runId": {"$ref": "#/definitions/runId"},
+              "vcsRootId": {"$ref": "#/definitions/text"},
+              "revision": {"$ref": "#/definitions/text"}
+            }
+          }
+        },
+        "configuration": {
+          "type": "object", "additionalProperties": false,
+          "required": ["source", "revision", "association", "reason"],
+          "properties": {
+            "source": {"enum": ["current-settings", "run-settings", "unavailable"]},
+            "revision": {"type": ["string", "null"]},
+            "association": {"enum": ["verified", "unverified", "mismatch"]},
+            "reason": {"$ref": "#/definitions/text"}
+          }
+        }
+      }
+    },
+    "sample": {
+      "type": "object", "additionalProperties": false,
+      "required": ["since", "until", "rootRunIds", "runIds", "successfulRootRunIds", "limits"],
+      "properties": {
+        "since": {"$ref": "#/definitions/text"}, "until": {"$ref": "#/definitions/text"},
+        "rootRunIds": {"$ref": "#/definitions/runIds"},
+        "runIds": {"$ref": "#/definitions/runIds"},
+        "successfulRootRunIds": {"$ref": "#/definitions/runIds"},
+        "limits": {
+          "type": "object", "additionalProperties": false,
+          "required": ["rootRuns", "days", "jobs", "runs", "logRuns", "logLinesPerRun"],
+          "properties": {
+            "rootRuns": {"type": "integer", "minimum": 1}, "days": {"type": "integer", "minimum": 1},
+            "jobs": {"type": "integer", "minimum": 1}, "runs": {"type": "integer", "minimum": 1},
+            "logRuns": {"type": "integer", "minimum": 1}, "logLinesPerRun": {"type": "integer", "minimum": 1}
+          }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "truncated", "gaps"],
+      "properties": {
+        "state": {"enum": ["complete", "partial", "blocked"]},
+        "truncated": {"type": "boolean"},
+        "gaps": {"type": "array", "items": {"$ref": "#/definitions/text"}}
+      }
+    },
+    "conclusion": {"enum": ["opportunity", "none", "insufficient-evidence"]},
+    "evidence": {
+      "type": "array", "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "sourceCommand", "runIds", "observation"],
+        "properties": {
+          "id": {"$ref": "#/definitions/text"},
+          "sourceCommand": {"$ref": "#/definitions/text"},
+          "runIds": {"$ref": "#/definitions/runIds"},
+          "observation": {"$ref": "#/definitions/text"}
+        }
+      }
+    },
+    "recommendations": {
+      "type": "array", "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "rank", "title", "evidenceIds", "proposedChange", "expectedImpact", "tradeoffs", "manualVerification"],
+        "properties": {
+          "id": {"$ref": "#/definitions/text"}, "rank": {"type": "integer", "minimum": 1},
+          "title": {"$ref": "#/definitions/text"},
+          "evidenceIds": {"$ref": "#/definitions/texts"},
+          "proposedChange": {"$ref": "#/definitions/text"},
+          "tradeoffs": {"$ref": "#/definitions/texts"},
+          "manualVerification": {"$ref": "#/definitions/texts"},
+          "expectedImpact": {
+            "type": "object", "additionalProperties": false,
+            "required": ["feedbackTimeSeconds", "aggregateExecutionTimeSeconds", "basis", "reason", "monetaryCost"],
+            "properties": {
+              "feedbackTimeSeconds": {"type": ["number", "null"]},
+              "aggregateExecutionTimeSeconds": {"type": ["number", "null"]},
+              "basis": {"enum": ["measured", "estimate", "unknown"]},
+              "reason": {"$ref": "#/definitions/text"},
+              "monetaryCost": {
+                "type": "object", "additionalProperties": false,
+                "required": ["value", "currency", "reason"],
+                "properties": {
+                  "value": {"type": ["number", "null"]},
+                  "currency": {"type": ["string", "null"]},
+                  "reason": {"$ref": "#/definitions/text"}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"coverage": {"properties": {"state": {"const": "blocked"}}}}},
+      "then": {"properties": {"conclusion": {"const": "insufficient-evidence"}}}
+    },
+    {
+      "if": {"properties": {"conclusion": {"const": "opportunity"}}},
+      "then": {"properties": {"recommendations": {"minItems": 1}, "evidence": {"minItems": 1}}},
+      "else": {"properties": {"recommendations": {"maxItems": 0}}}
+    },
+    {
+      "if": {"properties": {"coverage": {"properties": {"state": {"const": "complete"}}}}},
+      "then": {"properties": {"coverage": {"properties": {"truncated": {"const": false}}}}},
+      "else": {"properties": {"coverage": {"properties": {"gaps": {"minItems": 1}}}}}
+    }
+  ],
+  "definitions": {
+    "text": {"type": "string", "minLength": 1},
+    "texts": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/text"}},
+    "runId": {"type": "integer", "minimum": 1},
+    "runIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/runId"}}
+  }
+}
