@@ -66,7 +66,8 @@ With a root, base the patch on the default branch:
 base=$(git merge-base HEAD origin/<default-branch>)
 git diff --binary "$base" > <tmp>/branch.patch
 teamcity run start <pipeline-id> --revision <root-id>="$base"@<default-ref> \
-  --branch '<default>' --local-changes=<tmp>/branch.patch --personal --no-push
+  --branch '<default>' --local-changes=<tmp>/branch.patch --personal --no-push \
+  --comment '<why this run>'
 ```
 
 Here too, `'<default>'` is passed as is, not replaced with a branch name.
@@ -75,7 +76,8 @@ Without a root, send the whole repository:
 
 ```bash
 git diff --binary $(git hash-object -t tree /dev/null) > <tmp>/full.patch
-teamcity run start <pipeline-id> --local-changes=<tmp>/full.patch --personal --no-push
+teamcity run start <pipeline-id> --local-changes=<tmp>/full.patch --personal --no-push \
+  --comment '<why this run>'
 ```
 
 - Keep the `=` in `--local-changes=<file>`.

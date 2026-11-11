@@ -12,6 +12,10 @@ Queue on the branch from [Discover and connect](discover-and-connect.md).
 Each run starts without confirmation. On every start:
 
 - say why this run happens;
+- put the short reason on the run with `--comment`, so the run page shows
+  it: what the run checks and what changed since the last one, such as
+  `--comment 'Onboarding: first run of the new pipeline'` or
+  `--comment 'Onboarding: rerun after pinning JDK 17'`;
 - say that nothing is committed or pushed;
 - give the run's `webUrl` from `run start --json` or
   `run list --json=id,webUrl`: "here it is, if you want to watch";
