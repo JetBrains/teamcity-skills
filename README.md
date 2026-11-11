@@ -98,7 +98,6 @@ Each hook is a separate skill embedded in the CLI. Agents load it after consent
 with `teamcity skill guide <name>`; installing a discovery stub is optional.
 Adding or changing a bundled hook requires a skills release and a CLI release.
 
-
 Pull requests are welcome, including new skills.
 
 - Keep each skill self-contained in one folder under `skills/`.

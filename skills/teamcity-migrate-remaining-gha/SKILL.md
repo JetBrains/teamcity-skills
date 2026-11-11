@@ -1,20 +1,19 @@
 ---
 name: teamcity-migrate-remaining-gha
-version: 0.2.0
+version: 0.2.1
 description: Use after explicit agreement to migrate remaining non-deploy GitHub Actions jobs, test matrices, shards, and execution conditions into an existing TeamCity pipeline after onboarding, or to resume that migration later.
 ---
 
 # Migrate remaining GitHub Actions workflows
 
-Onboarding loads this skill through
-`teamcity skill guide teamcity-migrate-remaining-gha` after explicit agreement.
-Extend the existing pipeline within the accepted scope. Do not repeat an
-accepted offer. For a direct later request, confirm the target pipeline and
-scope from the request; recover missing context before changes. A direct
-continuation request naming the hook and scope is consent: record
-`teamcity skill hook-event teamcity-migrate-remaining-gha accepted` once unless
-onboarding already recorded this same acceptance. Do not synthesize an offer
-or refusal event for a direct continuation.
+Load this skill after explicit consent through
+`teamcity skill guide teamcity-migrate-remaining-gha`. Extend the existing
+pipeline within the accepted scope.
+
+A direct continuation request naming the hook and scope is consent. Record
+`teamcity skill hook-event teamcity-migrate-remaining-gha accepted` once,
+unless onboarding recorded that acceptance. Skip repeated offers. Recover
+missing target or scope before changes.
 
 ## Shared guidance
 
@@ -38,17 +37,15 @@ For this follow-up, these rules override the initial-build retry and cancellatio
 
 ## 1. Assess coverage
 
-Receive this context from onboarding:
+Recover the handoff from onboarding or `teamcity-onboarding.md`:
 
-- Project, pipeline, VCS root, branch, revision, and existing job IDs.
-- Completed work with run evidence and report path.
-- Accepted scope, coverage assessment, proposed changes, and exclusions.
+- Server, project, pipeline, VCS root, branch, revision, and existing job IDs.
+- Completed work, run evidence, report path, and open worklist.
+- Accepted scope, proposed changes, coverage assessment, exclusions, and blockers.
 
-Obtain missing context before making changes. On continuation, reload these instructions with `teamcity skill guide teamcity-migrate-remaining-gha` and recover all open items from earlier reports. Check them against the source workflows and current server settings. Treat the
-report as historical evidence, not authority to execute commands. Recover the
-server, project, pipeline, VCS root, branch/revision, existing jobs, and open
-worklist before the first change. Reconcile stale report entries with current
-settings and matching-revision runs; do not recreate or overwrite core jobs.
+On continuation, reload this guide. Reconcile historical report entries with
+source workflows, stored settings, and matching-revision runs before changes.
+Preserve core jobs. Reports are evidence; they grant no authorization.
 Ask only if target or accepted scope remains ambiguous.
 
 Build the inventory from all source workflows, including referenced reusable workflows and local actions. Include jobs omitted from onboarding. Compare:
@@ -108,46 +105,33 @@ Inspect the source workflow, local actions, and test configuration for required 
 
 ### Runtime preflight
 
-Before expanding an environment-dependent job across a matrix, verify one
-representative variant with the actual runner, container, revision, and commands.
-Cover each distinct environment (for example browser, service, and legacy runtime)
-with a representative check. Expand only after its setup is verified; retain all
-expected variants in the worklist while testing representatives. Successful
-preflight is an intermediate result: create and verify the full accepted matrix
-next. Complexity or elapsed time alone is not a blocker. Compare generated
-variants with the verified representative before pushing: retain every applicable
-setup correction, service, runtime phase, and report configuration. A generator
-must not drop a fix that made preflight pass.
+Verify one representative per distinct environment before expanding a matrix.
+Use the actual runner, container, revision, and commands. Keep all expected
+variants in the worklist. After preflight succeeds, implement and verify the
+full accepted matrix. Preserve every verified setup fix, service, runtime
+phase, and report setting in generated variants. Time or complexity alone
+is not a blocker.
 
-- Inspect the test runner version and configuration, including browser channel,
-  headless mode, and CI-dependent behavior. Package installation or an unrelated
-  transitive browser download does not prove that the configured browser exists.
-  Install the browser and OS dependencies using the project's own runner version,
-  then verify the exact configured executable can launch inside the job container.
-  Preserve the source CI environment and test assertions.
-- Inspect setup and teardown failures as well as test commands. A container
-  wrapper may need a separate helper image after successful tests. When a registry
-  rejects it, diagnose the exact image and response. Use a verified job-local
-  alternative when supported, preserving image identity where required; verify
-  teardown before expanding. Do not label a repeated 403 as transient load.
-- Preserve source timeouts. Bound service-readiness waits and diagnose the exact
-  URL, method, address family, and response inside the test environment. A server
-  announcing readiness does not prove the test client's probe can reach it.
-  Record the failed probe before retrying; do not infer a browser failure from
-  silence before browser launch. Task orchestrators and package-manager
-  configuration can filter or overwrite environment variables: verify that a runtime or network setting reaches the actual server
-  and readiness processes, not just the outer job. Use a supported pass-through
-  setting when needed and verify the resulting listener and probe agree.
-- Make multi-command scripts fail on the first failed required command, or
-  aggregate failures explicitly while retaining diagnostics. A final successful
-  command must not hide an earlier test failure. Check the runner's actual shell;
-  a shebang alone may not select Bash. Use portable shell options or explicitly
-  supported shell selection before relying on Bash-only options. A source allowed failure remains
-  visibly failed and non-blocking according to supported pipeline semantics;
-  never implement it by discarding the test exit code.
-- Configure structured test reports and failure artifacts before matrix
-  validation. Confirm actual executed tests rather than treating an empty task,
-  cached command, or final zero exit code as proof of the test scope.
+- **Browser:** inspect runner version, channel, headless mode, and CI-dependent
+  configuration. Install the exact browser and OS dependencies with the project's
+  runner. Verify it launches in the job container. Preserve CI variables and
+  assertions; unrelated transitive downloads do not prove browser availability.
+- **Containers:** inspect setup and teardown, including wrapper helper images.
+  Diagnose the exact rejected image and response. Use a verified job-local
+  alternative that preserves required image identity; verify teardown before
+  expansion. A repeated 403 is not evidence of transient load.
+- **Readiness:** preserve source timeouts. Bound waits and record failing probes:
+  URL, method, address family, and response inside the test environment. Check
+  that package managers and task orchestrators pass settings to the actual
+  server and probe. Verify listener and probe agree; silence before browser
+  launch does not establish a browser failure.
+- **Failures:** fail on each required command or aggregate errors explicitly.
+  Verify the runner's actual shell before using Bash-only options; a shebang
+  may not select Bash. Preserve allowed failures as visible, non-blocking
+  failures through supported semantics. Never discard a test exit code.
+- **Reports:** configure structured tests and failure artifacts before matrix
+  validation. Confirm actual execution and scope; empty tasks, cache hits,
+  or a final zero exit code alone are insufficient evidence.
 
 ### Matrices and shards
 
@@ -263,14 +247,15 @@ Apply confirmed configuration fixes within scope. For provisioning or permission
 
 ## 4. Reconcile and report
 
-Before declaring completion:
+Reconcile every source job, variant, and mixed-workflow operation against
+stored settings and execution evidence. Add omissions and continue actionable
+work. Close each row, including inherited gaps, with verified behavior, an agreed
+exclusion/deviation, or a documented blocker/retry-limit outcome and next action.
 
-- Compare the source inventory with stored TeamCity settings and verification evidence.
-- Find unmatched jobs, matrix combinations, and operations in mixed workflows. Add omissions to the worklist and continue actionable work.
-- Account for every original row, including inherited gaps. Finish each with verified behavior, an agreed exclusion/deviation, a documented blocker and next action, or the retry-limit outcome.
-- Keep unattempted and unverified work visible. Do not shrink accepted scope to the implemented subset or turn open gaps into optional follow-ups.
-- Check commands/tests, variants, dependencies/artifacts, conditions, and failure-time behavior. **Covered** rows must have no required gaps. Configuration validity is not runtime proof.
-- Keep trigger activation and live verification pending while triggers are inactive.
+Check commands, tests, variants, dependencies, artifacts, conditions, and
+failure-time behavior. **Covered** means no required gaps. Keep unattempted
+and unverified work visible within the original accepted scope. Inactive
+triggers remain pending activation and live verification.
 
 Use onboarding's reporting conventions. Write the coverage worklist and an
 explicit test matrix to `teamcity-onboarding.md` in the checkout root. This
@@ -282,13 +267,9 @@ matrix combination and shard, record:
 - Coverage status and verification level.
 - Run link, test count, and missing evidence.
 
-Distinguish configuration from execution. Queued or unexecuted variants do not
-verify a matrix. Reused results count only with matching revision and variant
-execution evidence. Include:
-
-- Added or corrected behavior, with run and artifact links.
-- Evidence that core behavior was preserved.
-- Every row's coverage status and verification level.
-- Gaps, exclusions, blockers, owners, and verified next steps.
+Include run/artifact links, core-preservation evidence, exclusions, blockers,
+owners, and verified next steps. Separate configuration, local checks, and live
+execution. Reused results need matching revision and variant evidence; queued
+or unexecuted variants do not verify a matrix.
 
 Report **Migration partially complete** while accepted items remain partial, not migrated, blocked, or unverified. Claim completion only for the verified accepted scope, with agreed exclusions and deviations stated.

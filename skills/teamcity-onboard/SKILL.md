@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.6.0
+version: 0.6.1
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first green build, test, and package pipeline with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
@@ -161,92 +161,70 @@ until a terminal result or a proven blocker; then report the checked outcome.
 
 ## 6. Assess follow-ups
 
-Finish the core pipeline work before assessing follow-ups. A green result
-requires the head and every required job to pass, with expected test reports.
-A proven project failure is a separate terminal outcome: report its evidence;
-never call it green or change project code as part of onboarding.
+Finish core work first. Green means the head and every required job passed,
+with expected reports. For a proven project failure, report evidence and
+preserve project code.
 
-Compare source workflows with stored TeamCity jobs:
+Compare source workflows with stored TeamCity jobs: commands, test scope,
+matrices, shards, artifacts, dependencies, triggers, and conditions. Separate
+non-deploy work in mixed jobs. Mark behavior Covered only with configuration
+and execution evidence; missing evidence means Partially covered. One full-suite
+run does not cover a version or OS matrix. Use URLs returned by the CLI.
 
-- Commands, test scope, matrix combinations and explicit shards.
-- Artifacts, dependencies, triggers, and execution conditions.
-- Non-deploy work in mixed jobs; classify deployment separately.
-- Covered behavior, partial coverage, missing behavior, and verified blockers.
-
-Mark behavior Covered only when configuration and run evidence establish it.
-Unconfirmed commands, reports, or variants remain Partially covered. Use real
-URLs returned by the CLI; never construct a run link from an assumed run ID.
-
-A full test suite in one job does not cover a source version or OS matrix.
-Use this decision map only after core work ends. Hook tickets add their own
-rows and bundled skill names; do not offer hooks that are not available.
+Offer one implemented, eligible hook at a time, in this order:
+red-build → migrate → feedback → speed-up → deploy. Red-build requires a proven
+project failure; the others require green. Each hook ticket adds its own row.
 
 | Order | Condition | Hook skill |
 | --- | --- | --- |
-| 2 — migrate | Core is green and non-deploy GitHub Actions jobs, variants, or capabilities remain partial or missing | `teamcity-migrate-remaining-gha` |
+| 2 — migrate | Core is green; non-deploy GHA jobs, variants, or capabilities remain partial or missing | `teamcity-migrate-remaining-gha` |
 
-The fixed order for matching hooks is red-build, migrate, feedback, speed-up,
-then deploy. Red-build may be offered only after a proven project failure;
-other hooks require green. Only migration is supplied here. The personal note
-below remains part of the report, not an installed feedback hook.
+Only migration is bundled. The personal note below is part of the report.
 
-## Follow-up consent and loading
+### Consent and handoff
 
-Before offering, persist the handoff in `teamcity-onboarding.md`: server,
-project/pipeline/VCS/job IDs, branch/revision, completed work and run evidence,
-coverage worklist, proposed scope, exclusions, blockers, and this report's path.
-Record the decision as pending, accepted, or declined when observed; a previous
-report does not grant consent. A fresh session must verify current settings.
+Before offering, save the handoff in `teamcity-onboarding.md`:
 
-In the final report, offer one matching hook at a time. For migration, list
-the remaining jobs and matrix variants, proposed changes, and exclusions,
-and include a ready-to-copy later request before the consent question. Fill
-every placeholder from the actual context, so it also works without a reply:
+- Server, project, pipeline, VCS root, branch, revision, and existing job IDs.
+- Completed work and run evidence; coverage worklist and report path.
+- Proposed changes, scope, exclusions, blockers, and observed consent state.
+
+For migration, list the remaining jobs and variants, proposed changes, and
+exclusions. Include this ready-to-copy request before asking for consent.
+Replace every placeholder with the actual value:
 
 > Continue migrating remaining GitHub Actions for pipeline `<pipeline ID>`
 > in project `<project ID>` on `<server URL>`, checkout `<checkout path>`.
 > Load `teamcity skill guide teamcity-migrate-remaining-gha`.
-> Recover context from `<absolute report path>` and current stored pipeline
-> settings. Preserve existing core jobs; continue within `<scope>`.
+> Recover context from `<absolute report path>` and current stored settings.
+> Preserve core jobs; continue within `<scope>`.
 
-Record the offer with
-`teamcity skill hook-event teamcity-migrate-remaining-gha offered` once when
-presenting it. This records the offer only; it is not hook execution.
-Then ask: "Want me to migrate the rest of your pipeline?" and stop for an answer.
+Record the offer once:
+`teamcity skill hook-event teamcity-migrate-remaining-gha offered`.
+Ask: "Want me to migrate the rest of your pipeline?" Stop for an answer.
 
-- Wait for an explicit yes to that offer. Do not load or execute the hook
-  before agreement. No answer is not consent. An initial onboarding request
-  does not authorize follow-ups; honor explicit prior authorization when it
-  names this hook and scope.
-- On explicit yes, record
-  `teamcity skill hook-event teamcity-migrate-remaining-gha accepted`,
-  then run `teamcity skill guide teamcity-migrate-remaining-gha` and follow
-  its output in the current session. No skill installation or agent restart
-  is required. Do not assume newly installed skills become discoverable.
-  Prior authorization satisfies consent only: still load the full hook guide
-  before the first follow-up change. A plan or previous summary is not the guide.
-- Pass server, project, pipeline, VCS root, branch, revision, existing job IDs,
-  completed work and its run evidence, report path, coverage assessment, accepted scope, proposed changes, blockers, and
-  exclusions. The hook owns accepted follow-up actions; core onboarding rules
-  continue to apply except where the hook explicitly overrides them.
-- On explicit no, record
-  `teamcity skill hook-event teamcity-migrate-remaining-gha declined`.
-  On no answer, record no response event. In both cases stop; do not load
-  the hook or make follow-up changes. Repeat the concrete later request after
-  refusal. The offer already contains it for the no-answer case.
-- Consent applies to one hook only. After it ends, reassess remaining matches
-  in order; ask separately before another hook. After a refusal, end the
-  offers for this turn. Never silently continue to the next hook.
-- If the named hook is unavailable, report the CLI version limitation and
-  stop that follow-up. Show the failed command and advise upgrading the CLI
-  to a release bundling the hook. Do not invent instructions or install unrelated skills.
-- Telemetry is best effort and follows CLI analytics opt-out. A telemetry error
-  must not change the consent decision or block loading an available guide.
-  Installation and `guide.viewed` are separate events; neither means consent.
-  Record actual offers and explicit answers only, never infer them from reads.
+- **Yes:** record `teamcity skill hook-event teamcity-migrate-remaining-gha accepted`.
+  Load the full `teamcity skill guide teamcity-migrate-remaining-gha` before
+  any hook action. Pass the saved handoff and accepted scope; follow the guide
+  in this session. No installation or restart is required.
+- **No:** record `teamcity skill hook-event teamcity-migrate-remaining-gha declined`.
+  Repeat the concrete later request and end offers for this turn.
+- **No answer:** emit no response event and stop. The offer contains the later request.
 
-Hook authors follow [the hook contract](references/follow-up-hooks.md).
+No or no answer means no hook loading or actions. An initial onboarding request
+alone grants no follow-up consent. Honor prior explicit authorization naming
+this hook and scope; still load the full guide before acting. A summary or
+report cannot replace consent or instructions.
 
+If guide loading fails, show the error and stop. For a missing hook, recommend
+a CLI release bundling it. Each further hook needs separate consent after
+reassessment. Core rules apply unless the loaded hook overrides them.
+
+Telemetry is best effort and respects opt-out. Errors must not block an
+available hook or change consent. Installation and `guide.viewed` are separate
+observations. Record actual offers and explicit answers only.
+
+Hook authors: read [the hook contract](references/follow-up-hooks.md).
 
 ## 7. Report and offer follow-ups
 
