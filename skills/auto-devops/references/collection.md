@@ -16,7 +16,8 @@ teamcity job step list JOB_ID --json
 
 The list includes unfinished runs: retain completed roots, record failures/cancellations
 as context, and use successful roots for comparisons. Visit the sampled run trees and
-read each distinct run/job once. Run views provide `queuedDate`, `startDate`, and
+read each distinct run/job once. Collect current step lists for the distinct selected jobs
+before ranking opportunities; record unavailable reads as gaps. Run views provide `queuedDate`, `startDate`, and
 `finishDate`; job step lists return `{count, step: [...]}` with current runner properties.
 Run view does not guarantee VCS/settings revisions. Record unknown revisions and the
 reason; do not infer them from today's checkout. Use verified CLI GET reads if available.
@@ -35,9 +36,5 @@ inspect a bounded depth (`--depth 1`) and expand only within the remaining budge
 Describe depth limits and hidden children as gaps. For targeted logs use
 `teamcity run log RUN_ID --tail 2000 --raw`; consult CLI help for targeted tests.
 
-Compute timestamp deltas with a local deterministic calculator, such as timezone-aware
-Python datetime subtraction, and report seconds. Check the arithmetic before writing:
-09:00:00 to 09:05:05 is 305 seconds. Keep feedback elapsed time, dependency waits,
-agent queue delay, and total execution separate. Root queued-to-start time can include dependencies; it is not automatically
-agent queue delay. Sum each distinct run only once, and do not equate aggregate execution
-with billing. Detailed timing/ranking and broader edge cases require further verification.
+Follow [timing.md](timing.md) for deterministic timestamp calculations, shared-run handling,
+queue attribution, and ranking feedback/execution opportunities.

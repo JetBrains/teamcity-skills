@@ -14,6 +14,26 @@ sys.path.insert(0, str(EVALS))
 from auto_devops_cli_fixture import install_fixture
 
 
+def evaluate_slow_report(workspace, report, calculate=True):
+    from auto_devops_eval import evaluate
+    agent = workspace / "synthetic-agent.py"
+    program = (
+        "import json, os, shlex, subprocess\n"
+        f"report = json.loads({json.dumps(report)!r})\n"
+        "for item in report['evidence']:\n"
+        "    subprocess.run([os.environ['AUTO_DEVOPS_CLI'], *shlex.split(item['sourceCommand'])[1:]], check=True)\n")
+    if calculate:
+        intervals = [("090000","091605"),("090000","091505"),("090005","090505"),
+                     ("090505","091505"),("090505","090905"),("091505","091605"),
+                     ("090505","090805"),("090505","090705")]
+        program += f"for start, end in {intervals!r}:\n"
+        program += "    subprocess.run([os.environ['AUTO_DEVOPS_CALCULATOR'], '20261110T'+start+'+0000', '20261110T'+end+'+0000'], check=True)\n"
+        program += "subprocess.run([os.environ['AUTO_DEVOPS_AGGREGATOR'], '100=300','102=600','103=240','100=300','101=60'], check=True)\n"
+    program += "print(json.dumps({'type':'result','is_error':False,'total_cost_usd':0,'structured_output':{'report':report}}))\n"
+    agent.write_text(program)
+    return evaluate(workspace, agent_command=[sys.executable, str(agent)], scenario="slow-shared")
+
+
 class AutoDevopsFixtureTest(unittest.TestCase):
     def test_reads_synthetic_history_records_read_only_and_refuses_a_remote_write(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -47,6 +67,46 @@ class AutoDevopsFixtureTest(unittest.TestCase):
                     refused = subprocess.run([str(calculator), *arguments], env=env,
                                              text=True, capture_output=True)
                     self.assertNotEqual(0, refused.returncode)
+
+
+    def test_slow_fixture_exposes_shared_parallel_runs_and_bounded_wait_logs(self):
+        from datetime import datetime
+        with tempfile.TemporaryDirectory() as directory:
+            command, env, _ = install_fixture(Path(directory), scenario="slow-shared")
+            def read(*arguments):
+                result = subprocess.run([str(command), *arguments], env=env, text=True, capture_output=True)
+                self.assertEqual(0, result.returncode, result.stderr)
+                return result.stdout
+            tree = json.loads(read("run", "tree", "101", "--json"))
+            first, second = tree["dependencies"]
+            self.assertEqual([102, 103], [first["id"], second["id"]])
+            self.assertEqual(100, first["dependencies"][0]["id"])
+            self.assertEqual(100, second["dependencies"][0]["id"])
+            runs = [json.loads(read("run", "view", str(run_id), "--json")) for run_id in (100,101,102,103)]
+            timestamp = lambda value: datetime.strptime(value, "%Y%m%dT%H%M%S%z")
+            self.assertEqual(1200, sum((timestamp(run["finishDate"]) - timestamp(run["startDate"])).total_seconds() for run in runs))
+            root = runs[1]
+            self.assertEqual(965, (timestamp(root["finishDate"]) - timestamp(root["queuedDate"])).total_seconds())
+            self.assertEqual(905, (timestamp(root["startDate"]) - timestamp(root["queuedDate"])).total_seconds())
+            log = read("run", "log", "102", "--tail", "2000", "--raw")
+            self.assertIn("sleep 180", log)
+            self.assertIn("09:08:05", log)
+
+
+    def test_execution_calculator_counts_shared_run_once_and_rejects_conflicting_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            _, env, _ = install_fixture(workspace)
+            calculator = workspace / "bin" / "sum-run-seconds"
+            values = ["100=300", "102=600", "103=240", "100=300", "101=60"]
+            correct = subprocess.run([str(calculator), *values], env=env, text=True, capture_output=True)
+            self.assertEqual(0, correct.returncode, correct.stderr)
+            self.assertEqual({"distinctRunIds":[100,101,102,103], "aggregateExecutionSeconds":1200}, json.loads(correct.stdout))
+            refused = subprocess.run([str(calculator), "100=300", "100=301"], env=env,
+                                     text=True, capture_output=True)
+            self.assertNotEqual(0, refused.returncode)
+            calls = [json.loads(line) for line in (workspace / "math-calls.jsonl").read_text().splitlines()]
+            self.assertEqual([True, False], [call["allowed"] for call in calls])
 
 
 class AutoDevopsEvaluationTest(unittest.TestCase):
@@ -136,3 +196,57 @@ class AutoDevopsEvaluationTest(unittest.TestCase):
             self.assertTrue(result["passed"], result)
             self.assertEqual(json.loads(document.read_text()),
                              json.loads((base / "evaluation/report.json").read_text()))
+
+    def test_slow_report_rejects_double_counted_shared_execution(self):
+        document = EVALS / "tests/fixtures/auto-devops-reports/slow-shared.json"
+        for total, expected in ((1200, True), (1500, False)):
+            with self.subTest(total=total), tempfile.TemporaryDirectory() as directory:
+                report = json.loads(document.read_text())
+                report["timing"]["aggregateExecutionSeconds"] = total
+                result = evaluate_slow_report(Path(directory), report)
+                self.assertEqual(expected, result["passed"], result)
+                if not expected:
+                    self.assertIn("incorrect-shared-timing", result["failures"])
+
+
+    def test_slow_timing_requires_every_timestamp_and_graph_source(self):
+        document = EVALS / "tests/fixtures/auto-devops-reports/slow-shared.json"
+        for section, missing in (("aggregate", "tree"), ("aggregate", "package"),
+                                 ("root", "root"), ("root", "tests")):
+            with self.subTest(section=section, missing=missing), tempfile.TemporaryDirectory() as directory:
+                report = json.loads(document.read_text())
+                target = report["timing"] if section == "aggregate" else report["timing"]["roots"][0]
+                target["evidenceIds"].remove(missing)
+                result = evaluate_slow_report(Path(directory), report)
+                self.assertFalse(result["passed"], result)
+                self.assertIn("incomplete-timing-evidence", result["failures"])
+
+    def test_slow_timing_refuses_unsupported_agent_queue_and_missing_calculations(self):
+        document = EVALS / "tests/fixtures/auto-devops-reports/slow-shared.json"
+        for change, expected_failure in (("agent-queue", "incorrect-shared-timing"),
+                                         ("no-calculation", "missing-timing-calculation")):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                report = json.loads(document.read_text())
+                if change == "agent-queue":
+                    report["timing"]["roots"][0]["agentQueueSeconds"] = 0
+                result = evaluate_slow_report(Path(directory), report, calculate=change != "no-calculation")
+                self.assertFalse(result["passed"], result)
+                self.assertIn(expected_failure, result["failures"])
+
+    def test_single_slow_run_does_not_establish_measured_savings(self):
+        document = EVALS / "tests/fixtures/auto-devops-reports/slow-shared.json"
+        with tempfile.TemporaryDirectory() as directory:
+            report = json.loads(document.read_text())
+            report["recommendations"][0]["expectedImpact"]["basis"] = "measured"
+            result = evaluate_slow_report(Path(directory), report)
+            self.assertFalse(result["passed"], result)
+            self.assertIn("unsupported-measured-savings", result["failures"])
+
+
+    def test_root_readiness_needs_direct_dependencies_but_not_unused_transitive_timestamps(self):
+        document = EVALS / "tests/fixtures/auto-devops-reports/slow-shared.json"
+        with tempfile.TemporaryDirectory() as directory:
+            report = json.loads(document.read_text())
+            report["timing"]["roots"][0]["evidenceIds"].remove("build")
+            result = evaluate_slow_report(Path(directory), report)
+            self.assertTrue(result["passed"], result)

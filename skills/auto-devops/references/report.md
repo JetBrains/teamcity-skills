@@ -11,6 +11,8 @@ keeping `references/`. Invoke it with a root job ID, branch, and local output fi
 - `sample` records the actual ISO-8601 time window, root IDs, all distinct run IDs,
   successful baseline roots, and the collection limits. No successful baseline is evidence
   of missing comparison data, not evidence that the chain is inefficient.
+- Optional `timing` holds derived values and all supporting evidence IDs; follow
+  [timing.md](timing.md). Raw command observations must not silently combine other reads.
 - `coverage.state` is `complete` for sufficient supported analysis of the declared sample,
   `partial` for useful analysis with gaps, and `blocked` when evidence cannot support analysis.
   Record missing/denied/expired data, settings association, caps, and truncation in `gaps`.

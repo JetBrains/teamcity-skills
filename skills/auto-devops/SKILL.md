@@ -1,6 +1,6 @@
 ---
 name: auto-devops
-version: 0.1.0
+version: 0.2.0
 description: Analyze one existing TeamCity classic build chain and write a local JSON report of evidence-backed optimization proposals, tradeoffs, and manual verification steps.
 ---
 
@@ -12,6 +12,7 @@ before collecting. This version covers classic chains. YAML analysis and install
 through the CLI bundle are later work.
 
 Read [collection.md](references/collection.md) for verified read commands and limits,
+then [timing.md](references/timing.md) for calculation and ranking,
 and [report.md](references/report.md) with [report.schema.json](references/report.schema.json)
 before writing the report. Load the installed `teamcity-cli` skill for other command syntax.
 Check command help when it is unavailable; never guess flags.

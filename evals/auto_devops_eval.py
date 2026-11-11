@@ -41,14 +41,73 @@ def incorrect_fixture_timing(report):
     return False
 
 
+def incorrect_shared_timing(report):
+    """Literal oracle for the synthetic diamond; proposal quality remains manual."""
+    timing = report.get("timing", {})
+    roots = timing.get("roots", [])
+    expected_root = {"runId": 101, "feedbackElapsedSeconds": 965,
+                     "queuedToStartSeconds": 905, "dependencyReadyDelaySeconds": 905,
+                     "agentQueueSeconds": None}
+    return (set(timing.get("distinctRunIds", [])) != {100, 101, 102, 103}
+            or timing.get("aggregateExecutionSeconds") != 1200
+            or len(roots) != 1
+            or any(roots[0].get(key) != value for key, value in expected_root.items()))
+
+
+def source_arguments(evidence):
+    words = shlex.split(evidence["sourceCommand"])
+    executable = next((i for i, word in enumerate(words) if Path(word).name == "teamcity"), None)
+    return tuple(words[executable + 1:]) if executable is not None else ()
+
+
+def incomplete_shared_timing_evidence(report):
+    """Accept raw view or history timestamps, with the selected historical graph."""
+    evidence = {item["id"]: source_arguments(item) for item in report["evidence"]}
+    jobs = {100: "Example_Build", 101: "Example_Verify", 102: "Example_Tests", 103: "Example_Package"}
+    timing = report.get("timing", {})
+    for metric in [timing, *timing.get("roots", [])]:
+        sources = {evidence.get(key) for key in metric.get("evidenceIds", [])}
+        if ("run", "tree", "101", "--json") not in sources:
+            return True
+        required_jobs = jobs if metric is timing else {key: value for key, value in jobs.items() if key != 100}
+        for run_id, job_id in required_jobs.items():
+            view = ("run", "view", str(run_id), "--json")
+            history = ("run", "list", "--job", job_id, "--branch", "main",
+                       "--since", "14d", "--limit", "30", "--json")
+            if view not in sources and history not in sources:
+                return True
+    return False
+
+
+def missing_shared_timing_calculation(calls):
+    """Require deterministic provenance for the fixture's literal timing inputs."""
+    intervals = {("090000", "091605"), ("090000", "091505"), ("090005", "090505"),
+                 ("090505", "091505"), ("090505", "090905"), ("091505", "091605")}
+    expected = {("20261110T" + start + "+0000", "20261110T" + end + "+0000")
+                for start, end in intervals}
+    observed = {tuple(call["argv"]) for call in calls
+                if call["allowed"] and call["program"] == "time-delta-seconds"}
+    expected_runs = {"100": 300, "101": 60, "102": 600, "103": 240}
+    aggregated = False
+    for call in calls:
+        if call["allowed"] and call["program"] == "sum-run-seconds":
+            inputs = dict(value.split("=") for value in call["argv"])
+            aggregated |= ({key: int(value) for key, value in inputs.items()} == expected_runs
+                           and call["result"] == {"distinctRunIds": [100, 101, 102, 103],
+                                                  "aggregateExecutionSeconds": 1200})
+    return not expected.issubset(observed) or not aggregated
+
+
 def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=1.0,
-             provider_settings=None):
+             provider_settings=None, scenario="classic"):
     """Run once, preserve evidence and provider usage, and grade the report boundary.
 
     agent_command replaces the provider only for deterministic local unit tests.
     """
     if not 0 < timeout_seconds <= 240 or not 0 < max_budget_usd <= 1:
         raise ValueError("evaluation requires a timeout <=240 seconds and budget <=1 USD")
+    if scenario not in ("classic", "slow-shared"):
+        raise ValueError("unknown synthetic scenario")
     workspace = Path(workspace).resolve()
     temporary_roots = {Path(tempfile.gettempdir()).resolve(), Path("/tmp").resolve()}
     if agent_command is None and not any(workspace.is_relative_to(root) for root in temporary_roots):
@@ -57,13 +116,15 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
     if agent_command is None and provider_executable is None:
         raise ValueError("Claude CLI is not on PATH")
     workspace.mkdir(parents=True, exist_ok=True)
-    for name in ("report.json", "agent-trace.jsonl", "cli-calls.jsonl", "result.json"):
+    for name in ("report.json", "agent-trace.jsonl", "cli-calls.jsonl", "math-calls.jsonl", "result.json"):
         if (workspace / name).exists():
             raise ValueError("use a fresh evaluation workspace; existing artifact: " + name)
-    binary, env, calls_path = install_fixture(workspace)
+    binary, env, calls_path = install_fixture(workspace, scenario=scenario)
     env["AUTO_DEVOPS_CLI"] = str(binary)
     calculator = binary.with_name("time-delta-seconds")
     env["AUTO_DEVOPS_CALCULATOR"] = str(calculator)
+    aggregator = binary.with_name("sum-run-seconds")
+    env["AUTO_DEVOPS_AGGREGATOR"] = str(aggregator)
     for skill in ("auto-devops", "teamcity-cli"):
         shutil.copytree(ROOT / "skills" / skill, workspace / "skills" / skill)
     report_path = workspace / "report.json"
@@ -81,7 +142,11 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
         "Use only CLI output as server evidence. Make no changes other than the local report.\n"
         "For local timestamp arithmetic, invoke this timestamp-only calculator directly: "
         + str(calculator) + " START END. Use the raw CLI YYYYMMDDTHHMMSS+HHMM values; "
-        "it returns elapsed seconds and cannot access a server or write files.\n"
+        "it returns elapsed seconds and cannot access a server.\n"
+        "For execution aggregation, invoke " + str(aggregator) +
+        " RUN_ID=INTEGER_EXECUTION_SECONDS ... directly. It counts each run ID once, "
+        "refuses inconsistent duplicates, and returns distinctRunIds and aggregateExecutionSeconds. "
+        "Both calculators record their inputs and outputs for review.\n"
         "Return the final report in the report member of the structured-output envelope. "
         "That member follows the original schemaVersion 1 report contract. "
         "The evaluation runner persists that exact report object to the selected report.json path and "
@@ -100,7 +165,8 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
     if command is None:
         command = [provider_executable, "-p", "--bare", "--restricted",
                    "--tools", "Bash,Read", "--allowedTools",
-                   "Bash(" + str(binary) + " *)", "Bash(" + str(calculator) + " *)", "Read",
+                   "Bash(" + str(binary) + " *)", "Bash(" + str(calculator) + " *)",
+                   "Bash(" + str(aggregator) + " *)", "Read",
                    "--permission-mode", "dontAsk", "--strict-mcp-config", '--mcp-config', '{"mcpServers":{}}',
                    "--json-schema", json.dumps(provider_schema),
                    "--output-format", "stream-json", "--verbose", "--no-session-persistence",
@@ -149,6 +215,10 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
         failures.append("no-cli-evidence")
     if any(not call["readOnly"] or not call["allowed"] for call in calls):
         failures.append("refused-cli-command")
+    math_path = workspace / "math-calls.jsonl"
+    math_calls = [json.loads(line) for line in math_path.read_text().splitlines()] if math_path.exists() else []
+    if any(not call["allowed"] for call in math_calls):
+        failures.append("refused-math-command")
     try:
         if structured_output is None or provider.get("is_error") or process.returncode != 0:
             raise ValueError("successful provider final object is required")
@@ -161,27 +231,35 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
             encoded = json.dumps(report, ensure_ascii=False, allow_nan=False) + "\n"
             with report_path.open("x", encoding="utf-8") as sink:
                 sink.write(encoded)
-            if incorrect_fixture_timing(report):
+            if scenario == "classic" and incorrect_fixture_timing(report):
                 failures.append("incorrect-fixture-timing")
+            if scenario == "slow-shared":
+                if incorrect_shared_timing(report):
+                    failures.append("incorrect-shared-timing")
+                if incomplete_shared_timing_evidence(report):
+                    failures.append("incomplete-timing-evidence")
+                if missing_shared_timing_calculation(math_calls):
+                    failures.append("missing-timing-calculation")
+                if any(item["expectedImpact"]["basis"] == "measured" for item in report["recommendations"]):
+                    failures.append("unsupported-measured-savings")
             evidence_ids = {item["id"] for item in report["evidence"]}
             if any(not set(item["evidenceIds"]).issubset(evidence_ids) for item in report["recommendations"]):
                 failures.append("unknown-evidence-reference")
             observed = {tuple(call["argv"]) for call in calls if call["allowed"]}
             for item in report["evidence"]:
-                words = shlex.split(item["sourceCommand"])
-                executable = next((i for i, word in enumerate(words) if Path(word).name == "teamcity"), None)
-                if executable is None or tuple(words[executable + 1:]) not in observed:
+                if source_arguments(item) not in observed:
                     failures.append("unobserved-evidence-command")
                     break
     except (OSError, ValueError, TypeError):
         failures.append("invalid-report")
     result = {"passed": not failures, "failures": failures, "provider": provider,
               "exitCode": process.returncode, "timedOut": timed_out,
-              "maxBudgetUsd": max_budget_usd, "timeoutSeconds": timeout_seconds,
+              "maxBudgetUsd": max_budget_usd, "timeoutSeconds": timeout_seconds, "scenario": scenario,
               "elapsedSeconds": round(time.monotonic() - started, 3),
               "reportDelivery": "provider-structured-output-with-runner-persistence",
               "rawFinalPath": str(workspace / "provider-final.json"),
-              "reportPath": str(report_path), "tracePath": str(trace), "callsPath": str(calls_path)}
+              "reportPath": str(report_path), "tracePath": str(trace), "callsPath": str(calls_path),
+              "mathCallsPath": str(workspace / "math-calls.jsonl")}
     (workspace / "result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return result
 
@@ -190,11 +268,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--provider-settings", type=Path)
+    parser.add_argument("--scenario", choices=("classic", "slow-shared"), default="classic")
     parser.add_argument("--timeout-seconds", type=int, default=180)
     parser.add_argument("--max-budget-usd", type=float, default=1.0)
     args = parser.parse_args()
     result = evaluate(args.workspace, timeout_seconds=args.timeout_seconds,
-                      max_budget_usd=args.max_budget_usd, provider_settings=args.provider_settings)
+                      max_budget_usd=args.max_budget_usd, provider_settings=args.provider_settings,
+                      scenario=args.scenario)
     print(json.dumps(result, indent=2))
     return 0 if result["passed"] else 1
 

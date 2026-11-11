@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "target": {
+    "serverUrl": "https://synthetic.invalid",
+    "jobId": "Example_Verify",
+    "branch": "main",
+    "revisions": [],
+    "revisionNote": "Sampled revision was not available in the collected run view.",
+    "configuration": {
+      "source": "current-settings",
+      "revision": null,
+      "association": "unverified",
+      "reason": "Current settings have not been matched to the sampled run."
+    }
+  },
+  "sample": {
+    "since": "2026-10-28T00:00:00Z",
+    "until": "2026-11-11T00:00:00Z",
+    "rootRunIds": [
+      101
+    ],
+    "runIds": [
+      100,
+      101,
+      102,
+      103
+    ],
+    "successfulRootRunIds": [
+      101
+    ],
+    "limits": {
+      "rootRuns": 30,
+      "days": 14,
+      "jobs": 100,
+      "runs": 200,
+      "logRuns": 5,
+      "logLinesPerRun": 2000
+    }
+  },
+  "coverage": {
+    "state": "partial",
+    "truncated": false,
+    "gaps": [
+      "One successful root only; settings association, graph completeness, and agent queue attribution are unverified."
+    ]
+  },
+  "conclusion": "opportunity",
+  "evidence": [
+    {
+      "id": "tree",
+      "sourceCommand": "teamcity run tree 101 --json",
+      "runIds": [
+        100,
+        101,
+        102,
+        103
+      ],
+      "observation": "Root 101 depends on 102 and 103; both depend on shared run 100."
+    },
+    {
+      "id": "root",
+      "sourceCommand": "teamcity run view 101 --json",
+      "runIds": [
+        101
+      ],
+      "observation": "Queued at 09:00:00, started at 09:15:05, finished at 09:16:05 on 2026-11-10 UTC."
+    },
+    {
+      "id": "build",
+      "sourceCommand": "teamcity run view 100 --json",
+      "runIds": [
+        100
+      ],
+      "observation": "Queued at 09:00:00, started at 09:00:05, finished at 09:05:05 UTC."
+    },
+    {
+      "id": "tests",
+      "sourceCommand": "teamcity run view 102 --json",
+      "runIds": [
+        102
+      ],
+      "observation": "Queued at 09:00:00, started at 09:05:05, finished at 09:15:05 UTC."
+    },
+    {
+      "id": "package",
+      "sourceCommand": "teamcity run view 103 --json",
+      "runIds": [
+        103
+      ],
+      "observation": "Queued at 09:00:00, started at 09:05:05, finished at 09:09:05 UTC."
+    },
+    {
+      "id": "test-settings",
+      "sourceCommand": "teamcity job step list Example_Tests --json",
+      "runIds": [],
+      "observation": "Current Tests steps include sleep 180 followed by ./test.sh; historical association is unverified."
+    },
+    {
+      "id": "package-settings",
+      "sourceCommand": "teamcity job step list Example_Package --json",
+      "runIds": [],
+      "observation": "Current Package steps include sleep 120 followed by ./package.sh; historical association is unverified."
+    },
+    {
+      "id": "test-log",
+      "sourceCommand": "teamcity run log 102 --tail 2000 --raw",
+      "runIds": [
+        102
+      ],
+      "observation": "The Legacy padding step ran sleep 180 from 09:05:05 to 09:08:05 UTC."
+    },
+    {
+      "id": "package-log",
+      "sourceCommand": "teamcity run log 103 --tail 2000 --raw",
+      "runIds": [
+        103
+      ],
+      "observation": "The Legacy padding step ran sleep 120 from 09:05:05 to 09:07:05 UTC."
+    }
+  ],
+  "recommendations": [
+    {
+      "id": "r1",
+      "rank": 1,
+      "title": "Review the explicit wait in Tests",
+      "evidenceIds": [
+        "tree",
+        "root",
+        "build",
+        "tests",
+        "package",
+        "test-log",
+        "test-settings"
+      ],
+      "proposedChange": "Confirm why the Legacy padding step exists in Example_Tests; if no readiness requirement remains, remove its fixed sleep in a separate reviewed change.",
+      "expectedImpact": {
+        "feedbackTimeSeconds": 180,
+        "aggregateExecutionTimeSeconds": 180,
+        "basis": "estimate",
+        "reason": "Tests remains the critical branch after removing the observed wait. These are conditional estimates, not measured before/after savings; settings association and other conditions require verification.",
+        "monetaryCost": {
+          "value": null,
+          "currency": null,
+          "reason": "No prices or billing model were provided."
+        }
+      },
+      "tradeoffs": [
+        "The fixed sleep may hide a readiness dependency; removal could cause flaky failures."
+      ],
+      "manualVerification": [
+        "Confirm the log interval and the reason for the sleep; record branch, VCS/settings revisions and agent conditions, apply a separately reviewed change, then compare several similar successful runs for feedback, distinct-run execution and reliability."
+      ]
+    },
+    {
+      "id": "r2",
+      "rank": 2,
+      "title": "Review the explicit wait in Package",
+      "evidenceIds": [
+        "tree",
+        "root",
+        "build",
+        "tests",
+        "package",
+        "package-log",
+        "package-settings"
+      ],
+      "proposedChange": "Confirm why the Legacy padding step exists in Example_Package; if no readiness requirement remains, remove its fixed sleep in a separate reviewed change.",
+      "expectedImpact": {
+        "feedbackTimeSeconds": 0,
+        "aggregateExecutionTimeSeconds": 120,
+        "basis": "estimate",
+        "reason": "Package is a noncritical parallel branch; its shorter execution does not shorten root feedback while Tests remains slower. These are conditional estimates, not measured before/after savings; settings association and other conditions require verification.",
+        "monetaryCost": {
+          "value": null,
+          "currency": null,
+          "reason": "No prices or billing model were provided."
+        }
+      },
+      "tradeoffs": [
+        "The fixed sleep may hide a readiness dependency; removal could cause flaky failures."
+      ],
+      "manualVerification": [
+        "Confirm the log interval and the reason for the sleep; record branch, VCS/settings revisions and agent conditions, apply a separately reviewed change, then compare several similar successful runs for feedback, distinct-run execution and reliability."
+      ]
+    }
+  ],
+  "timing": {
+    "distinctRunIds": [
+      100,
+      101,
+      102,
+      103
+    ],
+    "aggregateExecutionSeconds": 1200,
+    "evidenceIds": [
+      "tree",
+      "root",
+      "build",
+      "tests",
+      "package"
+    ],
+    "method": "Sum finish-start per distinct run ID once; overlapping execution is summed, not treated as elapsed feedback or billed time.",
+    "roots": [
+      {
+        "runId": 101,
+        "feedbackElapsedSeconds": 965,
+        "queuedToStartSeconds": 905,
+        "dependencyReadyDelaySeconds": 905,
+        "agentQueueSeconds": null,
+        "evidenceIds": [
+          "tree",
+          "root",
+          "build",
+          "tests",
+          "package"
+        ],
+        "reason": "Root queue-to-finish is feedback. The latest dependency finished at root start; this readiness interval is not a measured agent queue delay."
+      }
+    ]
+  }
+}

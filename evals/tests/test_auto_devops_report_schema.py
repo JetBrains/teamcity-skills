@@ -51,3 +51,17 @@ class AutoDevopsReportSchemaTest(unittest.TestCase):
                 validator.validate(valid)
         expanded["sample"]["limits"]["rootRuns"] = 0
         self.assertFalse(validator.is_valid(expanded))
+
+    def test_timing_separates_parallel_execution_feedback_and_unknown_agent_queue(self):
+        validator = Draft7Validator(json.loads(
+            (ROOT / "skills/auto-devops/references/report.schema.json").read_text()))
+        report = json.loads((FIXTURES / "slow-shared.json").read_text())
+        validator.validate(report)
+        self.assertEqual(1200, report["timing"]["aggregateExecutionSeconds"])
+        self.assertEqual(965, report["timing"]["roots"][0]["feedbackElapsedSeconds"])
+        self.assertIsNone(report["timing"]["roots"][0]["agentQueueSeconds"])
+        report["timing"]["distinctRunIds"].append(100)
+        self.assertFalse(validator.is_valid(report), "shared run IDs must be unique")
+        report["timing"]["distinctRunIds"].pop()
+        report["timing"]["roots"][0]["queuedToStartSeconds"] = -1
+        self.assertFalse(validator.is_valid(report))
