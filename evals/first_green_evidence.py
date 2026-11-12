@@ -147,7 +147,7 @@ def resolve_jdk_home(value, parameters, environment):
             if name not in values:
                 # Agent-provided JDK selectors are declarations, not runtime
                 # proof. Other unresolved references cannot identify a JDK.
-                if re.fullmatch(r"env\.JDK_\d+(?:_\d+)*", name):
+                if re.fullmatch(r"env\.JDK_\d+(?:_\d+)*(?:_[A-Za-z][A-Za-z0-9]*)?", name):
                     continue
                 return unresolved
             if not isinstance(values[name], str):
@@ -162,7 +162,8 @@ def resolve_jdk_home(value, parameters, environment):
 
 
 def jdk_home_major(value):
-    selector = re.fullmatch(r"%env\.JDK_(\d+(?:_\d+)*)%", value)
+    # Agents publish env.JDK_21_0, and on arm64/x64 hosts env.JDK_21_0_ARM64 or env.JDK_1_8_x64.
+    selector = re.fullmatch(r"%env\.JDK_(\d+(?:_\d+)*)(?:_[A-Za-z][A-Za-z0-9]*)?%", value)
     if selector:
         return java_major(selector[1].replace("_", "."))
     return path_major(value.replace("\\", "/").rstrip("/"))
@@ -228,10 +229,13 @@ def declared_maven_image_major(job, jdk, jdk_match="exact"):
             continue
         properties = step.get("properties", {})
         image, home = properties.get("docker-image"), properties.get("jdk-home")
-        # An explicit jdk-home overrides the image's PATH java; keep requiring the record.
-        if (not isinstance(image, str) or not re.search(r"(?i)java|jdk|openjdk|temurin", image)
-                or (isinstance(home, str) and home.strip())):
+        if not isinstance(image, str) or not re.search(r"(?i)java|jdk|openjdk|temurin", image):
             return None
+        if isinstance(home, str) and home.strip():
+            # A versioned or parameterised jdk-home overrides the image's PATH java;
+            # a literal unversioned home such as /opt/java/openjdk is the image's JDK.
+            if jdk_home_major(home) is not None or "%" in home:
+                return None
         majors.add(path_major(image) or java_major(image.rsplit(":", 1)[-1]))
     if len(majors) != 1 or not jdk_major_matches(next(iter(majors)), jdk, jdk_match):
         return None

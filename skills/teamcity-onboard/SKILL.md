@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.5.3
+version: 0.5.4
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first green build, test, and package pipeline with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
@@ -124,7 +124,9 @@ Read [Agents and runtimes](references/agents-and-runtimes.md) before you
 write YAML. Take `runs-on`, the runtime (JDK, .NET SDK, Node, Python), and
 the CPU architecture from the agent type's parameters. Always pin the
 runtime version. Zero compatible agent types is a blocker: fix it before you
-queue.
+queue. A `self-hosted` entry is `arch`, `os-family`, `os-version`, `cpu`,
+`ram`, or an object with `requirement`, `parameter`, `name`, and `value`;
+a bare `- <parameter>: <value>` line is invalid even though `push` accepts it.
 
 ## 3. Write the pipeline
 

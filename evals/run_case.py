@@ -1856,6 +1856,36 @@ def permission_failure_surface(trace: pathlib.Path) -> Optional[str]:
     return "unknown"
 
 
+def denied_tools(trace: pathlib.Path) -> list:
+    """Names of tools whose results report a permission denial.
+
+    Read from structured events only: a tool name is safe to publish, the
+    denied command or the agent's prose is not.
+    """
+    names, denied = {}, set()
+    for line in trace_output_lines(trace):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        for block in (event.get("message") or {}).get("content") or []:
+            if not isinstance(block, dict):
+                continue
+            if (block.get("type") == "tool_use" and isinstance(block.get("id"), str)
+                    and isinstance(block.get("name"), str)):
+                names[block["id"]] = block["name"]
+            elif block.get("type") == "tool_result":
+                text = json.dumps(block.get("content")).lower()
+                if "requires approval" in text or "permission_denied" in text:
+                    name = names.get(block.get("tool_use_id"))
+                    if name:
+                        denied.add(name)
+    return sorted(denied)
+
+
 def mcp_runtime(trace: pathlib.Path) -> dict:
     """Summarize MCP initialization from non-assistant structured events only.
 
@@ -2075,6 +2105,11 @@ def publishable_result(result: dict) -> dict:
         published["agentToolSummary"] = tool_summary
     if result.get("permissionFailureSurface") in ("mcp", "workspace", "unknown"):
         published["permissionFailureSurface"] = result["permissionFailureSurface"]
+    denied = result.get("deniedTools")
+    if isinstance(denied, list) and denied:
+        published["deniedTools"] = sorted({
+            name for name in denied if isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,80}", name)
+        })[:10]
     runtime = safe_mcp_runtime(result.get("mcpRuntime"))
     if runtime:
         published["mcpRuntime"] = runtime
@@ -2421,8 +2456,16 @@ def run(
             agent_run.get("failureCategory") or trace_error_category(trace)
         )
         permission_surface = permission_failure_surface(trace)
+        denied = denied_tools(trace)
         if permission_surface:
+            if (permission_surface == "mcp" and tool_mode == "cli-only"
+                    and not any(name.startswith("mcp__") for name in denied)):
+                # No MCP server exists in this mode; "teamcity" near "permission"
+                # is the skill's or the agent's wording, not an MCP denial.
+                permission_surface = "workspace" if denied else "unknown"
             result["permissionFailureSurface"] = permission_surface
+        if denied:
+            result["deniedTools"] = denied
         result["agentToolSummary"] = agent_tool_summary(trace)
         if mcp_config:
             result["mcpRuntime"] = mcp_runtime(trace)
