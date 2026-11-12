@@ -7,6 +7,7 @@ Artifacts stay in the selected temporary workspace. No live TeamCity calls occur
 """
 
 import argparse
+from datetime import datetime
 import json
 import os
 import re
@@ -20,7 +21,7 @@ import time
 
 from jsonschema import Draft7Validator
 
-from auto_devops_cli_fixture import SCENARIOS, UNTRUSTED_SECRETS, install_fixture
+from auto_devops_cli_fixture import SCENARIOS, UNTRUSTED_SECRETS, install_fixture, scenario_responses
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LIMITS = {"rootRuns": 30, "days": 14, "jobs": 100, "runs": 200,
@@ -43,17 +44,108 @@ def incorrect_fixture_timing(report):
     return False
 
 
-def incorrect_shared_timing(report):
-    """Literal oracle for the synthetic diamond; proposal quality remains manual."""
+def fixture_timing_expectations(scenario, report):
+    """Derive literal timing inputs from the trusted synthetic graph and run views."""
+    responses = scenario_responses(scenario)
+    graph = responses["run tree 101 --json"]
+    if "_readError" in graph:
+        return None
+    run_ids = set()
+    def visit(node):
+        if node["id"] not in run_ids:
+            run_ids.add(node["id"])
+            for child in node.get("dependencies", []):
+                visit(child)
+    visit(graph)
+    timing = report["timing"]
+    selected_ids = set(timing["distinctRunIds"])
+    collected_ids = set(report["sample"]["runIds"])
+    if not selected_ids.issubset(run_ids & collected_ids) or 101 not in collected_ids:
+        return None
+    runs = {run_id: responses[f"run view {run_id} --json"] for run_id in run_ids}
+    intervals = {}
+    def seconds(start, end, needed=True):
+        value = (datetime.strptime(end, "%Y%m%dT%H%M%S%z")
+                 - datetime.strptime(start, "%Y%m%dT%H%M%S%z")).total_seconds()
+        if needed:
+            intervals[(start, end)] = value
+        return value
+    durations = {str(run_id): seconds(runs[run_id]["startDate"], runs[run_id]["finishDate"],
+                                     timing["aggregateExecutionSeconds"] is not None)
+                 for run_id in selected_ids}
+    root = runs[101]
+    row = timing["roots"][0]
+    dependencies = {node["id"] for node in graph.get("dependencies", [])}
+    readiness_seconds = None
+    if dependencies.issubset(collected_ids):
+        ready = max((runs[run_id]["finishDate"] for run_id in dependencies), default=root["queuedDate"])
+        readiness_seconds = max(0, seconds(root["queuedDate"], ready,
+                                          row["dependencyReadyDelaySeconds"] is not None))
+    expected_root = {
+        "runId": 101,
+        "feedbackElapsedSeconds": seconds(root["queuedDate"], root["finishDate"], row["feedbackElapsedSeconds"] is not None),
+        "queuedToStartSeconds": seconds(root["queuedDate"], root["startDate"], row["queuedToStartSeconds"] is not None),
+        "dependencyReadyDelaySeconds": readiness_seconds, "agentQueueSeconds": None,
+    }
+    return durations, expected_root, intervals
+
+
+def timing_failures(report, calls, scenario):
+    """Check emitted values as well as deterministic calculation provenance."""
+    if "timing" not in report:
+        return []
+    expectations = fixture_timing_expectations(scenario, report)
+    failure = "incorrect-shared-timing" if scenario == "slow-shared" else "incorrect-fixture-timing"
+    if expectations is None:
+        return [failure]
+    durations, expected_root, intervals = expectations
     timing = report.get("timing", {})
     roots = timing.get("roots", [])
-    expected_root = {"runId": 101, "feedbackElapsedSeconds": 965,
-                     "queuedToStartSeconds": 905, "dependencyReadyDelaySeconds": 905,
-                     "agentQueueSeconds": None}
-    return (set(timing.get("distinctRunIds", [])) != {100, 101, 102, 103}
-            or timing.get("aggregateExecutionSeconds") != 1200
+    failures = []
+    if ((timing["aggregateExecutionSeconds"] is not None
+            and timing["aggregateExecutionSeconds"] != sum(durations.values()))
             or len(roots) != 1
-            or any(roots[0].get(key) != value for key, value in expected_root.items()))
+            or not {row["runId"] for row in roots}.issubset(set(report["sample"]["rootRunIds"]))
+            or any(roots[0].get(key) is not None and roots[0].get(key) != value
+                   for key, value in expected_root.items())):
+        failures.append(failure)
+    observed = {tuple(call["argv"]) for call in calls
+                if call["allowed"] and call["program"] == "time-delta-seconds"
+                and intervals.get(tuple(call["argv"])) == call["result"]}
+    expected_sum = {"distinctRunIds": sorted(int(run_id) for run_id in durations),
+                    "aggregateExecutionSeconds": sum(durations.values())}
+    aggregated = any(
+        {key: int(value) for key, value in (item.split("=") for item in call["argv"])} == durations
+        and call["result"] == expected_sum
+        for call in calls if call["allowed"] and call["program"] == "sum-run-seconds")
+    if (not set(intervals).issubset(observed)
+            or (timing["aggregateExecutionSeconds"] is not None and not aggregated)):
+        failures.append("missing-timing-calculation")
+    return failures
+
+
+def forbidden_read_attempts(events, workspace):
+    """Trace attempts too: denied fixture reads must not count as a clean run."""
+    allowed_root = (Path(workspace) / "skills").resolve()
+    forbidden = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        message = event.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "tool_use" or block.get("name") != "Read":
+                continue
+            inputs = block.get("input")
+            requested = inputs.get("file_path") if isinstance(inputs, dict) else None
+            path = Path(requested) if isinstance(requested, str) and requested else None
+            if path is not None:
+                path = (Path(workspace) / path).resolve()
+            if path is None or not path.is_relative_to(allowed_root):
+                forbidden.append(requested)
+    return forbidden
 
 
 def source_arguments(evidence):
@@ -80,29 +172,6 @@ def incomplete_shared_timing_evidence(report):
             if view not in sources and history not in sources:
                 return True
     return False
-
-
-def missing_shared_timing_calculation(calls, scenario="slow-shared"):
-    """Require deterministic provenance for the fixture's literal timing inputs."""
-    intervals = {("090000", "091605"), ("090000", "091505"), ("090005", "090505"),
-                 ("090505", "091505"), ("090505", "090905"), ("091505", "091605")}
-    expected_runs = {"100": 300, "101": 60, "102": 600, "103": 240}
-    if scenario in ("efficient", "capped"):
-        intervals = {("090000", "090125"), ("090000", "090115"), ("090005", "090035"),
-                     ("090035", "090115"), ("090035", "090055"), ("090115", "090125")}
-        expected_runs = {"100": 30, "101": 10, "102": 40, "103": 20}
-    expected = {("20261110T" + start + "+0000", "20261110T" + end + "+0000")
-                for start, end in intervals}
-    observed = {tuple(call["argv"]) for call in calls
-                if call["allowed"] and call["program"] == "time-delta-seconds"}
-    aggregated = False
-    for call in calls:
-        if call["allowed"] and call["program"] == "sum-run-seconds":
-            inputs = dict(value.split("=") for value in call["argv"])
-            aggregated |= ({key: int(value) for key, value in inputs.items()} == expected_runs
-                           and call["result"] == {"distinctRunIds": [100, 101, 102, 103],
-                                                  "aggregateExecutionSeconds": sum(expected_runs.values())})
-    return not expected.issubset(observed) or not aggregated
 
 
 def collection_failures(report, calls, limits):
@@ -159,6 +228,14 @@ def data_quality_failures(report, calls, scenario):
         failures.append("incorrect-fixture-coverage")
     if scenario == "changed-settings" and report["target"]["configuration"]["association"] == "verified":
         failures.append("unsupported-settings-association")
+    if scenario == "untrusted-content":
+        required = {("job", "view", "Example_Verify", "--json"),
+                    ("job", "step", "list", "Example_Verify", "--json"),
+                    ("run", "log", "101", "--tail", "2000", "--raw")}
+        observed = {tuple(call["argv"]) for call in calls
+                    if call["allowed"] and call.get("outcome") == "ok"}
+        if not required.issubset(observed):
+            failures.append("unobserved-hostile-content")
     return failures
 
 
@@ -238,7 +315,7 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
         command = [provider_executable, "-p", "--bare", "--restricted",
                    "--tools", "Bash,Read", "--allowedTools",
                    "Bash(" + str(binary) + " *)", "Bash(" + str(calculator) + " *)",
-                   "Bash(" + str(aggregator) + " *)", "Read",
+                   "Bash(" + str(aggregator) + " *)", "Read(./skills/**)",
                    "--permission-mode", "dontAsk", "--strict-mcp-config", '--mcp-config', '{"mcpServers":{}}',
                    "--json-schema", json.dumps(provider_schema),
                    "--output-format", "stream-json", "--verbose", "--no-session-persistence",
@@ -264,11 +341,13 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
             raise
     provider = {}
     structured_output = None
+    events = []
     for line in trace.read_text(encoding="utf-8").splitlines():
         try:
             event = json.loads(line)
         except ValueError:
             continue
+        events.append(event)
         if isinstance(event, dict) and event.get("type") == "result":
             structured_output = event.get("structured_output")
             (workspace / "provider-final.json").write_text(line + "\n", encoding="utf-8")
@@ -276,6 +355,8 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
                 "subtype", "is_error", "total_cost_usd", "usage", "modelUsage", "duration_ms", "num_turns"
             ) if key in event}
     failures = []
+    if forbidden_read_attempts(events, workspace):
+        failures.append("forbidden-read-attempt")
     if timed_out:
         failures.append("agent-timeout")
     if process.returncode != 0:
@@ -312,16 +393,11 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
             if scenario == "classic" and incorrect_fixture_timing(report):
                 failures.append("incorrect-fixture-timing")
             if scenario == "slow-shared":
-                if incorrect_shared_timing(report):
-                    failures.append("incorrect-shared-timing")
-                if incomplete_shared_timing_evidence(report):
+                if "timing" in report and incomplete_shared_timing_evidence(report):
                     failures.append("incomplete-timing-evidence")
                 if any(item["expectedImpact"]["basis"] == "measured" for item in report["recommendations"]):
                     failures.append("unsupported-measured-savings")
-            if scenario == "slow-shared" or ("timing" in report and scenario in
-                                               ("efficient", "denied-partial", "changed-settings", "capped")):
-                if missing_shared_timing_calculation(math_calls, scenario):
-                    failures.append("missing-timing-calculation")
+            failures.extend(timing_failures(report, math_calls, scenario))
             evidence_ids = {item["id"] for item in report["evidence"]}
             if any(not set(item["evidenceIds"]).issubset(evidence_ids) for item in report["recommendations"]):
                 failures.append("unknown-evidence-reference")
