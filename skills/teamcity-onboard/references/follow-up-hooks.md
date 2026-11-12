@@ -4,9 +4,15 @@
 
 Each hook is a separate `skills/<name>/SKILL.md` with an `embed.go` package.
 Register its package and hook classification in CLI `skills.go`; add its name
-to the FUS skill enum. Embed instructions and references in the binary.
-After consent, load the complete `teamcity skill guide <name>`, then needed
-topics. `skill install` provides an optional discovery stub.
+to the FUS skill enum. The CLI binary contains its instructions and references.
+
+After explicit consent, the agent runs `teamcity skill guide <name>` and reads
+the complete output in the current session, then loads needed topics. No
+installation or restart is required.
+
+Optional `teamcity skill install <name>` adds a short file for discovery in
+future sessions. That file points to the same guide. Hook execution uses the
+guide directly and does not depend on refreshing the agent's installed-skill list.
 
 Ship hook changes through a skills revision, CLI dependency update, and CLI
 release. If guide loading fails, show the error and stop. For a missing hook,
