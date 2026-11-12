@@ -350,10 +350,13 @@ class MavenGraderTest(unittest.TestCase):
                 runtime = diagnostics["jdk"]["mavenRuntime"][0]
                 self.assertEqual("verified" if expected else "missing", runtime["status"])
                 self.assertEqual("declared-docker-image" if expected else None, runtime.get("evidence"))
-        # An explicit jdk-home overrides the image JVM, so the runtime record stays required.
-        jobs[0]["steps"][0]["properties"]["jdk-home"] = "/opt/java/openjdk"
-        observed, _ = observe_chain(tc, "project", build, "21")
-        self.assertFalse(self.grade(observed)["passed"])
+        # A literal unversioned jdk-home inside the image is the image's JDK; a
+        # versioned or parameterised one overrides it and needs the runtime record.
+        for home, expected in (("/opt/java/openjdk", True), ("/opt/jdk-17", False), ("%env.JAVA_HOME%", False)):
+            with self.subTest(home=home):
+                jobs[0]["steps"][0]["properties"]["jdk-home"] = home
+                observed, _ = observe_chain(tc, "project", build, "21")
+                self.assertEqual(expected, self.grade(observed)["passed"])
 
     def test_java_home_and_agent_properties_cannot_override_runtime(self):
         tc, build, jobs = self.fixture()

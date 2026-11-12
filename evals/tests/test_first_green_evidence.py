@@ -123,6 +123,18 @@ class FirstGreenEvidenceTest(unittest.TestCase):
         self.assertFalse(diagnostics["jdk"]["runtimeVerified"])
         tc.vcs_roots.assert_not_called()
 
+    def test_architecture_suffixed_jdk_keys_identify_the_major(self):
+        for selector, major in (("%env.JDK_21_0%", 21), ("%env.JDK_21_0_ARM64%", 21),
+                                ("%env.JDK_1_8_x64%", 8), ("%env.JDK_17_0_x64%", 17), ("%env.JAVA_HOME%", None)):
+            with self.subTest(selector=selector):
+                self.assertEqual(major, evidence.jdk_home_major(selector))
+        resolved = evidence.resolve_jdk_home("%env.JAVA_HOME%", {"env.JAVA_HOME": "%env.JDK_21_0_ARM64%"}, {})
+        self.assertEqual("%env.JDK_21_0_ARM64%", resolved)
+        job = [{"name": "Build", "parameters": {"env.JAVA_HOME": "%env.JDK_21_0_ARM64%"},
+                "steps": [{"type": "gradle", "properties": {"jdk-home": resolved}}]}]
+        self.assertTrue(evidence.jdk_evidence({}, "21", job)[0])
+        self.assertFalse(evidence.jdk_evidence({}, "17", job)[0])
+
     def test_bare_path_publication_is_an_artifact_rule_unless_opted_out(self):
         tc = runner.TeamCity("teamcity", "https://example.invalid", "private", {})
         document = {"jobs": {"Build": {"steps": [{"type": "maven", "goals": "verify"}],
