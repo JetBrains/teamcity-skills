@@ -43,7 +43,10 @@ outcomes before/after a separately reviewed change. Compare similar workloads wh
 practical and account manually for intended settings changes and unrelated changes.
 Check reliability and both feedback and aggregate execution effects; describe uncertainty
 without requiring reliable causal attribution or inventing gains.
-Schema validation checks structure, not truth or recommendation quality.
+Before saving, review every field, including URLs, evidence commands, and manual steps,
+for tokens, passwords, credential-bearing URLs, or copied hostile instructions. Omit secret
+values rather than persisting a raw dump; explain any resulting evidence gap without them.
+Schema validation checks structure, not truth, secret omission, or recommendation quality.
 
 With Python and jsonschema installed, validate a saved report using `Draft7Validator`:
 

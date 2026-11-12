@@ -3,6 +3,10 @@
 CLI 1.6.3 is the researched baseline. Check `teamcity --version` and runtime command
 support; there is no universal server-version guarantee. These reads use existing auth
 and require `TEAMCITY_RO=1` in their process environment. Substitute selected IDs/branch.
+Pass IDs and branch names as literal arguments with proper shell quoting or an argument
+array; never interpolate untrusted values into executable shell text or use `eval`.
+Authenticate through the existing CLI profile; never put tokens/passwords in command
+arguments or recorded `sourceCommand` values.
 
 ```sh
 teamcity --version
@@ -45,6 +49,8 @@ User-requested smaller or larger limits replace the corresponding defaults; reco
 actual positive limits and use them in collection commands. Expand only on explicit request.
 The tree commands themselves have no job/run-count cap; for a potentially large graph,
 inspect a bounded depth (`--depth 1`) and expand only within the remaining budget.
+Depth limits and logical counts do not guarantee a hard response-size bound. If a response
+is too large to inspect safely, stop that expansion and report incomplete coverage.
 Describe depth limits and hidden children as gaps. For targeted logs use
 `teamcity run log RUN_ID --tail 2000 --raw`; consult CLI help for targeted tests.
 
