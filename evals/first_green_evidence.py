@@ -4,7 +4,8 @@ import re
 from urllib.parse import urlsplit
 
 from maven_runtime import (
-    JDK_MATCH_MODES, java_major, jdk_major_matches, maven_runtime, path_major, safe_maven_runtime,
+    JDK_MATCH_MODES, java_major, jdk_major_matches, maven_runtime, merge_maven_runtimes,
+    path_major, safe_maven_runtime,
 )
 
 
@@ -240,10 +241,15 @@ def observe_chain(tc, project_id, build, required_jdk, jdk_match="exact", verify
             raise EvidenceError("verification-chain-incomplete")
         members.append(member)
     # A job with `parallelism` spawns virtual batch builds under its own
-    # build type ID; the job build aggregates their tests and artifacts.
-    members = [member for member in members if not any(
-        member["buildTypeId"].startswith(other["buildTypeId"] + "_virtual_")
-        for other in members if other is not member)]
+    # build type ID. The job build aggregates their tests and artifacts, but
+    # only the batches run the steps, so their logs hold the Maven launches.
+    batches = {}
+    for member in members:
+        for parent in members:
+            if parent is not member and member["buildTypeId"].startswith(parent["buildTypeId"] + "_virtual_"):
+                batches.setdefault(parent["id"], []).append(member)
+    batch_ids = {batch["id"] for group in batches.values() for batch in group}
+    members = [member for member in members if member["id"] not in batch_ids]
     jobs = bind_jobs(tc.jobs(project_id, build["pipelineId"]), members)
     artifacts, all_tests, diagnostics, job_results, maven = [], [], [], [], []
     for member, job in zip(members, jobs):
@@ -251,12 +257,15 @@ def observe_chain(tc, project_id, build, required_jdk, jdk_match="exact", verify
                          if step.get("type") == "maven"]
         maven_steps = len(maven_indices)
         if maven_steps:
-            try:
-                runtime = maven_runtime(tc.build_log(member["id"]), required_jdk, maven_steps,
-                                        maven_indices, len(job["steps"]), jdk_match=jdk_match)
-            except (RuntimeError, OSError, ValueError):
-                runtime = {**maven_runtime(None, required_jdk, maven_steps, jdk_match=jdk_match),
-                           "status": "unavailable"}
+            runtimes = []
+            for source in batches.get(member["id"]) or [member]:
+                try:
+                    runtimes.append(maven_runtime(tc.build_log(source["id"]), required_jdk, maven_steps,
+                                                  maven_indices, len(job["steps"]), jdk_match=jdk_match))
+                except (RuntimeError, OSError, ValueError):
+                    runtimes.append({**maven_runtime(None, required_jdk, maven_steps, jdk_match=jdk_match),
+                                     "status": "unavailable"})
+            runtime = merge_maven_runtimes(runtimes)
             if runtime["status"] == "missing":
                 # The Maven runner records `Java version: ..., runtime: ...` only
                 # for a host JVM; inside a docker-image it launches PATH java silently.

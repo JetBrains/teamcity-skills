@@ -72,11 +72,15 @@ is a directory, point the tab into the zip:
 - No YAML anchors (`&`, `*`). `pipeline validate` accepts them, but the push
   fails with a misleading error, such as
   `Field type is required for a step in job '<job>'`.
-- Run `teamcity pipeline validate` on changed YAML, then push. Validate
-  rejects hosted `runs-on` names the server accepts and misses what the
-  server rejects. A push error is the real validation, but a passed push
-  proves little: check `runs-on` as
-  [Agents and runtimes](agents-and-runtimes.md) describes.
+- Run `teamcity pipeline validate` on changed YAML and fix every error
+  before the push. The one error to tolerate is a `runs-on` string naming a
+  hosted type the server's pools list, which the schema's enum lacks. A
+  `self-hosted` entry is `arch`, `os-family`, `os-version`, `cpu`, `ram`, or
+  an object with `requirement`, `parameter`, `name`, and `value`; the
+  shorthand `- docker.server.osType: linux` pushes and even builds, but is
+  invalid. `pipeline push` does not validate, so a passed push proves
+  little: check `runs-on` as [Agents and runtimes](agents-and-runtimes.md)
+  describes.
 
 ## Shape
 
