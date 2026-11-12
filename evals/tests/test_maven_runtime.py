@@ -309,6 +309,33 @@ class MavenGraderTest(unittest.TestCase):
         self.assertTrue(self.grade(observed)["passed"])
         self.assertTrue(diagnostics["jdk"]["runtimeVerified"])
 
+    def test_parallel_maven_job_is_verified_from_its_batch_logs(self):
+        tc, build, jobs = self.fixture()
+        jobs[0]["parameters"] = {}
+        jobs[0]["steps"][0]["properties"]["jdk-home"] = "%env.JAVA_HOME%"
+        batches = [{"id": 1011 + index, "buildTypeId": f"verify1_virtual_Batch_{index + 1}_1",
+                    "state": "finished", "status": "SUCCESS", "buildType": {"name": f"Batch {index + 1}"}}
+                   for index in range(2)]
+        build["nodes"].extend(batches)
+        lookup = {item["id"]: item for item in [*batches, tc.build(101)]}
+        tc.build.side_effect = lookup.__getitem__
+        logs = {101: "", 1011: launch("/opt/jdk-21"), 1012: launch("/opt/jdk-21")}
+        tc.build_log.side_effect = logs.__getitem__
+        observed, diagnostics = observe_chain(tc, "project", build, "21")
+        self.assertTrue(self.grade(observed)["passed"])
+        self.assertEqual([mock.call(1011), mock.call(1012)], tc.build_log.call_args_list)
+        self.assertEqual(("verified", [21]), (diagnostics["jdk"]["mavenRuntime"][0]["status"],
+                                              diagnostics["jdk"]["mavenRuntime"][0]["observedMajors"]))
+        self.assertEqual([101], [item["id"] for item in diagnostics["builds"]])
+        logs[1012] = launch("/opt/jdk-17")
+        observed, diagnostics = observe_chain(tc, "project", build, "21")
+        self.assertFalse(self.grade(observed)["passed"])
+        self.assertEqual("mismatch", diagnostics["jdk"]["mavenRuntime"][0]["status"])
+        logs[1012] = ""
+        observed, diagnostics = observe_chain(tc, "project", build, "21")
+        self.assertFalse(self.grade(observed)["passed"])
+        self.assertEqual("missing", diagnostics["jdk"]["mavenRuntime"][0]["status"])
+
     def test_container_maven_step_without_runtime_record_is_verified_by_its_image(self):
         tc, build, jobs = self.fixture()
         jobs[0]["parameters"] = {}
