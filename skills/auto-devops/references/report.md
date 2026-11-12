@@ -51,6 +51,31 @@ keeping `references/`. Invoke it with a root job ID, branch, and local output fi
   null, with null currency and a reason, unless prices and a billing model support a number.
   Provider tools report AI usage/cost separately.
 
+## Human-readable report text
+
+Apply this guidance to explanatory report values and any optional companion summary:
+recommendation titles and proposed changes, impact and monetary-cost reasons, tradeoffs,
+manual steps, coverage gaps, revision/configuration reasons, collection coverage/skip/next-read
+reasons, and explanatory evidence prose. Keep schema keys, enums, IDs, flags, commands,
+exact technical identifiers, and quoted raw data unchanged. Existing secret-omission rules
+still apply. This guidance does not rewrite machine contracts or general model instructions.
+
+Write for an experienced TeamCity developer reading English at B1 level. Keep the technical
+depth. Briefly explain a necessary unfamiliar term on first use; skip TeamCity/programming basics.
+Use familiar words and direct verbs. State who acts, what they change, and the result.
+Keep one main idea per sentence, usually 10–20 words, without making this a fixed limit.
+Avoid idioms, long noun groups, and vague descriptions. Connect cause and effect clearly.
+Explain normal behavior first. Put conditions, exceptions, and risks in separate sentences.
+Preserve uncertainty and important restrictions when simplifying a sentence.
+
+Keep `proposedChange` focused on what to change and why. Retain any condition essential to
+correctness. Put prerequisite checks in `manualVerification`, and costs and risks in `tradeoffs`.
+Keep each impact/cost reason in its required field; do not hide unknowns or promise savings.
+
+Before saving, read the human-facing text sentence by sentence. Rewrite long clauses,
+stacked nouns, unclear pronouns, missing actors, and vague wording as specific actions.
+Check that a fresh reader can tell what to change and why, with conditions and uncertainty intact.
+
 Manual verification records branch, VCS/configuration revisions, agent conditions, and
 outcomes before/after a separately reviewed change. Compare similar workloads where
 practical and account manually for intended settings changes and unrelated changes.
