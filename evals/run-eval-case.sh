@@ -82,7 +82,9 @@ case "${EVAL_TOOL_MODE:-cli-only}" in
     ;;
 esac
 
-"${python_command[@]}" -m pip install --user --quiet PyYAML
+# PEP 668 agents refuse `pip install --user`; the variable is ignored by older pip.
+"${python_command[@]}" -c 'import yaml' 2>/dev/null || \
+  PIP_BREAK_SYSTEM_PACKAGES=1 "${python_command[@]}" -m pip install --user --quiet PyYAML
 : "${TEAMCITY_TOKEN:?TEAMCITY_TOKEN is required}"
 # Keep the lifecycle token out of the agent's inherited environment. The runner
 # consumes and closes this short-lived descriptor before launching the
