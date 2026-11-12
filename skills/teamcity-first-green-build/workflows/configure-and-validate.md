@@ -84,7 +84,11 @@ another permitted machine-readable operation. If none exists, use
 
 Choose `runs-on` from target-server evidence. Use an observed stable
 self-hosted capability or a server-provided hosted selector. Never use a
-transient VM name or a selector copied from another server.
+transient VM name or a selector copied from another server. A `self-hosted`
+entry is `arch`, `os-family`, `os-version`, `cpu`, `ram`, or an object with
+`requirement`, `parameter`, `name`, and `value`; the shorthand
+`- teamcity.agent.jvm.os.name: Linux` passes `pipeline push` but fails
+`pipeline validate`.
 
 Check each job's requirements against compatible agents. If none match, report
 the missing capability and the evidence needed before retrying.

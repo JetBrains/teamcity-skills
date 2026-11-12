@@ -212,6 +212,24 @@ def jdk_evidence(properties, jdk, jobs=None, jdk_match="exact"):
     }
 
 
+def declared_maven_image_major(job, jdk, jdk_match="exact"):
+    """The matching JDK major every Maven step gets from its container image, else None."""
+    majors = set()
+    for step in job.get("steps", []):
+        if step.get("type") != "maven":
+            continue
+        properties = step.get("properties", {})
+        image, home = properties.get("docker-image"), properties.get("jdk-home")
+        # An explicit jdk-home overrides the image's PATH java; keep requiring the record.
+        if (not isinstance(image, str) or not re.search(r"(?i)java|jdk|openjdk|temurin", image)
+                or (isinstance(home, str) and home.strip())):
+            return None
+        majors.add(path_major(image) or java_major(image.rsplit(":", 1)[-1]))
+    if len(majors) != 1 or not jdk_major_matches(next(iter(majors)), jdk, jdk_match):
+        return None
+    return next(iter(majors))
+
+
 def observe_chain(tc, project_id, build, required_jdk, jdk_match="exact", verify_vcs_root=False):
     members = []
     for node in build["nodes"]:
@@ -239,6 +257,14 @@ def observe_chain(tc, project_id, build, required_jdk, jdk_match="exact", verify
             except (RuntimeError, OSError, ValueError):
                 runtime = {**maven_runtime(None, required_jdk, maven_steps, jdk_match=jdk_match),
                            "status": "unavailable"}
+            if runtime["status"] == "missing":
+                # The Maven runner records `Java version: ..., runtime: ...` only
+                # for a host JVM; inside a docker-image it launches PATH java silently.
+                image_major = declared_maven_image_major(job, required_jdk, jdk_match)
+                if image_major is not None:
+                    runtime.update(status="verified", evidence="declared-docker-image",
+                                   observedMajors=[image_major], launchCount=maven_steps,
+                                   verifiedLaunchCount=maven_steps)
             maven.append({**runtime, "buildId": member["id"], "jobId": job["id"]})
         tests = tc.test_results(member["id"])
         published_artifacts = tc.artifacts(member["id"])

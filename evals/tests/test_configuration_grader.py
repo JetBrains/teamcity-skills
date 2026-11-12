@@ -2,6 +2,7 @@ import importlib.util
 import json
 import pathlib
 import unittest
+from unittest import mock
 
 
 EVALS = pathlib.Path(__file__).resolve().parents[1]
@@ -375,6 +376,36 @@ class ConfigurationGraderTest(unittest.TestCase):
 
         observed["jobs"][0]["jobProperties"]["parallelism"] = 2
         self.assertFalse(run_case.grade_configuration(case, observed)["requiredJobProperties"]["passed"])
+
+
+
+
+class ImplicitAgentRequirementTest(unittest.TestCase):
+    def test_undefined_parameter_references_are_agent_requirements(self):
+        tc = run_case.TeamCity("teamcity", "https://example.invalid", "private", {})
+        document = {
+            "parameters": {"jdk21.home": "%teamcity.agent.jvm.java.home%"},
+            "environment": {"MAVEN_ARGS": "-B"},
+            "jobs": {"Build": {
+                "runs-on": {"self-hosted": [{"arch": "aarch64"}]},
+                "parameters": {"docker.required.capability": "%docker.version%",
+                               "env.JAVA_HOME": "%env.JDK_21_0%",
+                               "args": "%env.MAVEN_ARGS% %jdk21.home% %teamcity.build.checkoutDir%"},
+                "steps": [{"type": "script", "script-content": "echo %container.engine.osType%"}],
+            }},
+        }
+        with mock.patch.object(tc, "pipeline_definition", return_value=document):
+            [job] = tc.jobs("project", "pipeline")
+        self.assertEqual(["{'self-hosted': [{'arch': 'aarch64'}]}",
+                          "implicit-requirement: container.engine.osType",
+                          "implicit-requirement: docker.version",
+                          "implicit-requirement: env.JDK_21_0",
+                          "implicit-requirement: teamcity.agent.jvm.java.home"],
+                         job["agentRequirements"])
+        case = {"expected": {"minimumJobs": 1, "sourceMutations": "none", "toolchain": {"jdk": "21"},
+                             "requiredAgentRequirements": ["(?i)docker|container\\.engine"]}}
+        checks = run_case.grade_configuration(case, {"jobs": [job], "mutations": [], "toolCalls": []})
+        self.assertTrue(checks["requiredAgentRequirements"]["passed"])
 
 
 if __name__ == "__main__":

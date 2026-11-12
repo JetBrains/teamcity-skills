@@ -15,7 +15,7 @@
     "configurationValidated": true, "testsExecutedAndReported": true, "artifactsPublished": true, "sourceMutations": "none", "toolchain": {"jdk": "21"}, "firstBuild": "SUCCESS",
     "minimumTestCount": 243,
     "requiredTestNames": ["AccountRepoIntegrationTest", "CaseRepoIntegrationTest", "ModularityTest"],
-    "jobResults": [{"jobMatches": "test", "minimumTestCount": 243}],
+    "jobResults": [{"jobMatches": "(?i)test", "minimumTestCount": 243}],
     "configuration": {
       "configurationValidated": true, "sourceMutations": "none", "minimumJobs": 1, "toolchain": {"jdk": "21"}, "requiredStepTypes": ["gradle"], "requiredArtifactRules": ["build/libs/.*\\.jar"], "requiredJobProperties": [{"property": "enable-dependency-cache", "value": true}]
     }

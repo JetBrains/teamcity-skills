@@ -177,6 +177,8 @@ def safe_maven_runtime(value):
             or value.get("jdkMatch", "exact") not in JDK_MATCH_MODES):
         return {}
     safe = {"status": value["status"], "jdkMatch": value.get("jdkMatch", "exact")}
+    if value.get("evidence") == "declared-docker-image":
+        safe["evidence"] = value["evidence"]
     for key in ("buildId", "requiredMajor", "stepCount", "launchCount", "verifiedLaunchCount"):
         if type(value.get(key)) is int and value[key] >= 0:
             safe[key] = value[key]
