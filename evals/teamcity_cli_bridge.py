@@ -94,6 +94,18 @@ class CommandPolicy:
         if not job_id or job_id not in set(self.job_ids()):
             raise BridgeError("the job is outside the temporary target project")
 
+    READ_ONLY_API_PREFIXES = ("/app/rest/agentTypes", "/app/rest/agentPools")
+
+    def _require_read_only_agent_api(self, arguments: list) -> None:
+        if any(argument in ("-X", "--method", "-f", "--field", "--input")
+               or argument.startswith(("-X=", "--method=", "--field=", "--input="))
+               for argument in arguments):
+            raise BridgeError("the eval CLI bridge permits only GET requests through `teamcity api`")
+        positionals = _positional(arguments)
+        endpoint = positionals[1] if len(positionals) > 1 else ""
+        if not endpoint.startswith(self.READ_ONLY_API_PREFIXES):
+            raise BridgeError("the eval CLI bridge permits `teamcity api` only for agent types and pools")
+
     def authorize(self, arguments: list, cwd: pathlib.Path) -> None:
         try:
             cwd.resolve().relative_to(self.checkout)
@@ -119,6 +131,9 @@ class CommandPolicy:
         if area == "migrate":
             return
         if area == "agent" and operation in {"list", "view", "jobs"}:
+            return
+        if area == "api":
+            self._require_read_only_agent_api(arguments)
             return
         if area == "job" and operation in {"list", "view"}:
             return

@@ -2080,6 +2080,11 @@ def publishable_result(result: dict) -> dict:
     max_budget = result.get("agentMaxBudgetUsd")
     if type(max_budget) in (int, float) and math.isfinite(max_budget) and max_budget > 0:
         published["agentMaxBudgetUsd"] = max_budget
+    mutations = (result.get("build") or {}).get("sourceMutations")
+    if isinstance(mutations, list) and mutations:
+        published["sourceMutations"] = sorted(
+            {path for path in mutations if isinstance(path, str) and 0 < len(path) <= 512}
+        )[:50]
     published["checks"] = {
         name: safe_check_result(check)
         for name, check in (result.get("checks") or {}).items()
