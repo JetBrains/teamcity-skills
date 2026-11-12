@@ -1,131 +1,122 @@
 # Source this file from a TeamCity script step before invoking `teamcity`.
-# JCP Central places Claude Code on the host agent. The agent may not include
-# Node/npm, so the CLI is installed in an isolated build-temporary directory.
+# Install the pinned native CLI in an isolated build-temporary directory.
+# Install from the verified release archive, not the lagging npm package.
 
 set -eu
 
+teamcity_eval_cli_version=1.6.3
 teamcity_eval_cli_dir="${TEAMCITY_EVAL_CLI_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/teamcity-eval-cli.XXXXXX")}"
 export TEAMCITY_EVAL_CLI_DIR="$teamcity_eval_cli_dir"
 
-# Python's subprocess does not apply PATHEXT when its executable is named
-# without an extension. npm creates `teamcity.cmd` on Windows, so make the
-# executable name explicit for the Python helpers below.
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) export TEAMCITY_EVAL_CLI=teamcity.cmd ;;
-  *) export TEAMCITY_EVAL_CLI=teamcity ;;
+case "$(uname -s):$(uname -m)" in
+  Linux:aarch64|Linux:arm64)
+    teamcity_eval_platform=linux
+    teamcity_eval_arch=arm64
+    teamcity_eval_sha256=e5515c3b81b2eadde2cba59ed0d05c5e4f2f109bc4c554bb8394875117db8c26
+    ;;
+  Linux:x86_64|Linux:amd64)
+    teamcity_eval_platform=linux
+    teamcity_eval_arch=x86_64
+    teamcity_eval_sha256=acd52b7a6904841225dcf61cd46cc209394562a6cbef69112498a74988dc282d
+    ;;
+  Darwin:aarch64|Darwin:arm64)
+    teamcity_eval_platform=darwin
+    teamcity_eval_arch=arm64
+    teamcity_eval_sha256=2ee007c11f4202c599c9abf26f2c81520ae25fd456d24ec204e579e2a7c707dd
+    ;;
+  Darwin:x86_64|Darwin:amd64)
+    teamcity_eval_platform=darwin
+    teamcity_eval_arch=x86_64
+    teamcity_eval_sha256=fd4726e377907ad76f5dff799cabfa6fcf1469418f91e682f32b1e02f8cc69d2
+    ;;
+  MINGW*:aarch64|MINGW*:arm64|MSYS*:aarch64|MSYS*:arm64|CYGWIN*:aarch64|CYGWIN*:arm64)
+    teamcity_eval_platform=windows
+    teamcity_eval_arch=arm64
+    teamcity_eval_sha256=dbf0201fe496e47aa748f8e416a0ce0419c8a608a74eec5b75bda77f04c0340c
+    ;;
+  MINGW*:x86_64|MINGW*:amd64|MSYS*:x86_64|MSYS*:amd64|CYGWIN*:x86_64|CYGWIN*:amd64)
+    teamcity_eval_platform=windows
+    teamcity_eval_arch=x86_64
+    teamcity_eval_sha256=a0426053a0ed7a62796a9843469a7ef6eb3dd8fa278e41fb8af4c936af18914b
+    ;;
+  *)
+    echo "No TeamCity CLI v$teamcity_eval_cli_version release for $(uname -s) $(uname -m)." >&2
+    return 1
+    ;;
 esac
 
-if command -v npm >/dev/null 2>&1; then
-  teamcity_eval_npm=npm
-elif command -v npm.cmd >/dev/null 2>&1; then
-  teamcity_eval_npm=npm.cmd
+teamcity_eval_extension=tar.gz
+[ "$teamcity_eval_platform" = windows ] && teamcity_eval_extension=zip
+teamcity_eval_filename="teamcity_${teamcity_eval_cli_version}_${teamcity_eval_platform}_${teamcity_eval_arch}.${teamcity_eval_extension}"
+teamcity_eval_archive="$teamcity_eval_cli_dir/$teamcity_eval_filename"
+teamcity_eval_url="https://github.com/JetBrains/teamcity-cli/releases/download/v$teamcity_eval_cli_version/$teamcity_eval_filename"
+
+if command -v curl >/dev/null 2>&1; then
+  curl --fail --silent --show-error --location "$teamcity_eval_url" --output "$teamcity_eval_archive"
+elif command -v wget >/dev/null 2>&1; then
+  wget --quiet --output-document="$teamcity_eval_archive" "$teamcity_eval_url"
+elif command -v python3 >/dev/null 2>&1; then
+  TEAMCITY_EVAL_URL="$teamcity_eval_url" TEAMCITY_EVAL_ARCHIVE="$teamcity_eval_archive" \
+    python3 -c 'import os, urllib.request; open(os.environ["TEAMCITY_EVAL_ARCHIVE"], "wb").write(urllib.request.urlopen(os.environ["TEAMCITY_EVAL_URL"], timeout=60).read())'
+elif command -v python >/dev/null 2>&1; then
+  TEAMCITY_EVAL_URL="$teamcity_eval_url" TEAMCITY_EVAL_ARCHIVE="$teamcity_eval_archive" \
+    python -c 'import os, urllib.request; open(os.environ["TEAMCITY_EVAL_ARCHIVE"], "wb").write(urllib.request.urlopen(os.environ["TEAMCITY_EVAL_URL"], timeout=60).read())'
+elif command -v py.exe >/dev/null 2>&1; then
+  TEAMCITY_EVAL_URL="$teamcity_eval_url" TEAMCITY_EVAL_ARCHIVE="$teamcity_eval_archive" \
+    py.exe -3 -c 'import os, urllib.request; open(os.environ["TEAMCITY_EVAL_ARCHIVE"], "wb").write(urllib.request.urlopen(os.environ["TEAMCITY_EVAL_URL"], timeout=60).read())'
 else
-  case "$(uname -s):$(uname -m)" in
-    Linux:aarch64|Linux:arm64)
-      node_platform=linux
-      node_arch=arm64
-      node_sha256=013b59cfd2819703a6f4a14ab891fc46fc2a4e3f5bcd92de3fb4929b43e35b30
-      ;;
-    Linux:x86_64|Linux:amd64)
-      node_platform=linux
-      node_arch=x64
-      node_sha256=b294a556e639d64338823920e5866c21c02741742d2e1529ee1a225c1ec9252a
-      ;;
-    Darwin:aarch64|Darwin:arm64)
-      node_platform=darwin
-      node_arch=arm64
-      node_sha256=61130f394c1630d211dd50aecc4353d379480f36d3ac913cd85dbba1aed585c6
-      ;;
-    Darwin:x86_64|Darwin:amd64)
-      node_platform=darwin
-      node_arch=x64
-      node_sha256=58e99022c2ff89395576cc7fd4d98cea24bb68081475d5f88b801ee8729fb026
-      ;;
-    MINGW*:aarch64|MINGW*:arm64|MSYS*:aarch64|MSYS*:arm64|CYGWIN*:aarch64|CYGWIN*:arm64)
-      node_platform=win
-      node_arch=arm64
-      node_sha256=fec025a6da31757e3b6af84c5a1628e9d38442ca99a2161091d78f2fcfa35ef3
-      ;;
-    MINGW*:x86_64|MINGW*:amd64|MSYS*:x86_64|MSYS*:amd64|CYGWIN*:x86_64|CYGWIN*:amd64)
-      node_platform=win
-      node_arch=x64
-      node_sha256=1177b4137ba5adaa56354ae40f1080c7450e8ae09cecb47da459d1c52ac99f97
-      ;;
-    *)
-      echo "Cannot bootstrap Node on $(uname -s) $(uname -m); install Node/npm on the TeamCity agent." >&2
-      return 1
-      ;;
-  esac
-
-  node_version=v22.23.2
-  node_extension=tar.gz
-  [ "$node_platform" = win ] && node_extension=zip
-  node_archive="$teamcity_eval_cli_dir/node.$node_extension"
-  node_dir="$teamcity_eval_cli_dir/node-$node_version-$node_platform-$node_arch"
-  node_url="https://nodejs.org/dist/$node_version/node-$node_version-$node_platform-$node_arch.$node_extension"
-
-  if command -v curl >/dev/null 2>&1; then
-    curl --fail --silent --show-error --location "$node_url" --output "$node_archive"
-  elif command -v wget >/dev/null 2>&1; then
-    wget --quiet --output-document="$node_archive" "$node_url"
-  elif command -v python3 >/dev/null 2>&1; then
-    NODE_URL="$node_url" NODE_ARCHIVE="$node_archive" \
-      python3 -c 'import os, urllib.request; open(os.environ["NODE_ARCHIVE"], "wb").write(urllib.request.urlopen(os.environ["NODE_URL"], timeout=60).read())'
-  elif command -v python >/dev/null 2>&1; then
-    NODE_URL="$node_url" NODE_ARCHIVE="$node_archive" \
-      python -c 'import os, urllib.request; open(os.environ["NODE_ARCHIVE"], "wb").write(urllib.request.urlopen(os.environ["NODE_URL"], timeout=60).read())'
-  elif command -v py.exe >/dev/null 2>&1; then
-    NODE_URL="$node_url" NODE_ARCHIVE="$node_archive" \
-      py.exe -3 -c 'import os, urllib.request; open(os.environ["NODE_ARCHIVE"], "wb").write(urllib.request.urlopen(os.environ["NODE_URL"], timeout=60).read())'
-  else
-    echo "curl, wget, or Python is required to bootstrap Node on the TeamCity agent." >&2
-    return 1
-  fi
-  if command -v sha256sum >/dev/null 2>&1; then
-    echo "$node_sha256  $node_archive" | sha256sum --check --status
-  elif command -v shasum >/dev/null 2>&1; then
-    [ "$(shasum -a 256 "$node_archive" | awk '{print $1}')" = "$node_sha256" ]
-  elif command -v python3 >/dev/null 2>&1; then
-    NODE_ARCHIVE="$node_archive" NODE_SHA256="$node_sha256" \
-      python3 -c 'import hashlib, os; assert hashlib.sha256(open(os.environ["NODE_ARCHIVE"], "rb").read()).hexdigest() == os.environ["NODE_SHA256"]'
-  elif command -v python >/dev/null 2>&1; then
-    NODE_ARCHIVE="$node_archive" NODE_SHA256="$node_sha256" \
-      python -c 'import hashlib, os; assert hashlib.sha256(open(os.environ["NODE_ARCHIVE"], "rb").read()).hexdigest() == os.environ["NODE_SHA256"]'
-  elif command -v py.exe >/dev/null 2>&1; then
-    NODE_ARCHIVE="$node_archive" NODE_SHA256="$node_sha256" \
-      py.exe -3 -c 'import hashlib, os; assert hashlib.sha256(open(os.environ["NODE_ARCHIVE"], "rb").read()).hexdigest() == os.environ["NODE_SHA256"]'
-  else
-    echo "sha256sum, shasum, or Python is required to verify the Node download." >&2
-    return 1
-  fi
-  if [ "$node_platform" = win ]; then
-    if command -v python3 >/dev/null 2>&1; then
-      NODE_ARCHIVE="$node_archive" NODE_DESTINATION="$teamcity_eval_cli_dir" \
-        python3 -c 'import os, zipfile; zipfile.ZipFile(os.environ["NODE_ARCHIVE"]).extractall(os.environ["NODE_DESTINATION"])'
-    elif command -v python >/dev/null 2>&1; then
-      NODE_ARCHIVE="$node_archive" NODE_DESTINATION="$teamcity_eval_cli_dir" \
-        python -c 'import os, zipfile; zipfile.ZipFile(os.environ["NODE_ARCHIVE"]).extractall(os.environ["NODE_DESTINATION"])'
-    elif command -v py.exe >/dev/null 2>&1; then
-      NODE_ARCHIVE="$node_archive" NODE_DESTINATION="$teamcity_eval_cli_dir" \
-        py.exe -3 -c 'import os, zipfile; zipfile.ZipFile(os.environ["NODE_ARCHIVE"]).extractall(os.environ["NODE_DESTINATION"])'
-    elif command -v unzip >/dev/null 2>&1; then
-      unzip -q "$node_archive" -d "$teamcity_eval_cli_dir"
-    elif command -v powershell.exe >/dev/null 2>&1; then
-      NODE_ARCHIVE="$node_archive" NODE_DESTINATION="$teamcity_eval_cli_dir" \
-        powershell.exe -NoProfile -NonInteractive -Command \
-        'Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory($env:NODE_ARCHIVE, $env:NODE_DESTINATION)'
-    else
-      echo "Python, unzip, or PowerShell is required to extract Node on a Windows TeamCity agent." >&2
-      return 1
-    fi
-    export PATH="$node_dir:$PATH"
-    teamcity_eval_npm=npm.cmd
-  else
-    tar -xzf "$node_archive" -C "$teamcity_eval_cli_dir"
-    export PATH="$node_dir/bin:$PATH"
-    teamcity_eval_npm=npm
-  fi
+  echo "curl, wget, or Python is required to download the TeamCity CLI." >&2
+  return 1
 fi
 
-"$teamcity_eval_npm" install --prefix "$teamcity_eval_cli_dir/teamcity-cli" --no-save --silent @jetbrains/teamcity-cli@1.3.0
-export PATH="$teamcity_eval_cli_dir/teamcity-cli/node_modules/.bin:$PATH"
+if command -v sha256sum >/dev/null 2>&1; then
+  [ "$(sha256sum "$teamcity_eval_archive" | awk '{print $1}')" = "$teamcity_eval_sha256" ]
+elif command -v shasum >/dev/null 2>&1; then
+  [ "$(shasum -a 256 "$teamcity_eval_archive" | awk '{print $1}')" = "$teamcity_eval_sha256" ]
+elif command -v python3 >/dev/null 2>&1; then
+  TEAMCITY_EVAL_ARCHIVE="$teamcity_eval_archive" TEAMCITY_EVAL_SHA256="$teamcity_eval_sha256" \
+    python3 -c 'import hashlib, os; assert hashlib.sha256(open(os.environ["TEAMCITY_EVAL_ARCHIVE"], "rb").read()).hexdigest() == os.environ["TEAMCITY_EVAL_SHA256"]'
+elif command -v python >/dev/null 2>&1; then
+  TEAMCITY_EVAL_ARCHIVE="$teamcity_eval_archive" TEAMCITY_EVAL_SHA256="$teamcity_eval_sha256" \
+    python -c 'import hashlib, os; assert hashlib.sha256(open(os.environ["TEAMCITY_EVAL_ARCHIVE"], "rb").read()).hexdigest() == os.environ["TEAMCITY_EVAL_SHA256"]'
+elif command -v py.exe >/dev/null 2>&1; then
+  TEAMCITY_EVAL_ARCHIVE="$teamcity_eval_archive" TEAMCITY_EVAL_SHA256="$teamcity_eval_sha256" \
+    py.exe -3 -c 'import hashlib, os; assert hashlib.sha256(open(os.environ["TEAMCITY_EVAL_ARCHIVE"], "rb").read()).hexdigest() == os.environ["TEAMCITY_EVAL_SHA256"]'
+else
+  echo "sha256sum, shasum, or Python is required to verify the TeamCity CLI." >&2
+  return 1
+fi
+
+if [ "$teamcity_eval_platform" = windows ]; then
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -q "$teamcity_eval_archive" teamcity.exe -d "$teamcity_eval_cli_dir"
+  elif command -v python3 >/dev/null 2>&1; then
+    TEAMCITY_EVAL_ARCHIVE="$teamcity_eval_archive" TEAMCITY_EVAL_DEST="$teamcity_eval_cli_dir" \
+      python3 -c 'import os, zipfile; zipfile.ZipFile(os.environ["TEAMCITY_EVAL_ARCHIVE"]).extract("teamcity.exe", os.environ["TEAMCITY_EVAL_DEST"])'
+  elif command -v python >/dev/null 2>&1; then
+    TEAMCITY_EVAL_ARCHIVE="$teamcity_eval_archive" TEAMCITY_EVAL_DEST="$teamcity_eval_cli_dir" \
+      python -c 'import os, zipfile; zipfile.ZipFile(os.environ["TEAMCITY_EVAL_ARCHIVE"]).extract("teamcity.exe", os.environ["TEAMCITY_EVAL_DEST"])'
+  elif command -v py.exe >/dev/null 2>&1; then
+    TEAMCITY_EVAL_ARCHIVE="$teamcity_eval_archive" TEAMCITY_EVAL_DEST="$teamcity_eval_cli_dir" \
+      py.exe -3 -c 'import os, zipfile; zipfile.ZipFile(os.environ["TEAMCITY_EVAL_ARCHIVE"]).extract("teamcity.exe", os.environ["TEAMCITY_EVAL_DEST"])'
+  elif command -v powershell.exe >/dev/null 2>&1; then
+    TEAMCITY_EVAL_ARCHIVE="$teamcity_eval_archive" TEAMCITY_EVAL_DEST="$teamcity_eval_cli_dir" \
+      powershell.exe -NoProfile -NonInteractive -Command \
+      'Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory($env:TEAMCITY_EVAL_ARCHIVE, $env:TEAMCITY_EVAL_DEST)'
+  else
+    echo "unzip, Python, or PowerShell is required to extract the TeamCity CLI on Windows." >&2
+    return 1
+  fi
+  export TEAMCITY_EVAL_CLI=teamcity.exe
+else
+  tar -xzf "$teamcity_eval_archive" -C "$teamcity_eval_cli_dir" teamcity
+  chmod 755 "$teamcity_eval_cli_dir/teamcity"
+  export TEAMCITY_EVAL_CLI=teamcity
+fi
+
+export PATH="$teamcity_eval_cli_dir:$PATH"
+teamcity_eval_actual_version="$("$TEAMCITY_EVAL_CLI" --version)"
+if [ "$teamcity_eval_actual_version" != "teamcity version $teamcity_eval_cli_version" ]; then
+  echo "Expected TeamCity CLI v$teamcity_eval_cli_version; got $teamcity_eval_actual_version." >&2
+  return 1
+fi

@@ -12,7 +12,6 @@ teamcity api '/app/rest/agentTypes/id:<type-id>?fields=availableParameters($loca
 teamcity api '/app/rest/agentTypes/id:<type-id>?fields=availableParameters($locator(name:env.JDK_21_0),property(name,value))'
 teamcity agent list --connected --enabled --authorized \
   --limit 0 --json=id,name,typeId,pool.name
-teamcity agent jobs <agent-id> --incompatible --json
 ```
 
 The pools give the agent types the project can use. A hosted agent connects
@@ -128,16 +127,19 @@ about 70 MB and 5–15 s. On macOS and Windows agents, install in the job.
 2. Check every job, dependent jobs included, against the candidate types:
    each requirement key and each `%env.*%` parameter it uses must be in a
    type's parameters, with the exact value; a change of letter case does not
-   create a key. `agent jobs --incompatible` works only for a connected
-   agent and lists the unmet requirements.
-3. Count the compatible types. Zero is a defect to fix now. A
-   `permission_denied` on the check means unverified; record it and
-   continue.
+   create a key. No command reports the compatibility of a job that is not
+   queued yet, so this comparison is yours to make.
+3. Count the compatible types. Zero is a defect to fix now.
 4. After every change of the stored YAML, repeat the check.
 
-After queueing, TeamCity counts the matches itself. Read each queued job:
-`teamcity api '/app/rest/buildQueue/id:<job-run-id>?fields=waitReason,compatibleCloudImages(count,cloudImage(name))'`.
-A count of 0 is a wrong `runs-on`: fix it now. The wait reason "There are no
-idle compatible agents" is the same for 0 matches and for busy agents, so
-read the count. [Verify a build](verify-build.md) says what to do with a job
-that stays queued.
+The server's own verdict comes with the first queued run. Right after
+queueing, read each job run with `teamcity run view <job-run-id>`: it prints
+the wait reason, the compatible agents and cloud images, and the
+incompatible ones grouped by pool with the unmet requirement. `--json` lists
+every entry under `compatibility` (CLI 1.6 or later). Zero compatible
+entries is a wrong `runs-on` or a key no agent has: fix it now. The wait
+reason "There are no idle compatible agents" is the same for 0 matches and
+for busy agents, so read the list, not the reason. Do not run
+`agent jobs --incompatible` per agent: a large server returns thousands of
+build types per agent. [Verify a build](verify-build.md) says what to do
+with a job that stays queued.
