@@ -123,6 +123,32 @@ class FirstGreenEvidenceTest(unittest.TestCase):
         self.assertFalse(diagnostics["jdk"]["runtimeVerified"])
         tc.vcs_roots.assert_not_called()
 
+    def test_bare_path_publication_is_an_artifact_rule_unless_opted_out(self):
+        tc = runner.TeamCity("teamcity", "https://example.invalid", "private", {})
+        document = {"jobs": {"Build": {"steps": [{"type": "maven", "goals": "verify"}],
+                                       "files-publication": ["target/*.jar => jars",
+                                                             {"path": "target/surefire-reports/*.xml"},
+                                                             {"path": "build/private.log", "publish-artifact": False},
+                                                             {"path": "target/site/**", "publish-artifact": True}]}}}
+        with mock.patch.object(tc, "pipeline_definition", return_value=document):
+            [job] = tc.jobs("project", "pipeline")
+        self.assertEqual("target/*.jar => jars\ntarget/surefire-reports/*.xml\ntarget/site/**",
+                         job["artifactRules"])
+
+    def test_unversioned_runner_jdk_home_inside_a_jdk_image_is_the_image_jdk(self):
+        def job(home, image="eclipse-temurin:25-jdk"):
+            return [{"name": "Build", "steps": [{"type": "gradle", "properties": {
+                "jdk-home": home, "docker-image": image}}]}]
+        for home, image, expected in (("/opt/java/openjdk", "eclipse-temurin:25-jdk", True),
+                                      ("/opt/java/openjdk", "gradle:9.2-jdk25", True),
+                                      ("/opt/jdk-17", "eclipse-temurin:25-jdk", False),
+                                      ("%env.JAVA_HOME%", "eclipse-temurin:25-jdk", False),
+                                      ("/opt/java/openjdk", "gradle:9.2", False)):
+            with self.subTest(home=home, image=image):
+                matched, _, details = evidence.jdk_evidence({}, "25", job(home, image))
+                self.assertEqual(expected, matched)
+                self.assertEqual(expected, details["declaredMatch"])
+
     def test_parallel_test_batches_are_not_declared_jobs(self):
         tc, tree = self.fixture()
         batches = [node(1011, "test_virtual_Batch_1_1"), node(1012, "test_virtual_Batch_2_1")]

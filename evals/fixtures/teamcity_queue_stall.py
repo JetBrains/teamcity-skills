@@ -28,6 +28,20 @@ elif args[:2] == ["run", "view"]:
         "waitReason": "There are no compatible agents for QueueFixture_Build",
         "queuedDurationSeconds": 130,
         "buildTypeId": "QueueFixture_Build",
+        "compatibility": {
+            "compatibleAgents": [],
+            "compatibleCloudImages": [],
+            "incompatibleAgents": [
+                {"id": 101, "name": "linux-agent-a", "reasons": [
+                    "Unresolved parameter: env.JDK_25",
+                    "Agent requirement cannot resolve %env.JDK_25%",
+                ]},
+                {"id": 102, "name": "linux-agent-b", "reasons": [
+                    "Unresolved parameter: env.JDK_25",
+                    "Agent requirement cannot resolve %env.JDK_25%",
+                ]},
+            ],
+        },
     })
 elif args[:2] == ["queue", "list"]:
     emit({
