@@ -1,6 +1,6 @@
 ---
 name: teamcity-migrate-remaining-gha
-version: 0.2.2
+version: 0.2.3
 description: Use after explicit agreement to migrate remaining non-deploy GitHub Actions jobs, test matrices, shards, and execution conditions into an existing TeamCity pipeline after onboarding, or to resume that migration later.
 ---
 
@@ -9,6 +9,9 @@ description: Use after explicit agreement to migrate remaining non-deploy GitHub
 Load this skill after explicit consent through
 `teamcity skill guide teamcity-migrate-remaining-gha`. Extend the existing
 pipeline within the accepted scope.
+
+Complete the accepted scope, including reports and failure behavior. A blocker
+or retry limit stops only the affected item; continue independent accepted work.
 
 A direct continuation request naming the hook and scope is consent. Record
 `teamcity skill hook-event teamcity-migrate-remaining-gha accepted` once,
@@ -130,8 +133,10 @@ is not a blocker.
   may not select Bash. Preserve allowed failures as visible, non-blocking
   failures through supported semantics. Never discard a test exit code.
 - **Reports:** configure structured tests and failure artifacts before matrix
-  validation. Confirm actual execution and scope; empty tasks, cache hits,
-  or a final zero exit code alone are insufficient evidence.
+  validation. Verify execution, scope, and expected reports on the representative
+  before expanding. Empty tasks, cache hits, and zero exit codes alone do not
+  prove execution. Missing expected reports mean **Partially covered**.
+  Record test counts as not applicable for build-only jobs.
 
 ### Matrices and shards
 
@@ -180,6 +185,9 @@ Use supported execution modes. If a later collection step is skipped, collect in
 3. Return the original test failure. If tests passed but archiving failed, return the archive failure.
 
 Never use an unconditional success fallback. Check this logic outside the checkout with a synthetic failing command and temporary diagnostic files.
+
+Verify cleanup of job-owned services after failure. A teardown step skipped
+after a test failure does not provide cleanup.
 
 For live proof, inspect an existing failed test under the updated configuration: the job stays failed, and its downloadable artifact contains the expected diagnostics. Do not break user tests or create probe pipelines. Without live evidence, report **configured and locally checked; failure-time publication unverified**.
 
@@ -231,7 +239,21 @@ Run agreed jobs for new work. On continuation, reuse evidence and in-flight chai
 - If standalone starts produce no-op runs, use an existing orchestrated chain. Ask before a necessary new full-chain run.
 - Check which jobs ran or were reused before claiming reuse.
 
-Fix migration failures. Stop an item after two attempts fail with the same cause despite a targeted correction; report evidence and the next action. Report verified project failures without hiding them or changing project code. Offer code fixes through the separate follow-up.
+### Failure diagnosis and retries
+
+Before classifying a project defect, compare source and migrated runtime phases,
+environment, dependencies, and build outputs. Confirm the cause with a matching
+source run or a controlled reproduction that rules out migration differences.
+Repeated errors alone leave the cause unresolved.
+
+Retry only with a targeted correction supported by evidence. Stop that item after
+two corrections fail with the same cause. Record each change, result, and next
+action. Unchanged reruns and fixes to other jobs do not count as corrections;
+do not repeat them without new evidence. Keep the item **Partially covered**.
+
+Preserve proven project failures and offer code fixes separately. Before declaring
+a tool limitation, record the rejected operation and supported alternatives checked.
+One rejected YAML form does not establish a tool limitation.
 
 ### Queued jobs
 
@@ -245,12 +267,19 @@ Separate schema validity, push success, and compatibility. Use observed eligible
 
 Apply confirmed configuration fixes within scope. For provisioning or permission blockers, give evidence and an owner/action. Continue independent work while runtime checks wait. Use at most one monitor per run; after an unchanged diagnostic pass, move to actionable rows. Resume runtime checks when new evidence appears. Follow the continuation rules for cancellation and replacement runs.
 
+End this hook's monitors when their runs finish. Late notifications do not
+reopen user decisions.
+
 ## 4. Reconcile and report
 
-Reconcile every source job, variant, and mixed-workflow operation against
-stored settings and execution evidence. Add omissions and continue actionable
-work. Close each row, including inherited gaps, with verified behavior, an agreed
-exclusion/deviation, or a documented blocker/retry-limit outcome and next action.
+Reconcile source jobs, variants, and mixed-workflow operations against stored
+settings and execution evidence. Add omissions and finish all actionable accepted
+work, including reports, failure policy, and cleanup. Close each row with verified
+behavior, an agreed exclusion/deviation, or a documented blocker/retry-limit
+outcome and next action.
+
+Ask only for a new scope decision, permission, or user prerequisite. Routine fixes
+already within consent need no new approval.
 
 Check commands, tests, variants, dependencies, artifacts, conditions, and
 failure-time behavior. **Covered** means no required gaps. Keep unattempted
@@ -272,7 +301,13 @@ owners, and verified next steps. Separate configuration, local checks, and live
 execution. Reused results need matching revision and variant evidence; queued
 or unexecuted variants do not verify a matrix.
 
-Report **Migration partially complete** while accepted items remain partial, not migrated, blocked, or unverified. Claim completion only for the verified accepted scope, with agreed exclusions and deviations stated.
+Use **Migration partially complete** while accepted items remain partial, not
+migrated, blocked, or unverified. Claim completion only for the verified accepted
+scope, with agreed exclusions and deviations. Save the outcome, latest run
+status, and remaining actions in the report. Start final and later status replies
+with this outcome, including after compaction. Reload the report and matching run
+evidence when context is lost. A pending decision does not make a partial
+migration complete.
 
 After reporting the outcome, follow onboarding's feedback-offer rules in
 `teamcity skill guide teamcity-onboard references/follow-up-hooks`. Defer the
