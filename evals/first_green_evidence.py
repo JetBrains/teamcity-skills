@@ -221,6 +221,11 @@ def observe_chain(tc, project_id, build, required_jdk, jdk_match="exact", verify
         if any(member.get(key) != node[key] for key in ("id", "buildTypeId", "state", "status")):
             raise EvidenceError("verification-chain-incomplete")
         members.append(member)
+    # A job with `parallelism` spawns virtual batch builds under its own
+    # build type ID; the job build aggregates their tests and artifacts.
+    members = [member for member in members if not any(
+        member["buildTypeId"].startswith(other["buildTypeId"] + "_virtual_")
+        for other in members if other is not member)]
     jobs = bind_jobs(tc.jobs(project_id, build["pipelineId"]), members)
     artifacts, all_tests, diagnostics, job_results, maven = [], [], [], [], []
     for member, job in zip(members, jobs):
