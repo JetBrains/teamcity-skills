@@ -309,6 +309,25 @@ class MavenGraderTest(unittest.TestCase):
         self.assertTrue(self.grade(observed)["passed"])
         self.assertTrue(diagnostics["jdk"]["runtimeVerified"])
 
+    def test_container_maven_step_without_runtime_record_is_verified_by_its_image(self):
+        tc, build, jobs = self.fixture()
+        jobs[0]["parameters"] = {}
+        jobs[0]["steps"][0]["properties"]["docker-image"] = "maven:3.9-eclipse-temurin-21"
+        tc.build_log.return_value = DOCKER_LOG.replace(
+            "Java version: 21.0.2, vendor: Example, runtime: /opt/java/openjdk", "")
+        for required, mode, expected in (("21", "exact", True), ("17", "minimum", True),
+                                         ("25", "exact", False), ("25", "minimum", False)):
+            with self.subTest(required=required, mode=mode):
+                observed, diagnostics = observe_chain(tc, "project", build, required, jdk_match=mode)
+                self.assertEqual(expected, self.grade(observed, required, mode)["passed"])
+                runtime = diagnostics["jdk"]["mavenRuntime"][0]
+                self.assertEqual("verified" if expected else "missing", runtime["status"])
+                self.assertEqual("declared-docker-image" if expected else None, runtime.get("evidence"))
+        # An explicit jdk-home overrides the image JVM, so the runtime record stays required.
+        jobs[0]["steps"][0]["properties"]["jdk-home"] = "/opt/java/openjdk"
+        observed, _ = observe_chain(tc, "project", build, "21")
+        self.assertFalse(self.grade(observed)["passed"])
+
     def test_java_home_and_agent_properties_cannot_override_runtime(self):
         tc, build, jobs = self.fixture()
         jobs[0]["steps"][0]["properties"].update({"jdk-home": "%env.JDK_17_0%",

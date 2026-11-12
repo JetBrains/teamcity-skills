@@ -47,6 +47,10 @@ Firefox, xvfb.
   `pipeline validate` rejects. The enum names `Mac-Medium`, which matched no
   image. `pipeline push` accepts any name, so it proves nothing. GitHub
   labels and selectors from another server are invalid.
+- `self-hosted` takes only `arch`, `os-family`, `os-version`, `cpu`, `ram`,
+  or an object with `requirement`, `parameter`, `name`, and `value`. The
+  shorthand `- teamcity.agent.jvm.os.name: Linux` passes `pipeline push` and
+  even builds, but fails `pipeline validate`. Use the object form.
 - Docker: Linux types have `docker.version` and `docker.server.osType=linux`.
   Windows types run only Windows containers; macOS types have no Docker.
   Run `docker info` as the first step of a job that needs it.

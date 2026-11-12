@@ -78,6 +78,9 @@ EVALS = pathlib.Path(__file__).parent
 PLACEHOLDER = re.compile(r"\{\{teamcity\.(server|targetProject)\}\}")
 SAFE_AGENT_METADATA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SAFE_REVISION = re.compile(r"^[a-fA-F0-9]{40}$")
+# Server-provided build parameters; a reference to them requires nothing of an agent.
+SERVER_PARAMETER_PREFIXES = ("system.", "teamcity.build.", "build.", "dep.", "vcsroot.",
+                             "teamcity.project", "teamcity.server", "teamcity.version")
 TOOL_MODES = ("cli-only", "mcp-only", "cli+mcp")
 sys.path.insert(0, str(EVALS))
 from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
@@ -636,12 +639,26 @@ class TeamCity:
                     or (isinstance(entry, dict) and entry.get("publish-artifact"))
                 ]
                 runs_on = job.get("runs-on")
+                requirements = [str(runs_on)] if runs_on else []
+                # TeamCity dispatches a job only to agents that provide every
+                # referenced parameter the pipeline itself does not define.
+                defined = set(parameters) | {f"env.{name}" for name in environment}
+                referenced = {
+                    name
+                    for value in [*parameters.values(),
+                                  *(value for raw in (job.get("steps") or []) for value in raw.values())]
+                    if isinstance(value, str)
+                    for name in re.findall(r"%([A-Za-z0-9_.\-]+)%", value)
+                }
+                requirements.extend(
+                    f"implicit-requirement: {name}" for name in sorted(referenced - defined)
+                    if not name.startswith(SERVER_PARAMETER_PREFIXES))
                 collected.append({
                     "id": f"{pipeline_id}/{job_id}",
                     "name": job.get("name") or job_id,
                     "steps": steps,
                     "artifactRules": "\n".join(published),
-                    "agentRequirements": [str(runs_on)] if runs_on else [],
+                    "agentRequirements": requirements,
                     "environment": jdk_selectors(environment),
                     "parameters": jdk_selectors(parameters, parameter=True),
                     "jobProperties": {
@@ -2419,6 +2436,8 @@ def run(
         if agent_exit != 0 or agent_run.get("failureCategory"):
             no_build_budget = min(budget, int(env.get("EVAL_FAILED_AGENT_GRACE", "120")))
         allowed = [".claude/"]
+        if case.get("skill") == "teamcity-onboard":
+            allowed.append("teamcity-onboarding.md")
         revision = case.get("repository", {}).get("revision")
         if "requestedConfiguration" in case:
             allowed.extend([case["requestedConfiguration"]["sourcePath"], ".teamcity/"])
