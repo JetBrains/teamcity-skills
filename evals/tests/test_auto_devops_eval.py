@@ -794,3 +794,160 @@ class AutoDevopsCompositeTest(unittest.TestCase):
                     +f"print({json.dumps({'type':'result','is_error':False,'structured_output':{'report':report}})!r})\n")
                 result=evaluate(workspace,agent_command=[sys.executable,str(agent)],scenario=scenario)
                 self.assertTrue(result['passed'],result)
+
+
+class AutoDevopsAdaptiveEvidenceTest(unittest.TestCase):
+    def test_adaptive_utf8_accounting_preserves_ids_timestamps_and_bounds_noisy_excerpts(self):
+        from auto_devops_cli_fixture import evidence_bytes, retain_log_excerpt
+        payload = {"run_id": 100, "messages": [
+            {"timestamp": "2026-11-10T09:00:00.000Z", "text": "café 😀\n" * 3000}]}
+        retained, truncated = retain_log_excerpt(payload, max_bytes=8000, max_lines=2000)
+        self.assertTrue(truncated)
+        self.assertEqual(100, retained["run_id"])
+        self.assertEqual(payload["messages"][0]["timestamp"], retained["messages"][0]["timestamp"])
+        self.assertGreater(len(retained["messages"]), 0)
+        self.assertLessEqual(evidence_bytes(retained), 8000)
+        self.assertLessEqual(sum(len(row["text"].splitlines()) for row in retained["messages"]), 2000)
+        encoded = json.dumps(retained, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        self.assertEqual(len(encoded), evidence_bytes(retained))
+        self.assertGreater(evidence_bytes(retained), len(encoded.decode("utf-8")))
+        # A few huge lines and Unicode still obey the byte cap, independent of line count.
+        huge, clipped = retain_log_excerpt({"run_id": 101, "messages": [
+            {"timestamp": "2026-11-10T09:00:00Z", "text": "😀" * 10000}]}, 8000, 2000)
+        self.assertTrue(clipped)
+        self.assertLessEqual(evidence_bytes(huge), 8000)
+        self.assertGreater(len(huge["messages"][0]["text"]), 0)
+
+    def test_adaptive_more_than_five_short_logs_and_explicit_overrides(self):
+        from auto_devops_eval import DEFAULT_LIMITS, collection_failures
+        report = json.loads((EVALS / "tests/fixtures/auto-devops-reports/partial-opportunity.json").read_text())
+        report["sample"]["limits"] = dict(DEFAULT_LIMITS)
+        calls = [{"allowed": True, "argv": ["run", "log", str(run_id), "--tail", "2000", "--json"],
+                  "logTextLines": 2} for run_id in range(100, 106)]
+        self.assertEqual(200, DEFAULT_LIMITS["logRuns"])
+        self.assertEqual([], collection_failures(report, calls, DEFAULT_LIMITS))
+        smaller = dict(DEFAULT_LIMITS, logRuns=5)
+        report["sample"]["limits"] = smaller
+        self.assertIn("collection-limit-exceeded", collection_failures(report, calls, smaller))
+
+    def test_adaptive_budget_guard_counts_unicode_reserve_and_rejects_repeated_exposure(self):
+        from auto_devops_cli_fixture import evidence_bytes
+        from auto_devops_eval import evidence_budget_failures
+        payloads = [{"id": "outline-100", "kind": "statistics", "runId": 100, "text": "café 😀" * 10000},
+                    {"id": "log-101", "kind": "log", "runId": 101, "text": "😀" * 1900}]
+        total = sum(evidence_bytes(row) for row in payloads if row["kind"] == "log")
+        collection = {"budget": {"maxBytes": total + 30000, "excerptMaxBytes": 8000,
+                                  "discoveryReserveBytes": 30000},
+                      "usage": {"exposedBytes": total, "breadthComplete": False}}
+        self.assertEqual([], evidence_budget_failures(collection, payloads))
+        collection["usage"]["exposedBytes"] = len(json.dumps(payloads, ensure_ascii=False))
+        self.assertIn("incorrect-exposed-bytes", evidence_budget_failures(collection, payloads))
+        collection["usage"]["exposedBytes"] = total
+        collection["budget"]["maxBytes"] -= 1
+        self.assertIn("discovery-reserve-spent", evidence_budget_failures(collection, payloads))
+        collection["usage"]["breadthComplete"] = True
+        self.assertNotIn("discovery-reserve-spent", evidence_budget_failures(collection, payloads))
+        self.assertIn("repeated-evidence-payload", evidence_budget_failures(collection, payloads + payloads[1:]))
+        noisy = [{"id": "noisy", "kind": "log", "runId": 102, "text": "😀" * 31000}]
+        collection["budget"]["maxBytes"] = 120000
+        self.assertIn("evidence-budget-exceeded", evidence_budget_failures(collection, noisy))
+        self.assertIn("excerpt-budget-exceeded", evidence_budget_failures(collection, noisy))
+
+    def test_adaptive_statistics_units_exact_mapping_and_queue_uncertainty(self):
+        from auto_devops_cli_fixture import statistics_outline
+        properties = [
+            {"name": "buildStageDuration:buildStepRUNNER_1", "value": "269653"},
+            {"name": "buildStageDuration:buildStepRUNNER_1:child", "value": "1000"},
+            {"name": "buildStageDuration:buildStepRunner_40", "value": "20"},
+            {"name": "buildStageDuration", "value": "270000"},
+            {"name": "BuildDuration", "value": "300000"},
+            {"name": "TimeSpentInQueue", "value": "5120"},
+            {"name": "queueWaitReason:Checking_for_changes", "value": "3441"},
+            {"name": "queueWaitReason:CVPChecking_for_changes", "value": "900"},
+            {"name": "queueWaitReason:Overflow", "value": "1"},
+            {"name": "buildStageDuration:invalid", "value": "-1"},
+            {"name": "BuildDuration:invalid", "value": "NaN"},
+            {"name": "TimeSpentInQueue:invalid", "value": "12"},
+            {"name": "ArtifactSize", "value": "999999"}]
+        outline = statistics_outline(100, properties, ["Runner_40", "RUNNER_1"])
+        rows = {row["name"]: row for row in outline["metrics"]}
+        self.assertEqual("milliseconds", outline["unit"])
+        self.assertEqual(269653, rows["buildStageDuration:buildStepRUNNER_1"]["milliseconds"])
+        self.assertEqual(269.653, rows["buildStageDuration:buildStepRUNNER_1"]["seconds"])
+        self.assertEqual("RUNNER_1", rows["buildStageDuration:buildStepRUNNER_1"]["stepId"])
+        self.assertEqual("Runner_40", rows["buildStageDuration:buildStepRunner_40"]["stepId"])
+        self.assertIsNone(rows["buildStageDuration:buildStepRUNNER_1:child"]["stepId"])
+        mismatched = statistics_outline(100, properties[:3], ["RUNNER_40"])
+        self.assertTrue(all(row["stepId"] is None for row in mismatched["metrics"]))
+        self.assertNotIn("aggregateExecutionSeconds", outline)
+        self.assertIsNone(outline["agentQueueSeconds"])
+        self.assertEqual("current-partial", rows["queueWaitReason:CVPChecking_for_changes"]["state"])
+        self.assertEqual("unresolved", rows["queueWaitReason:Overflow"]["state"])
+        self.assertNotIn("ArtifactSize", rows)
+        self.assertNotIn("BuildDuration:invalid", rows)
+        self.assertNotIn("TimeSpentInQueue:invalid", rows)
+        self.assertEqual([], statistics_outline(101, [], ["RUNNER_1"])["metrics"])
+
+
+    def test_adaptive_statistics_breadth_precedes_targeted_logs_and_cannot_assert_none(self):
+        from auto_devops_eval import DEFAULT_LIMITS, collection_failures
+        report = json.loads((EVALS / "tests/fixtures/auto-devops-reports/partial-opportunity.json").read_text())
+        report["sample"].update(runIds=[100, 101], limits=dict(DEFAULT_LIMITS))
+        report["collection"] = {
+            "budget": {"maxBytes": 120000, "excerptMaxBytes": 8000, "discoveryReserveBytes": 30000},
+            "usage": {"exposedBytes": 0, "breadthComplete": False},
+            "jobs": [{"jobId": "Example_Build", "runIds": [100], "statisticsRunIds": [100],
+                      "logRunIds": [], "state": "sufficient", "reason": "Statistics suffice."},
+                     {"jobId": "Example_Verify", "runIds": [101], "statisticsRunIds": [],
+                      "logRunIds": [], "state": "unexplored", "reason": "Not yet read."}],
+            "skips": [], "nextReads": [{"jobId": "Example_Verify", "runId": 101,
+                "source": "statistics", "reason": "Complete breadth before deepening."}]}
+        def statistic(run_id):
+            return {"allowed": True, "outcome": "ok", "argv": ["api",
+                f"/app/rest/builds/id:{run_id}/statistics?fields=property(name,value)"]}
+        first = statistic(100)
+        log = {"allowed": True, "outcome": "ok", "argv": ["run", "log", "100", "--tail", "2000", "--json"]}
+        report.update(conclusion="none", recommendations=[])
+        failures = collection_failures(report, [first, log], DEFAULT_LIMITS)
+        self.assertIn("statistics-breadth-skipped", failures)
+        self.assertIn("unexplored-none-conclusion", failures)
+        report.update(conclusion="insufficient-evidence")
+        report["collection"]["usage"]["breadthComplete"] = True
+        job = report["collection"]["jobs"][1]
+        job.update(statisticsRunIds=[101], state="sufficient", reason="Statistics suffice.")
+        report["collection"]["nextReads"] = []
+        self.assertEqual([], collection_failures(report, [first, statistic(101)], DEFAULT_LIMITS))
+        self.assertIn("repeated-statistics-read", collection_failures(
+            report, [first, statistic(101), first], DEFAULT_LIMITS))
+
+
+    def test_adaptive_line_cap_is_shared_across_retained_excerpts_of_one_run(self):
+        from auto_devops_cli_fixture import evidence_bytes, retain_log_excerpt
+        from auto_devops_eval import evidence_budget_failures
+        payloads = [{"id": f"part-{part}", "kind": "log", "runId": 100, "text": "a\n" * 1500}
+                    for part in (1, 2)]
+        collection = {"budget": {"maxBytes": 120000, "excerptMaxBytes": 8000,
+                                  "discoveryReserveBytes": 30000},
+                      "usage": {"exposedBytes": sum(evidence_bytes(row) for row in payloads),
+                                "breadthComplete": True}}
+        self.assertIn("retained-line-cap-exceeded", evidence_budget_failures(collection, payloads))
+        retained, truncated = retain_log_excerpt({"run_id": 100, "messages": [
+            {"id": 7, "timestamp": "2026-11-10T09:00:00Z", "text": "café\n" * 10}]},
+            max_bytes=8000, max_lines=2)
+        self.assertTrue(truncated)
+        self.assertEqual("café\ncafé\n", retained["messages"][0]["text"])
+        self.assertEqual(7, retained["messages"][0]["id"])
+        # Count actual escaping and emitted newlines, rather than an assumed encoding.
+        serialized = json.dumps(retained, ensure_ascii=True) + "\n"
+        self.assertEqual(len(serialized.encode("utf-8")), evidence_bytes(serialized))
+
+    def test_adaptive_discovery_reserve_can_cover_an_unexplored_job(self):
+        from auto_devops_cli_fixture import evidence_bytes
+        from auto_devops_eval import evidence_budget_failures
+        payloads = [{"id": "breadth-100", "kind": "log", "runId": 100,
+                     "purpose": "breadth", "text": "a" * 100}]
+        total = sum(evidence_bytes(row) for row in payloads)
+        collection = {"budget": {"maxBytes": total, "excerptMaxBytes": 8000,
+                                  "discoveryReserveBytes": total // 4},
+                      "usage": {"exposedBytes": total, "breadthComplete": False}}
+        self.assertEqual([], evidence_budget_failures(collection, payloads))

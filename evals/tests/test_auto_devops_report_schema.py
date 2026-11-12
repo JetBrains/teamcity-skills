@@ -85,3 +85,48 @@ class AutoDevopsReportSchemaTest(unittest.TestCase):
         self.assertNotIn(101,report['timing']['distinctRunIds'])
         report['timing']['aggregateExecutionSeconds']=None
         validator.validate(report)
+
+
+    def test_adaptive_collection_is_optional_and_validates_budget_and_job_coverage(self):
+        validator = Draft7Validator(json.loads(
+            (ROOT / "skills/auto-devops/references/report.schema.json").read_text()))
+        report = json.loads((FIXTURES / "partial-opportunity.json").read_text())
+        report["sample"]["limits"]["logRuns"] = 5
+        validator.validate(report)  # Existing v1 reports remain valid without collection.
+        report["collection"] = {
+            "budget": {"maxBytes": 120000, "excerptMaxBytes": 8000, "discoveryReserveBytes": 30000},
+            "usage": {"exposedBytes": 456, "breadthComplete": False},
+            "jobs": [{"jobId": "Example_Build", "runIds": [100], "statisticsRunIds": [100],
+                      "logRunIds": [], "state": "sufficient", "reason": "Statistics cover café timing."}],
+            "skips": [{"jobId": "Example_Verify", "runIds": [101], "reason": "Discovery reserve retained."}],
+            "nextReads": [{"jobId": "Example_Verify", "runId": 101, "source": "statistics",
+                           "reason": "Read the remaining selected run before deeper logs."}]}
+        validator.validate(report)
+        for path, invalid in ((["budget", "maxBytes"], 0), (["usage", "exposedBytes"], -1),
+                              (["jobs", 0, "statisticsRunIds"], [100, 100]),
+                              (["jobs", 0, "state"], "complete"), (["nextReads", 0, "reason"], "")):
+            broken = copy.deepcopy(report)
+            target = broken["collection"]
+            for key in path[:-1]:
+                target = target[key]
+            target[path[-1]] = invalid
+            with self.subTest(path=path):
+                self.assertFalse(validator.is_valid(broken))
+
+
+    def test_adaptive_unexplored_jobs_require_a_next_read_and_preclude_none(self):
+        validator = Draft7Validator(json.loads(
+            (ROOT / "skills/auto-devops/references/report.schema.json").read_text()))
+        report = json.loads((FIXTURES / "partial-opportunity.json").read_text())
+        report["collection"] = {
+            "budget": {"maxBytes": 120000, "excerptMaxBytes": 8000, "discoveryReserveBytes": 30000},
+            "usage": {"exposedBytes": 0, "breadthComplete": False},
+            "jobs": [{"jobId": "Example_Verify", "runIds": [101], "statisticsRunIds": [],
+                      "logRunIds": [], "state": "unexplored", "reason": "Budget exhausted."}],
+            "skips": [], "nextReads": []}
+        self.assertFalse(validator.is_valid(report), "remaining scope needs a concrete next read")
+        report["collection"]["nextReads"] = [{"jobId": "Example_Verify", "runId": 101,
+            "source": "statistics", "reason": "First selected run without statistics."}]
+        validator.validate(report)
+        report.update(conclusion="none", recommendations=[])
+        self.assertFalse(validator.is_valid(report), "unexplored jobs cannot imply efficiency")

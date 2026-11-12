@@ -65,6 +65,54 @@
         "gaps": {"type": "array", "items": {"$ref": "#/definitions/text"}}
       }
     },
+    "collection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["budget", "usage", "jobs", "skips", "nextReads"],
+      "properties": {
+        "budget": {
+          "type": "object", "additionalProperties": false,
+          "required": ["maxBytes", "excerptMaxBytes", "discoveryReserveBytes"],
+          "properties": {
+            "maxBytes": {"type": "integer", "minimum": 1},
+            "excerptMaxBytes": {"type": "integer", "minimum": 1},
+            "discoveryReserveBytes": {"type": "integer", "minimum": 0}
+          }
+        },
+        "usage": {
+          "type": "object", "additionalProperties": false,
+          "required": ["exposedBytes", "breadthComplete"],
+          "properties": {
+            "exposedBytes": {"type": "integer", "minimum": 0},
+            "breadthComplete": {"type": "boolean"}
+          }
+        },
+        "jobs": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["jobId", "runIds", "statisticsRunIds", "logRunIds", "state", "reason"],
+          "properties": {
+            "jobId": {"$ref": "#/definitions/text"}, "runIds": {"$ref": "#/definitions/runIds"},
+            "statisticsRunIds": {"$ref": "#/definitions/runIds"}, "logRunIds": {"$ref": "#/definitions/runIds"},
+            "state": {"enum": ["sufficient", "partial", "unexplored"]}, "reason": {"$ref": "#/definitions/text"}
+          }
+        }},
+        "skips": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["jobId", "runIds", "reason"],
+          "properties": {
+            "jobId": {"$ref": "#/definitions/text"}, "runIds": {"$ref": "#/definitions/runIds"},
+            "reason": {"$ref": "#/definitions/text"}
+          }
+        }},
+        "nextReads": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["jobId", "runId", "source", "reason"],
+          "properties": {
+            "jobId": {"$ref": "#/definitions/text"}, "runId": {"type": ["integer", "null"], "minimum": 1},
+            "source": {"enum": ["statistics", "log", "configuration"]}, "reason": {"$ref": "#/definitions/text"}
+          }
+        }}
+      }
+    },
     "conclusion": {"enum": ["opportunity", "none", "insufficient-evidence"]},
     "timing": {
       "type": "object", "additionalProperties": false,
@@ -138,6 +186,17 @@
     }
   },
   "allOf": [
+    {
+      "if": {"required": ["collection"], "properties": {"collection": {"anyOf": [
+        {"properties": {"usage": {"properties": {"breadthComplete": {"const": false}}}}},
+        {"properties": {"jobs": {"contains": {"properties": {"state": {"enum": ["partial", "unexplored"]}}}}}}
+      ]}}},
+      "then": {"properties": {
+        "collection": {"properties": {"nextReads": {"minItems": 1}}},
+        "conclusion": {"enum": ["opportunity", "insufficient-evidence"]},
+        "coverage": {"properties": {"state": {"enum": ["partial", "blocked"]}}}
+      }}
+    },
     {
       "if": {"properties": {"coverage": {"properties": {"state": {"const": "blocked"}}}}},
       "then": {"properties": {"conclusion": {"const": "insufficient-evidence"}}}

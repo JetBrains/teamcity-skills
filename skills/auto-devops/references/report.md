@@ -13,6 +13,19 @@ keeping `references/`. Invoke it with a root job ID, branch, and local output fi
   of missing comparison data, not evidence that the chain is inefficient.
 - Optional `timing` holds derived values and all supporting evidence IDs; follow
   [timing.md](timing.md). Raw command observations must not silently combine other reads.
+- Optional `collection` records `budget` (`maxBytes`, `excerptMaxBytes`,
+  `discoveryReserveBytes`), `usage` (`exposedBytes`, `breadthComplete`), and one `jobs` row
+  per selected job: `jobId`, selected `runIds`, successfully read `statisticsRunIds` and
+  `logRunIds`, `state` (`sufficient`, `partial`, `unexplored`), and `reason`. Sufficiency
+  can come entirely from statistics. Successful empty statistics are read coverage,
+  not evidence of zero work. List `skips` with job/run IDs and reasons, and prioritized
+  `nextReads` with job/run IDs, source (`statistics`, `log`, `configuration`) and reason.
+  Include every selected run under its job; list grouping evidence in the reason.
+  Budget/usage count actual sanitized serialized log outlines/excerpts, including repeated
+  exposure, IDs and timestamps. Metadata/settings/statistics projection volume, full model
+  context and provider billing are outside this log budget; never infer bytes from tokens.
+  Collection is optional for older v1 reports; new analyses include it. Unexplored/partial
+  jobs or an unfinished breadth pass preclude `none` and complete coverage.
 - `coverage.state` is `complete` for sufficient supported analysis of the declared sample,
   `partial` for useful analysis with gaps, and `blocked` when evidence cannot support analysis.
   Record missing/denied/expired data, settings association, caps, and truncation in `gaps`.

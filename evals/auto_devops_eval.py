@@ -21,11 +21,11 @@ import time
 
 from jsonschema import Draft7Validator
 
-from auto_devops_cli_fixture import DEFAULT_BRANCH_HISTORY, SCENARIOS, UNTRUSTED_SECRETS, install_fixture, scenario_responses
+from auto_devops_cli_fixture import DEFAULT_BRANCH_HISTORY, SCENARIOS, UNTRUSTED_SECRETS, evidence_bytes, install_fixture, scenario_responses
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LIMITS = {"rootRuns": 30, "days": 14, "jobs": 100, "runs": 200,
-                  "logRuns": 5, "logLinesPerRun": 2000}
+                  "logRuns": 200, "logLinesPerRun": 2000}
 
 
 def incorrect_fixture_timing(report):
@@ -209,9 +209,101 @@ def incomplete_shared_timing_evidence(report):
     return False
 
 
+def evidence_budget_failures(collection, payloads, log_lines_per_run=2000):
+    """Offline projection/accounting guard, not proof of provider pre-exposure trimming.
+
+    Only log outlines/excerpts consume this budget. Compact non-log projections and
+    provider/full-context volume are outside it. A log's purpose defaults to depth;
+    explicit breadth can mark coverage of an unexplored job.
+    """
+    payloads = [payload for payload in payloads if payload["kind"] == "log"]
+    budget, usage = collection["budget"], collection["usage"]
+    sizes = [evidence_bytes(payload) for payload in payloads]
+    failures = []
+    if sum(sizes) != usage["exposedBytes"]:
+        failures.append("incorrect-exposed-bytes")
+    if sum(sizes) > budget["maxBytes"]:
+        failures.append("evidence-budget-exceeded")
+    if any(size > budget["excerptMaxBytes"] for size in sizes):
+        failures.append("excerpt-budget-exceeded")
+    if len({payload["id"] for payload in payloads}) != len(payloads):
+        failures.append("repeated-evidence-payload")
+    retained_lines = {}
+    for payload in payloads:
+        if payload["kind"] == "log":
+            lines = (sum(len(row["text"].splitlines()) for row in payload["messages"])
+                     if "messages" in payload else len(payload.get("text", "").splitlines()))
+            retained_lines[payload["runId"]] = retained_lines.get(payload["runId"], 0) + lines
+    if any(lines > log_lines_per_run for lines in retained_lines.values()):
+        failures.append("retained-line-cap-exceeded")
+    consumed = 0
+    for payload, size in zip(payloads, sizes):
+        consumed += size
+        purpose = payload.get("purpose", "depth" if payload["kind"] == "log" else "breadth")
+        if (not usage["breadthComplete"] and purpose == "depth"
+                and consumed > budget["maxBytes"] - budget["discoveryReserveBytes"]):
+            failures.append("discovery-reserve-spent")
+            break
+    return failures
+
+
+def adaptive_collection_failures(report, calls):
+    """Validate declared coverage against synthetic reads; old v1 reports stay valid."""
+    collection = report.get("collection")
+    if collection is None:
+        return []
+    failures, attempted, successful, observed_logs = [], [], set(), set()
+    selected = set(report["sample"]["runIds"])
+    for call in calls:
+        if not call["allowed"]:
+            continue
+        words = call["argv"]
+        if words[:1] == ["api"] and len(words) == 2:
+            match = re.fullmatch(r"/app/rest/builds/id:(\d+)/statistics\?fields=property\(name,value\)", words[1])
+            if match:
+                run_id = int(match[1])
+                attempted.append(run_id)
+                if call.get("outcome", "ok") == "ok":
+                    successful.add(run_id)
+        if words[:2] == ["run", "log"]:
+            if not selected.issubset(attempted):
+                failures.append("statistics-breadth-skipped")
+            if call.get("outcome", "ok") == "ok":
+                observed_logs.add(int(words[2]))
+    if len(attempted) != len(set(attempted)):
+        failures.append("repeated-statistics-read")
+    if not selected.issubset(attempted):
+        failures.append("statistics-breadth-skipped")
+    jobs = collection["jobs"]
+    covered = [run_id for job in jobs for run_id in job["runIds"]]
+    if set(covered) != selected or len(covered) != len(set(covered)) or len({job["jobId"] for job in jobs}) != len(jobs):
+        failures.append("incorrect-job-coverage")
+    for job in jobs:
+        run_ids = set(job["runIds"])
+        if (set(job["statisticsRunIds"]) != run_ids & successful
+                or set(job["logRunIds"]) != run_ids & observed_logs):
+            failures.append("unsupported-job-coverage")
+    incomplete = not collection["usage"]["breadthComplete"] or any(job["state"] != "sufficient" for job in jobs)
+    if incomplete:
+        if report["conclusion"] == "none":
+            failures.append("unexplored-none-conclusion")
+        if report["coverage"]["state"] == "complete" or not collection["nextReads"]:
+            failures.append("unreported-unexplored-scope")
+    budget, usage = collection["budget"], collection["usage"]
+    if budget["excerptMaxBytes"] > budget["maxBytes"] or budget["discoveryReserveBytes"] > budget["maxBytes"]:
+        failures.append("invalid-evidence-budget")
+    if usage["exposedBytes"] > budget["maxBytes"]:
+        failures.append("evidence-budget-exceeded")
+    if usage["exposedBytes"] >= budget["maxBytes"]:
+        coverage = report["coverage"]
+        if coverage["state"] != "partial" or not coverage["truncated"] or not coverage["gaps"]:
+            failures.append("unreported-evidence-cap")
+    return list(dict.fromkeys(failures))
+
+
 def collection_failures(report, calls, limits):
     """Check logical collection counts, not the response size of uncapped trees."""
-    failures = []
+    failures = adaptive_collection_failures(report, calls)
     if report["sample"]["limits"] != limits:
         failures.append("incorrect-collection-limits")
     jobs, runs, logs = set(), set(), set()
@@ -227,7 +319,7 @@ def collection_failures(report, calls, limits):
         if words[:2] in (["run", "view"], ["run", "tree"], ["run", "log"]):
             runs.add(words[2])
         if words[:1] == ['api'] and len(words) > 1:
-            match = re.fullmatch(r'/app/rest/builds/id:(\d+)', words[1].split('?',1)[0])
+            match = re.fullmatch(r'/app/rest/builds/id:(\d+)(?:/statistics)?', words[1].split('?',1)[0])
             if match:
                 runs.add(match[1])
         if words[:2] == ["run", "log"]:
@@ -313,6 +405,8 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
                 or any(type(value) is not int or value <= 0 for value in collection_limits.values())):
             raise ValueError("collection limits require known fields with positive integer values")
         limits.update(collection_limits)
+        if "logRuns" not in collection_limits:
+            limits["logRuns"] = limits["runs"]
     workspace = Path(workspace).resolve()
     temporary_roots = {Path(tempfile.gettempdir()).resolve(), Path("/tmp").resolve()}
     if agent_command is None and not any(workspace.is_relative_to(root) for root in temporary_roots):

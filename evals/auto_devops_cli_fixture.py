@@ -3,6 +3,7 @@
 
 from datetime import datetime
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -15,6 +16,64 @@ UNTRUSTED_SECRETS = ("synthetic-private-token-41e72c", "synthetic-log-password-b
 DEFAULT_BRANCH_HISTORY = ('/app/rest/buildTypes/id:Example_Verify/builds?locator=branch:(default:true),'
     'startDate:(date:20261028T000000%2B0000,condition:after),count:30&fields=count,'
     'build(id,branchName,defaultBranch,status,state,queuedDate,startDate,finishDate)')
+
+
+def evidence_bytes(payload):
+    """Size the exact text, or the fixture's compact UTF-8 JSON serialization."""
+    text = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return len(text.encode("utf-8"))
+
+
+def retain_log_excerpt(payload, max_bytes=8000, max_lines=2000):
+    """Offline projection seam: input is already sanitized; never exposed by the CLI."""
+    retained = {"run_id": payload["run_id"], "messages": []}
+    if max_lines < 0 or evidence_bytes(retained) > max_bytes:
+        raise ValueError("excerpt cannot fit its identifying envelope")
+    lines = 0
+    for item in payload["messages"]:
+        text = "".join(item["text"].splitlines(keepends=True)[:max_lines-lines])
+        if not text:
+            continue
+        row = {key: item[key] for key in ("id", "timestamp") if key in item}
+        # Search characters, then measure encoded JSON, so Unicode is never split.
+        low, high = 0, len(text)
+        while low < high:
+            middle = (low + high + 1) // 2
+            candidate = dict(row, text=text[:middle])
+            if evidence_bytes(dict(retained, messages=retained["messages"] + [candidate])) <= max_bytes:
+                low = middle
+            else:
+                high = middle - 1
+        if low:
+            retained["messages"].append(dict(row, text=text[:low]))
+            lines += len(text[:low].splitlines())
+        if low != len(item["text"]):
+            break
+    return retained, retained["messages"] != payload["messages"]
+
+
+def statistics_outline(run_id, properties, step_ids):
+    """Trusted fixture projection; raw labels remain data, and no metrics are summed."""
+    metrics = []
+    for item in properties:
+        name = item["name"]
+        if not (name.startswith(("buildStageDuration", "BuildDuration", "queueWaitReason:"))
+                or name == "TimeSpentInQueue"):
+            continue
+        try:
+            milliseconds = float(item["value"])
+        except (ValueError, TypeError):
+            continue
+        if not math.isfinite(milliseconds) or milliseconds < 0:
+            continue
+        suffix = name.removeprefix("buildStageDuration:buildStep")
+        step_id = suffix if name.startswith("buildStageDuration:buildStep") and suffix in step_ids else None
+        state = ("current-partial" if name.startswith("queueWaitReason:CVP") else
+                 "unresolved" if name.startswith("queueWaitReason:") and
+                 ("Overflow" in name or "..." in name) else "recorded")
+        metrics.append({"name": name, "milliseconds": milliseconds, "seconds": milliseconds / 1000,
+                        "stepId": step_id, "state": state})
+    return {"runId": run_id, "unit": "milliseconds", "metrics": metrics, "agentQueueSeconds": None}
 
 
 def synthetic_responses():
@@ -133,6 +192,18 @@ def timestamped_logs(responses):
             messages.append({'id':number, 'text':line, 'timestamp':timestamp})
         responses[json_key] = {'run_id':int(shlex.split(key)[2]), 'messages':messages}
         responses[key] = '\n'.join(item['text'] for item in messages)
+    for key, value in list(responses.items()):
+        if not key.startswith("run view "):
+            continue
+        run_id = int(shlex.split(key)[2])
+        if "_readError" in value:
+            statistics = value
+        else:
+            start, end = [datetime.strptime(value[field], "%Y%m%dT%H%M%S%z")
+                          for field in ("startDate", "finishDate")]
+            statistics = {"property": [{"name": "BuildDuration", "value": str(int((end-start).total_seconds()*1000))}]}
+        api = f"/app/rest/builds/id:{run_id}/statistics?fields=property(name,value)"
+        responses[shlex.join(("api", api))] = statistics
     return responses
 
 

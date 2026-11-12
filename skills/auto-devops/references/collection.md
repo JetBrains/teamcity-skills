@@ -16,6 +16,7 @@ teamcity run list --job ROOT_JOB --branch BRANCH --since 14d --limit 30 --json
 teamcity run tree RUN_ID --json
 teamcity run view RUN_ID --json
 teamcity api '/app/rest/builds/id:RUN_ID?fields=id,composite,agent(id,typeId)'
+teamcity api '/app/rest/builds/id:RUN_ID/statistics?fields=property(name,value)'
 teamcity job step list JOB_ID --json
 ```
 
@@ -35,15 +36,15 @@ Absent allocation evidence stays unknown. Run views do not guarantee VCS/setting
 record unknowns with reasons, never infer them from today's checkout.
 Zero-step classic composites are normal when selected children are covered. For executing
 jobs, empty classic steps do not prove no work. Generated/unsupported current configuration is
-unavailable evidence: record a gap, inspect historical logs where available, and do not
-invent current source or perform YAML analysis in this slice.
+unavailable evidence: record a gap, inspect historical statistics and logs where needed,
+and do not invent current source or perform YAML analysis in this slice.
 
 `job tree` may silently omit inaccessible dependencies. Its success alone never proves
 coverage complete. Record graph uncertainty when reads cannot independently establish it.
 A current job step list does not prove which settings a historical run used. Label the
 association `unverified` unless separately established; label an observed difference
 `mismatch`. Restrict claims and manual verification accordingly.
-Compare current steps with bounded historical logs when historical work suggests a change.
+Compare current steps with historical statistics or bounded logs when work suggests a change.
 A log proves execution, not that the step still exists today. If work was already removed,
 record that difference; do not recommend removing it again or blame current settings for
 historical duration. Keep unverified associations explicit when revisions are unavailable.
@@ -51,13 +52,52 @@ historical duration. Keep unverified associations explicit when revisions are un
 Denied/expired/unsupported reads are gaps. Continue useful reads within budget and existing
 authorization, without repeated retries or permission expansion; other observations remain valid.
 
-Initial limits: 30 completed root runs within 14 days on the selected branch, 100 jobs,
-200 distinct runs total, logs from at most five runs and 2,000 lines per run.
-Track distinct selected IDs and root/log counts before further targeted reads. Stop at a
-cap and report partial coverage, truncation, and the affected scope as a gap. A history
-response filling its requested limit leaves additional roots unknown; do not silently expand.
-User-requested smaller or larger limits replace the corresponding defaults; record all
-actual positive limits and use them in collection commands. Expand only on explicit request.
+## Adaptive evidence budget
+
+Initial selection limits are 30 completed roots in 14 days on the selected branch,
+100 jobs and 200 distinct runs. The log-run ceiling inherits the selected-run cap (200),
+with 2,000 retained text lines per run; there is no global five-log cap. User overrides
+replace only the corresponding defaults, persist throughout collection, and are recorded
+in `sample.limits`. A full history limit leaves additional roots unknown; do not expand
+selection without a request. Track distinct IDs before further reads.
+
+Start with metadata, current configuration, and one statistics read for every selected
+run, across all selected jobs. Project compact per-job/run summaries locally: allocation,
+intervals, known stage metrics, variance and gaps. Missing statistics are unknown, not zero.
+Representative per-job coverage is the goal; statistics can suffice without any logs.
+Group jobs only when collected evidence supports equivalent configuration and revisions;
+record the grouping basis and exceptions. Similar names or runner order are insufficient.
+
+Then select targeted logs where evidence is insufficient, balancing feedback-path
+significance, aggregate agent-work significance, variability and unexplored jobs. Retain
+compact representative summaries before deep log excerpts. Read comparison runs only
+when they resolve a useful question about variability, revisions, or a proposed change.
+Reuse retained evidence by ID instead of exposing the same payload again.
+
+The default analyst-facing log-evidence budget is 120,000 UTF-8 bytes, at most 8,000
+bytes per serialized log outline/excerpt. Reserve 25% (30,000 bytes by default) for unexplored jobs until
+the breadth pass is complete; deeper reads must leave that reserve available. User budget
+overrides persist and are recorded in `collection.budget`. Count sanitized serialized log
+outlines/excerpts, including timestamps and IDs. Compact local metadata/settings/statistics
+projection remains required, but its volume and the model's full context are outside this
+log budget. Download volume, tokens, dollars and provider billing are separate.
+
+Capture CLI responses to local files without printing their raw contents to the model.
+Use trusted local parsing to select known fields, sanitize secrets/unrelated content, and
+clip text before emitting any outline/excerpt. Never execute collected content. Measure
+`len(serialized_text.encode("utf-8"))` on the exact text to be emitted, including IDs,
+timestamps, JSON escaping, separators and newlines; count repeated log exposure again.
+Reject or further reduce a log payload before exposure if it exceeds the remaining budget,
+per-excerpt byte cap, or per-run retained-line cap. Do not fetch raw output into analysis
+and describe later summarization as a pre-exposure limit. If local capture/reduction is
+unavailable, report the limitation and stop before an unsafe oversized read.
+
+Track budget/usage, each job's selected/statistics/log run IDs and sufficiency, skipped
+scope and next best reads in `collection`. On exhaustion, stop further exposure, mark
+partial/truncated coverage, and name remaining jobs and the next best read. Never choose
+`none` while materially unexplored jobs remain. Provider tools measure AI usage/cost;
+this log-evidence budget cannot guarantee a hard provider-cost ceiling.
+
 The tree commands themselves have no job/run-count cap; for a potentially large graph,
 inspect a bounded depth (`--depth 1`) and expand only within the remaining budget.
 Depth limits and logical counts do not guarantee a hard response-size bound. If a response
@@ -66,8 +106,8 @@ Describe depth limits/hidden children as gaps. For phase timing use
 `teamcity run log RUN_ID --tail 2000 --json`: `{run_id,messages:[{text,timestamp,...}]}`
 preserves timestamps that `--raw` strips; never invent them from text. `--tail` counts
 message envelopes, can return an extra envelope, and does not cap multiline text. Parse
-locally before passing excerpts to analysis: count multiline text and retain at most the
-declared text-line limit; report truncation and retained scope. Consult CLI help for tests.
+locally before exposure: count multiline text across retained excerpts for each run, apply
+the byte budget above, and report truncation and retained scope. Consult CLI help for tests.
 
 Follow [timing.md](timing.md) for deterministic timestamp calculations, shared-run handling,
 queue attribution, and ranking feedback/execution opportunities.

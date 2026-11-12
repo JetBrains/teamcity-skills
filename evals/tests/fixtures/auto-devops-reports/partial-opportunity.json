@@ -19,7 +19,7 @@
     "rootRunIds": [101],
     "runIds": [101],
     "successfulRootRunIds": [101],
-    "limits": {"rootRuns": 30, "days": 14, "jobs": 100, "runs": 200, "logRuns": 5, "logLinesPerRun": 2000}
+    "limits": {"rootRuns": 30, "days": 14, "jobs": 100, "runs": 200, "logRuns": 200, "logLinesPerRun": 2000}
   },
   "coverage": {
     "state": "partial",

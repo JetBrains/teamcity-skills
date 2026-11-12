@@ -34,7 +34,7 @@
       "days": 14,
       "jobs": 100,
       "runs": 200,
-      "logRuns": 5,
+      "logRuns": 200,
       "logLinesPerRun": 2000
     }
   },
