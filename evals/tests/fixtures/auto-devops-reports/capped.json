@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "target": {
+    "serverUrl": "https://synthetic.invalid",
+    "jobId": "Example_Verify",
+    "branch": "main",
+    "revisions": [],
+    "revisionNote": "Sampled revision was not available in the collected run view.",
+    "configuration": {
+      "source": "current-settings",
+      "revision": null,
+      "association": "unverified",
+      "reason": "Current settings have not been matched to the sampled run."
+    }
+  },
+  "sample": {
+    "since": "2026-10-28T00:00:00Z",
+    "until": "2026-11-11T00:00:00Z",
+    "rootRunIds": [
+      101
+    ],
+    "runIds": [
+      100,
+      101,
+      102,
+      103
+    ],
+    "successfulRootRunIds": [
+      101
+    ],
+    "limits": {
+      "rootRuns": 1,
+      "days": 14,
+      "jobs": 100,
+      "runs": 200,
+      "logRuns": 5,
+      "logLinesPerRun": 2000
+    }
+  },
+  "coverage": {
+    "state": "partial",
+    "truncated": true,
+    "gaps": [
+      "The user explicitly requested one root run. The root history reached that cap, so further roots were not collected. Settings revisions and graph completeness remain unverified."
+    ]
+  },
+  "conclusion": "none",
+  "evidence": [
+    {
+      "id": "history",
+      "sourceCommand": "teamcity run list --job Example_Verify --branch main --since 14d --limit 1 --json",
+      "runIds": [
+        101
+      ],
+      "observation": "One finished successful root run was returned, reaching the requested root limit of one."
+    },
+    {
+      "id": "tree",
+      "sourceCommand": "teamcity run tree 101 --json",
+      "runIds": [
+        100,
+        101,
+        102,
+        103
+      ],
+      "observation": "Root 101 depends on 102 and 103; both depend on shared run 100."
+    },
+    {
+      "id": "root",
+      "sourceCommand": "teamcity run view 101 --json",
+      "runIds": [
+        101
+      ],
+      "observation": "Queued at 09:00:00, started at 09:01:15, finished at 09:01:25 on 2026-11-10 UTC."
+    },
+    {
+      "id": "build",
+      "sourceCommand": "teamcity run view 100 --json",
+      "runIds": [
+        100
+      ],
+      "observation": "Started at 09:00:05, finished at 09:00:35 on 2026-11-10 UTC."
+    },
+    {
+      "id": "tests",
+      "sourceCommand": "teamcity run view 102 --json",
+      "runIds": [
+        102
+      ],
+      "observation": "Started at 09:00:35, finished at 09:01:15 on 2026-11-10 UTC."
+    },
+    {
+      "id": "package",
+      "sourceCommand": "teamcity run view 103 --json",
+      "runIds": [
+        103
+      ],
+      "observation": "Started at 09:00:35, finished at 09:00:55 on 2026-11-10 UTC."
+    },
+    {
+      "id": "test-settings",
+      "sourceCommand": "teamcity job step list Example_Tests --json",
+      "runIds": [],
+      "observation": "Current Tests has only ./test.sh; no removable padding step is shown."
+    },
+    {
+      "id": "package-settings",
+      "sourceCommand": "teamcity job step list Example_Package --json",
+      "runIds": [],
+      "observation": "Current Package has only ./package.sh; no removable padding step is shown."
+    }
+  ],
+  "recommendations": [],
+  "timing": {
+    "distinctRunIds": [
+      100,
+      101,
+      102,
+      103
+    ],
+    "aggregateExecutionSeconds": 100,
+    "evidenceIds": [
+      "tree",
+      "root",
+      "build",
+      "tests",
+      "package"
+    ],
+    "method": "Sum finish-start per distinct run ID once; overlapping execution is summed, not treated as elapsed feedback or billed time.",
+    "roots": [
+      {
+        "runId": 101,
+        "feedbackElapsedSeconds": 85,
+        "queuedToStartSeconds": 75,
+        "dependencyReadyDelaySeconds": 75,
+        "agentQueueSeconds": null,
+        "evidenceIds": [
+          "tree",
+          "root",
+          "build",
+          "tests",
+          "package"
+        ],
+        "reason": "Root queue-to-finish is feedback. The latest dependency finished at root start; this readiness interval is not a measured agent queue delay."
+      }
+    ]
+  }
+}

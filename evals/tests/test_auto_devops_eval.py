@@ -34,6 +34,34 @@ def evaluate_slow_report(workspace, report, calculate=True):
     return evaluate(workspace, agent_command=[sys.executable, str(agent)], scenario="slow-shared")
 
 
+def evaluate_case_report(workspace, report, scenario, limits=None, commands=None, calculate=True):
+    from auto_devops_eval import evaluate
+    agent = workspace / "synthetic-agent.py"
+    commands = commands if commands is not None else [item["sourceCommand"] for item in report["evidence"]]
+    if scenario in ("efficient", "denied-partial", "changed-settings"):
+        commands = ["teamcity job step list " + job + " --json" for job in
+                    ("Example_Build", "Example_Verify", "Example_Tests", "Example_Package")] + commands
+    program = ("import json, os, shlex, subprocess\n"
+               f"for command in {commands!r}:\n"
+               "    subprocess.run([os.environ['AUTO_DEVOPS_CLI'], *shlex.split(command)[1:]], check=False)\n")
+    if calculate and "timing" in report:
+        if scenario in ("efficient", "capped"):
+            intervals = [("090000","090125"),("090000","090115"),("090005","090035"),
+                         ("090035","090115"),("090035","090055"),("090115","090125")]
+            values = ["100=30", "101=10", "102=40", "103=20"]
+        else:
+            intervals = [("090000","091605"),("090000","091505"),("090005","090505"),
+                         ("090505","091505"),("090505","090905"),("091505","091605")]
+            values = ["100=300", "101=60", "102=600", "103=240"]
+        program += f"for start, end in {intervals!r}:\n"
+        program += "    subprocess.run([os.environ['AUTO_DEVOPS_CALCULATOR'], '20261110T'+start+'+0000', '20261110T'+end+'+0000'], check=True)\n"
+        program += f"subprocess.run([os.environ['AUTO_DEVOPS_AGGREGATOR'], *{values!r}], check=True)\n"
+    program += f"print({json.dumps({'type':'result','is_error':False,'total_cost_usd':0,'structured_output':{'report':report}})!r})\n"
+    agent.write_text(program)
+    return evaluate(workspace, agent_command=[sys.executable, str(agent)], scenario=scenario,
+                    collection_limits=limits)
+
+
 class AutoDevopsFixtureTest(unittest.TestCase):
     def test_reads_synthetic_history_records_read_only_and_refuses_a_remote_write(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -107,6 +135,36 @@ class AutoDevopsFixtureTest(unittest.TestCase):
             self.assertNotEqual(0, refused.returncode)
             calls = [json.loads(line) for line in (workspace / "math-calls.jsonl").read_text().splitlines()]
             self.assertEqual([True, False], [call["allowed"] for call in calls])
+
+
+    def test_denied_and_expired_reads_remain_read_only_without_allowing_writes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            command, env, trace = install_fixture(Path(directory), scenario="denied-partial")
+            for arguments, status in ((["job", "step", "list", "Example_Tests", "--json"], 403),
+                                      (["run", "log", "102", "--tail", "2000", "--raw"], 410)):
+                result = subprocess.run([str(command), *arguments], env=env, text=True, capture_output=True)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn(str(status), result.stderr)
+            result = subprocess.run([str(command), "run", "start", "Example_Verify"],
+                                    env=env, text=True, capture_output=True)
+            self.assertNotEqual(0, result.returncode)
+            calls = [json.loads(line) for line in trace.read_text().splitlines()]
+            self.assertEqual([True, True, False], [call["allowed"] for call in calls])
+            self.assertEqual(["read-error", "read-error", "refused"], [call["outcome"] for call in calls])
+            self.assertTrue(all(call["readOnly"] for call in calls))
+
+    def test_efficient_and_changed_settings_distinguish_current_steps_from_historical_logs(self):
+        for scenario, historical_sleep in (("efficient", False), ("changed-settings", True)):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                command, env, _ = install_fixture(Path(directory), scenario=scenario)
+                result = subprocess.run([str(command), "job", "step", "list", "Example_Tests", "--json"],
+                                        env=env, text=True, capture_output=True)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertNotIn("sleep", result.stdout)
+                result = subprocess.run([str(command), "run", "log", "102", "--tail", "2000", "--raw"],
+                                        env=env, text=True, capture_output=True)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual(historical_sleep, "sleep 180" in result.stdout)
 
 
 class AutoDevopsEvaluationTest(unittest.TestCase):
@@ -250,3 +308,103 @@ class AutoDevopsEvaluationTest(unittest.TestCase):
             report["timing"]["roots"][0]["evidenceIds"].remove("build")
             result = evaluate_slow_report(Path(directory), report)
             self.assertTrue(result["passed"], result)
+
+
+    def test_efficiency_partial_blocked_and_changed_reports_pass_the_same_cli_boundary(self):
+        for scenario, fixture in (("efficient", "efficient-none"), ("denied-partial", "denied-partial"),
+                                  ("blocked", "blocked"), ("changed-settings", "changed-settings")):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                report=json.loads((EVALS / "tests/fixtures/auto-devops-reports" / (fixture+".json")).read_text())
+                result=evaluate_case_report(Path(directory), report, scenario)
+                self.assertTrue(result["passed"], result)
+
+    def test_useful_partial_data_and_fully_blocked_reads_have_distinct_coverage(self):
+        for scenario, wrong in (("denied-partial", "blocked"), ("blocked", "partial")):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                report=json.loads((EVALS / "tests/fixtures/auto-devops-reports" / (scenario+".json")).read_text())
+                report["coverage"]["state"]=wrong
+                result=evaluate_case_report(Path(directory), report, scenario)
+                self.assertFalse(result["passed"], result)
+                self.assertIn("incorrect-fixture-coverage", result["failures"])
+
+    def test_server_read_errors_require_a_gap_and_cannot_claim_complete_coverage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report=json.loads((EVALS / "tests/fixtures/auto-devops-reports/denied-partial.json").read_text())
+            report["coverage"].update(state="complete", gaps=[])
+            result=evaluate_case_report(Path(directory), report, "denied-partial")
+            self.assertFalse(result["passed"], result)
+            self.assertIn("unreported-read-error", result["failures"])
+            self.assertNotIn("refused-cli-command", result["failures"])
+
+    def test_changed_settings_cannot_be_labeled_verified(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report=json.loads((EVALS / "tests/fixtures/auto-devops-reports/changed-settings.json").read_text())
+            report["target"]["configuration"]["association"]="verified"
+            result=evaluate_case_report(Path(directory), report, "changed-settings")
+            self.assertFalse(result["passed"], result)
+            self.assertIn("unsupported-settings-association", result["failures"])
+
+    def test_requested_root_cap_is_recorded_and_reported_as_truncated_partial_analysis(self):
+        for change, expected in ((None, True), ("hide-cap", False), ("wrong-limit", False)):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                report=json.loads((EVALS / "tests/fixtures/auto-devops-reports/capped.json").read_text())
+                if change=="hide-cap": report["coverage"]["truncated"]=False
+                if change=="wrong-limit": report["sample"]["limits"]["rootRuns"]=30
+                result=evaluate_case_report(Path(directory), report, "capped", limits={"rootRuns":1})
+                self.assertEqual(expected, result["passed"], result)
+                if not expected:
+                    failure="unreported-collection-cap" if change=="hide-cap" else "incorrect-collection-limits"
+                    self.assertIn(failure, result["failures"])
+
+    def test_logical_collection_counts_refuse_run_job_log_and_line_limit_expansion(self):
+        cases=[({"runs":2}, None), ({"jobs":1}, None),
+               ({"days":7}, ["teamcity run list --job Example_Verify --branch main --since 14d --limit 30 --json"]),
+               ({"logRuns":1}, ["teamcity run log 102 --tail 2000 --raw", "teamcity run log 103 --tail 2000 --raw"]),
+               ({"logLinesPerRun":10}, ["teamcity run log 102 --tail 2000 --raw"])]
+        for limits, commands in cases:
+            with self.subTest(limits=limits), tempfile.TemporaryDirectory() as directory:
+                report=json.loads((EVALS / "tests/fixtures/auto-devops-reports/efficient-none.json").read_text())
+                report["sample"]["limits"].update(limits)
+                if commands is not None:
+                    commands=[item["sourceCommand"] for item in report["evidence"]]+commands
+                result=evaluate_case_report(Path(directory), report, "efficient", limits=limits, commands=commands)
+                self.assertFalse(result["passed"], result)
+                self.assertIn("collection-limit-exceeded", result["failures"])
+
+
+    def test_invalid_collection_limit_requests_fail_before_an_agent_can_run(self):
+        from auto_devops_eval import evaluate
+        for limits in ({"runs":0}, {"rootRuns":-1}, {"jobs":True}, {"days":"14"}, {"unknown":1}):
+            with self.subTest(limits=limits), tempfile.TemporaryDirectory() as directory:
+                with mock.patch("auto_devops_eval.subprocess.Popen") as launch:
+                    with self.assertRaises(ValueError):
+                        evaluate(Path(directory), agent_command=["unused"], collection_limits=limits)
+                    launch.assert_not_called()
+
+
+    def test_available_core_configuration_cannot_be_skipped_to_force_insufficient_evidence(self):
+        from auto_devops_eval import evaluate
+        with tempfile.TemporaryDirectory() as directory:
+            workspace=Path(directory)
+            report=json.loads((EVALS / "tests/fixtures/auto-devops-reports/efficient-none.json").read_text())
+            report.update(conclusion="insufficient-evidence", recommendations=[])
+            report["target"]["configuration"].update(source="unavailable", reason="Current steps were not read.")
+            report["evidence"]=[item for item in report["evidence"] if "settings" not in item["id"]]
+            agent=workspace/"synthetic-agent.py"
+            commands=[item["sourceCommand"] for item in report["evidence"]]
+            agent.write_text("import os, shlex, subprocess\n"+f"for command in {commands!r}:\n"
+                             "    subprocess.run([os.environ['AUTO_DEVOPS_CLI'], *shlex.split(command)[1:]], check=True)\n"
+                             f"print({json.dumps({'type':'result','is_error':False,'structured_output':{'report':report}})!r})\n")
+            result=evaluate(workspace,agent_command=[sys.executable,str(agent)],scenario="efficient")
+            self.assertFalse(result["passed"], result)
+            self.assertIn("uncollected-core-configuration", result["failures"])
+
+
+    def test_emitted_timing_requires_per_run_calculations_in_each_step3_data_case(self):
+        for scenario, fixture in (("efficient", "efficient-none"), ("denied-partial", "denied-partial"),
+                                  ("changed-settings", "changed-settings")):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                report=json.loads((EVALS / "tests/fixtures/auto-devops-reports" / (fixture+".json")).read_text())
+                result=evaluate_case_report(Path(directory),report,scenario,calculate=False)
+                self.assertFalse(result["passed"],result)
+                self.assertIn("missing-timing-calculation",result["failures"])

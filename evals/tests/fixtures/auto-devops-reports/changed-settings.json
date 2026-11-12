@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "target": {
+    "serverUrl": "https://synthetic.invalid",
+    "jobId": "Example_Verify",
+    "branch": "main",
+    "revisions": [],
+    "revisionNote": "Sampled revision was not available in the collected run view.",
+    "configuration": {
+      "source": "current-settings",
+      "revision": null,
+      "association": "mismatch",
+      "reason": "Historical logs contain padding steps absent from the current step lists; complete configuration revisions remain unknown."
+    }
+  },
+  "sample": {
+    "since": "2026-10-28T00:00:00Z",
+    "until": "2026-11-11T00:00:00Z",
+    "rootRunIds": [
+      101
+    ],
+    "runIds": [
+      100,
+      101,
+      102,
+      103
+    ],
+    "successfulRootRunIds": [
+      101
+    ],
+    "limits": {
+      "rootRuns": 30,
+      "days": 14,
+      "jobs": 100,
+      "runs": 200,
+      "logRuns": 5,
+      "logLinesPerRun": 2000
+    }
+  },
+  "coverage": {
+    "state": "partial",
+    "truncated": false,
+    "gaps": [
+      "One successful historical root only. Settings differ: historical padding steps are absent today. Do not attribute historical time to current settings or recommend removing an absent step. Revisions and graph completeness remain unknown."
+    ]
+  },
+  "conclusion": "none",
+  "evidence": [
+    {
+      "id": "tree",
+      "sourceCommand": "teamcity run tree 101 --json",
+      "runIds": [
+        100,
+        101,
+        102,
+        103
+      ],
+      "observation": "Root 101 depends on 102 and 103; both depend on shared run 100."
+    },
+    {
+      "id": "root",
+      "sourceCommand": "teamcity run view 101 --json",
+      "runIds": [
+        101
+      ],
+      "observation": "Queued at 09:00:00, started at 09:15:05, finished at 09:16:05 on 2026-11-10 UTC."
+    },
+    {
+      "id": "build",
+      "sourceCommand": "teamcity run view 100 --json",
+      "runIds": [
+        100
+      ],
+      "observation": "Queued at 09:00:00, started at 09:00:05, finished at 09:05:05 UTC."
+    },
+    {
+      "id": "tests",
+      "sourceCommand": "teamcity run view 102 --json",
+      "runIds": [
+        102
+      ],
+      "observation": "Queued at 09:00:00, started at 09:05:05, finished at 09:15:05 UTC."
+    },
+    {
+      "id": "package",
+      "sourceCommand": "teamcity run view 103 --json",
+      "runIds": [
+        103
+      ],
+      "observation": "Queued at 09:00:00, started at 09:05:05, finished at 09:09:05 UTC."
+    },
+    {
+      "id": "test-settings",
+      "sourceCommand": "teamcity job step list Example_Tests --json",
+      "runIds": [],
+      "observation": "Current Tests has only ./test.sh; no removable padding step is shown."
+    },
+    {
+      "id": "package-settings",
+      "sourceCommand": "teamcity job step list Example_Package --json",
+      "runIds": [],
+      "observation": "Current Package has only ./package.sh; no removable padding step is shown."
+    },
+    {
+      "id": "test-log",
+      "sourceCommand": "teamcity run log 102 --tail 2000 --raw",
+      "runIds": [
+        102
+      ],
+      "observation": "The Legacy padding step ran sleep 180 from 09:05:05 to 09:08:05 UTC."
+    },
+    {
+      "id": "package-log",
+      "sourceCommand": "teamcity run log 103 --tail 2000 --raw",
+      "runIds": [
+        103
+      ],
+      "observation": "The Legacy padding step ran sleep 120 from 09:05:05 to 09:07:05 UTC."
+    }
+  ],
+  "recommendations": [],
+  "timing": {
+    "distinctRunIds": [
+      100,
+      101,
+      102,
+      103
+    ],
+    "aggregateExecutionSeconds": 1200,
+    "evidenceIds": [
+      "tree",
+      "root",
+      "build",
+      "tests",
+      "package"
+    ],
+    "method": "Sum finish-start per distinct run ID once; overlapping execution is summed, not treated as elapsed feedback or billed time.",
+    "roots": [
+      {
+        "runId": 101,
+        "feedbackElapsedSeconds": 965,
+        "queuedToStartSeconds": 905,
+        "dependencyReadyDelaySeconds": 905,
+        "agentQueueSeconds": null,
+        "evidenceIds": [
+          "tree",
+          "root",
+          "build",
+          "tests",
+          "package"
+        ],
+        "reason": "Root queue-to-finish is feedback. The latest dependency finished at root start; this readiness interval is not a measured agent queue delay."
+      }
+    ]
+  }
+}

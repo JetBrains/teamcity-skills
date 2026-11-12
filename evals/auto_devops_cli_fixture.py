@@ -8,6 +8,9 @@ from pathlib import Path
 import shlex
 import sys
 
+SCENARIOS = ("classic", "slow-shared", "efficient", "denied-partial",
+             "changed-settings", "blocked", "capped")
+
 
 def synthetic_responses():
     responses = {("--version",): "teamcity version 1.6.3"}
@@ -99,6 +102,41 @@ def slow_shared_responses():
     return responses
 
 
+def scenario_responses(scenario):
+    if scenario not in SCENARIOS:
+        raise ValueError("unknown synthetic scenario")
+    if scenario == "classic":
+        return synthetic_responses()
+    responses = slow_shared_responses()
+    if scenario in ("efficient", "changed-settings", "capped"):
+        for key, value in responses.items():
+            if key.startswith("job step list "):
+                value["step"] = [step for step in value["step"] if step["id"] != "wait"]
+                value["count"] = len(value["step"])
+    if scenario in ("efficient", "capped"):
+        for run_id, start, finish in ((100, "090005", "090035"), (102, "090035", "090115"),
+                                      (103, "090035", "090055"), (101, "090115", "090125")):
+            run = responses[f"run view {run_id} --json"]
+            run.update(startDate="20261110T" + start + "+0000", finishDate="20261110T" + finish + "+0000")
+            job = run["buildTypeId"]
+            script = responses[f"job step list {job} --json"]["step"][0]["properties"]["property"][0]["value"]
+            clock = lambda value: value[:2] + ":" + value[2:4] + ":" + value[4:]
+            responses[f"run log {run_id} --tail 2000 --raw"] = (
+                f"[{clock(start)}] Work started: {script}\n[{clock(finish)}] Work finished successfully\n")
+    if scenario == "denied-partial":
+        for job_id in ("Example_Tests", "Example_Package"):
+            responses[f"job step list {job_id} --json"] = {"_readError": {"status": 403, "message": "Permission denied for current build steps."}}
+        for run_id in (102, 103):
+            responses[f"run log {run_id} --tail 2000 --raw"] = {"_readError": {"status": 410, "message": "Historical build log has expired."}}
+    if scenario == "blocked":
+        responses = {key: value if key == "--version" else
+                     {"_readError": {"status": 403, "message": "Permission denied for the selected target."}}
+                     for key, value in responses.items()}
+    if scenario == "capped":
+        responses = {key.replace("--limit 30", "--limit 1"): value for key, value in responses.items()}
+    return responses
+
+
 def install_fixture(workspace, scenario="classic"):
     """Install a standalone CLI and return its isolated environment and call trace."""
     workspace = workspace.resolve()
@@ -114,9 +152,7 @@ def install_fixture(workspace, scenario="classic"):
     aggregation.write_text(binary.read_text(encoding="utf-8"), encoding="utf-8")
     aggregation.chmod(0o700)
     fixture = workspace / "cli-responses.json"
-    if scenario not in ("classic", "slow-shared"):
-        raise ValueError("unknown synthetic scenario")
-    responses = slow_shared_responses() if scenario == "slow-shared" else synthetic_responses()
+    responses = scenario_responses(scenario)
     fixture.write_text(json.dumps(responses), encoding="utf-8")
     trace = workspace / "cli-calls.jsonl"
     env = {key: value for key, value in os.environ.items()
@@ -179,12 +215,18 @@ def main():
     read_only = os.environ.get("TEAMCITY_RO") == "1"
     key = shlex.join(arguments)
     allowed = read_only and key in responses
+    value = responses.get(key)
+    error = value.get("_readError") if allowed and isinstance(value, dict) else None
+    outcome = "refused" if not allowed else "read-error" if error else "ok"
     with Path(os.environ["AUTO_DEVOPS_CALLS"]).open("a", encoding="utf-8") as sink:
-        sink.write(json.dumps({"argv": arguments, "readOnly": read_only, "allowed": allowed}) + "\n")
+        sink.write(json.dumps({"argv": arguments, "readOnly": read_only, "allowed": allowed,
+                               "outcome": outcome, "status": error["status"] if error else None}) + "\n")
     if not allowed:
         print("Synthetic fixture refused command; TEAMCITY_RO=1 and an exact supported read are required.", file=sys.stderr)
         return 2
-    value = responses[key]
+    if error:
+        print(f"HTTP {error['status']}: {error['message']}", file=sys.stderr)
+        return 1
     print(value if isinstance(value, str) else json.dumps(value))
     return 0
 

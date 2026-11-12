@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "target": {
+    "serverUrl": "https://synthetic.invalid",
+    "jobId": "Example_Verify",
+    "branch": "main",
+    "revisions": [],
+    "revisionNote": "Sampled revision was not available in the collected run view.",
+    "configuration": {
+      "source": "unavailable",
+      "revision": null,
+      "association": "unverified",
+      "reason": "All attempted target reads were denied; no configuration was available."
+    }
+  },
+  "sample": {
+    "since": "2026-10-28T00:00:00Z",
+    "until": "2026-11-11T00:00:00Z",
+    "rootRunIds": [],
+    "runIds": [],
+    "successfulRootRunIds": [],
+    "limits": {
+      "rootRuns": 30,
+      "days": 14,
+      "jobs": 100,
+      "runs": 200,
+      "logRuns": 5,
+      "logLinesPerRun": 2000
+    }
+  },
+  "coverage": {
+    "state": "blocked",
+    "truncated": false,
+    "gaps": [
+      "HTTP 403 for the selected target. No structure, run history, timestamps or configuration could be collected; existing authorization was not expanded."
+    ]
+  },
+  "conclusion": "insufficient-evidence",
+  "evidence": [
+    {
+      "id": "denied",
+      "sourceCommand": "teamcity job view Example_Verify --json",
+      "runIds": [],
+      "observation": "HTTP 403: permission denied for the selected target; no job contents were available."
+    }
+  ],
+  "recommendations": []
+}

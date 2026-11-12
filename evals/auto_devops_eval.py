@@ -20,9 +20,11 @@ import time
 
 from jsonschema import Draft7Validator
 
-from auto_devops_cli_fixture import install_fixture
+from auto_devops_cli_fixture import SCENARIOS, install_fixture
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_LIMITS = {"rootRuns": 30, "days": 14, "jobs": 100, "runs": 200,
+                  "logRuns": 5, "logLinesPerRun": 2000}
 
 
 def incorrect_fixture_timing(report):
@@ -79,35 +81,102 @@ def incomplete_shared_timing_evidence(report):
     return False
 
 
-def missing_shared_timing_calculation(calls):
+def missing_shared_timing_calculation(calls, scenario="slow-shared"):
     """Require deterministic provenance for the fixture's literal timing inputs."""
     intervals = {("090000", "091605"), ("090000", "091505"), ("090005", "090505"),
                  ("090505", "091505"), ("090505", "090905"), ("091505", "091605")}
+    expected_runs = {"100": 300, "101": 60, "102": 600, "103": 240}
+    if scenario in ("efficient", "capped"):
+        intervals = {("090000", "090125"), ("090000", "090115"), ("090005", "090035"),
+                     ("090035", "090115"), ("090035", "090055"), ("090115", "090125")}
+        expected_runs = {"100": 30, "101": 10, "102": 40, "103": 20}
     expected = {("20261110T" + start + "+0000", "20261110T" + end + "+0000")
                 for start, end in intervals}
     observed = {tuple(call["argv"]) for call in calls
                 if call["allowed"] and call["program"] == "time-delta-seconds"}
-    expected_runs = {"100": 300, "101": 60, "102": 600, "103": 240}
     aggregated = False
     for call in calls:
         if call["allowed"] and call["program"] == "sum-run-seconds":
             inputs = dict(value.split("=") for value in call["argv"])
             aggregated |= ({key: int(value) for key, value in inputs.items()} == expected_runs
                            and call["result"] == {"distinctRunIds": [100, 101, 102, 103],
-                                                  "aggregateExecutionSeconds": 1200})
+                                                  "aggregateExecutionSeconds": sum(expected_runs.values())})
     return not expected.issubset(observed) or not aggregated
 
 
+def collection_failures(report, calls, limits):
+    """Check logical collection counts, not the response size of uncapped trees."""
+    failures = []
+    if report["sample"]["limits"] != limits:
+        failures.append("incorrect-collection-limits")
+    jobs, runs, logs = set(), set(), set()
+    exceeded = False
+    for call in calls:
+        if not call["allowed"]:
+            continue
+        words = call["argv"]
+        if words[:2] in (["job", "view"], ["job", "tree"]):
+            jobs.add(words[2])
+        if words[:3] == ["job", "step", "list"]:
+            jobs.add(words[3])
+        if words[:2] in (["run", "view"], ["run", "tree"], ["run", "log"]):
+            runs.add(words[2])
+        if words[:2] == ["run", "log"]:
+            logs.add(words[2])
+            exceeded |= "--tail" not in words or int(words[words.index("--tail") + 1]) > limits["logLinesPerRun"]
+        if words[:2] == ["run", "list"]:
+            exceeded |= "--limit" not in words or int(words[words.index("--limit") + 1]) > limits["rootRuns"]
+            if "--since" in words:
+                since = words[words.index("--since") + 1]
+                if since.endswith("d") and since[:-1].isdigit():
+                    exceeded |= int(since[:-1]) > limits["days"]
+    counts = {"rootRuns": len(report["sample"]["rootRunIds"]), "jobs": len(jobs),
+              "runs": max(len(runs), len(report["sample"]["runIds"])), "logRuns": len(logs)}
+    if exceeded or any(value > limits[key] for key, value in counts.items()):
+        failures.append("collection-limit-exceeded")
+    if any(value >= limits[key] for key, value in counts.items()):
+        coverage = report["coverage"]
+        if coverage["state"] != "partial" or not coverage["truncated"] or not coverage["gaps"]:
+            failures.append("unreported-collection-cap")
+    return failures
+
+
+def data_quality_failures(report, calls, scenario):
+    failures = []
+    coverage = report["coverage"]
+    if scenario in ("efficient", "denied-partial", "changed-settings") and not coverage["truncated"]:
+        expected = {"Example_Build", "Example_Verify", "Example_Tests", "Example_Package"}
+        attempted = {call["argv"][3] for call in calls if call["argv"][:3] == ["job", "step", "list"]}
+        if not expected.issubset(attempted):
+            failures.append("uncollected-core-configuration")
+    if any(call.get("outcome") == "read-error" for call in calls):
+        if coverage["state"] == "complete" or not coverage["gaps"]:
+            failures.append("unreported-read-error")
+    if ((scenario == "blocked" and coverage["state"] != "blocked")
+            or (scenario in ("denied-partial", "efficient", "changed-settings", "capped")
+                and coverage["state"] == "blocked")):
+        failures.append("incorrect-fixture-coverage")
+    if scenario == "changed-settings" and report["target"]["configuration"]["association"] == "verified":
+        failures.append("unsupported-settings-association")
+    return failures
+
+
 def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=1.0,
-             provider_settings=None, scenario="classic"):
+             provider_settings=None, scenario="classic", collection_limits=None):
     """Run once, preserve evidence and provider usage, and grade the report boundary.
 
     agent_command replaces the provider only for deterministic local unit tests.
     """
     if not 0 < timeout_seconds <= 240 or not 0 < max_budget_usd <= 1:
         raise ValueError("evaluation requires a timeout <=240 seconds and budget <=1 USD")
-    if scenario not in ("classic", "slow-shared"):
+    if scenario not in SCENARIOS:
         raise ValueError("unknown synthetic scenario")
+    limits = dict(DEFAULT_LIMITS)
+    if collection_limits is not None:
+        if (not isinstance(collection_limits, dict) or set(collection_limits) - set(limits)
+                or any(type(value) is not int or value <= 0 for value in collection_limits.values())):
+            raise ValueError("collection limits require known fields with positive integer values")
+        limits.update(collection_limits)
     workspace = Path(workspace).resolve()
     temporary_roots = {Path(tempfile.gettempdir()).resolve(), Path("/tmp").resolve()}
     if agent_command is None and not any(workspace.is_relative_to(root) for root in temporary_roots):
@@ -153,6 +222,8 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
         "validates it. Do not attempt a file write: this harness verifies AI analysis and "
         "structured output with runner persistence, not native filesystem Write support.\n"
     )
+    if collection_limits is not None:
+        prompt += "The user explicitly requests these collection limits: " + json.dumps(limits) + ". Do not expand them.\n"
     (workspace / "prompt.txt").write_text(prompt, encoding="utf-8")
     # The provider rejects top-level schema combinators; nesting preserves the full contract.
     report_schema = json.loads((ROOT / "skills/auto-devops/references/report.schema.json").read_text())
@@ -231,6 +302,8 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
             encoded = json.dumps(report, ensure_ascii=False, allow_nan=False) + "\n"
             with report_path.open("x", encoding="utf-8") as sink:
                 sink.write(encoded)
+            failures.extend(collection_failures(report, calls, limits))
+            failures.extend(data_quality_failures(report, calls, scenario))
             if scenario == "classic" and incorrect_fixture_timing(report):
                 failures.append("incorrect-fixture-timing")
             if scenario == "slow-shared":
@@ -238,10 +311,12 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
                     failures.append("incorrect-shared-timing")
                 if incomplete_shared_timing_evidence(report):
                     failures.append("incomplete-timing-evidence")
-                if missing_shared_timing_calculation(math_calls):
-                    failures.append("missing-timing-calculation")
                 if any(item["expectedImpact"]["basis"] == "measured" for item in report["recommendations"]):
                     failures.append("unsupported-measured-savings")
+            if scenario == "slow-shared" or ("timing" in report and scenario in
+                                               ("efficient", "denied-partial", "changed-settings", "capped")):
+                if missing_shared_timing_calculation(math_calls, scenario):
+                    failures.append("missing-timing-calculation")
             evidence_ids = {item["id"] for item in report["evidence"]}
             if any(not set(item["evidenceIds"]).issubset(evidence_ids) for item in report["recommendations"]):
                 failures.append("unknown-evidence-reference")
@@ -255,6 +330,7 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
     result = {"passed": not failures, "failures": failures, "provider": provider,
               "exitCode": process.returncode, "timedOut": timed_out,
               "maxBudgetUsd": max_budget_usd, "timeoutSeconds": timeout_seconds, "scenario": scenario,
+              "collectionLimits": limits,
               "elapsedSeconds": round(time.monotonic() - started, 3),
               "reportDelivery": "provider-structured-output-with-runner-persistence",
               "rawFinalPath": str(workspace / "provider-final.json"),
@@ -268,13 +344,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--provider-settings", type=Path)
-    parser.add_argument("--scenario", choices=("classic", "slow-shared"), default="classic")
+    parser.add_argument("--scenario", choices=SCENARIOS, default="classic")
+    parser.add_argument("--collection-limits", type=json.loads)
     parser.add_argument("--timeout-seconds", type=int, default=180)
     parser.add_argument("--max-budget-usd", type=float, default=1.0)
     args = parser.parse_args()
     result = evaluate(args.workspace, timeout_seconds=args.timeout_seconds,
                       max_budget_usd=args.max_budget_usd, provider_settings=args.provider_settings,
-                      scenario=args.scenario)
+                      scenario=args.scenario, collection_limits=args.collection_limits)
     print(json.dumps(result, indent=2))
     return 0 if result["passed"] else 1
 

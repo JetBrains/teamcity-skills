@@ -65,3 +65,13 @@ class AutoDevopsReportSchemaTest(unittest.TestCase):
         report["timing"]["distinctRunIds"].pop()
         report["timing"]["roots"][0]["queuedToStartSeconds"] = -1
         self.assertFalse(validator.is_valid(report))
+
+
+    def test_missing_data_efficiency_settings_changes_and_requested_caps_are_representable(self):
+        validator = Draft7Validator(json.loads(
+            (ROOT / "skills/auto-devops/references/report.schema.json").read_text()))
+        for name in ("efficient-none", "denied-partial", "changed-settings", "blocked", "capped"):
+            with self.subTest(name=name):
+                report = json.loads((FIXTURES / (name + ".json")).read_text())
+                validator.validate(report)
+                self.assertTrue(all(value > 0 for value in report["sample"]["limits"].values()))

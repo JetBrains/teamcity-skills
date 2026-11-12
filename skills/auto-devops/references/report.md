@@ -16,10 +16,15 @@ keeping `references/`. Invoke it with a root job ID, branch, and local output fi
 - `coverage.state` is `complete` for sufficient supported analysis of the declared sample,
   `partial` for useful analysis with gaps, and `blocked` when evidence cannot support analysis.
   Record missing/denied/expired data, settings association, caps, and truncation in `gaps`.
+  Useful supported structure or timing remains partial even when concrete recommendations
+  lack evidence. Blocked means too little evidence for any useful analysis.
 - `conclusion` is separately `opportunity`, `none` (no worthwhile improvement supported),
   or `insufficient-evidence` for unsupported recommendations. Partial analysis can still
   provide useful observations with this conclusion. `none` and insufficient-evidence
   reports have no recommendations; blocked analysis always has insufficient evidence.
+  When observed work/settings support no worthwhile concrete change, choose `none` and
+  explain the limited scope; do not invent generic recommendations to fill the list.
+  Low gains alone are not failure, and `none` does not prove universal efficiency.
 - `evidence` contains stable IDs, associated run IDs, and concise observations.
   Each `sourceCommand` is one exact executed CLI invocation. Split observations from
   multiple reads into separate evidence records and cite their IDs from recommendations;
