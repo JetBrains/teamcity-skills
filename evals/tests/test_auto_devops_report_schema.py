@@ -75,3 +75,13 @@ class AutoDevopsReportSchemaTest(unittest.TestCase):
                 report = json.loads((FIXTURES / (name + ".json")).read_text())
                 validator.validate(report)
                 self.assertTrue(all(value > 0 for value in report["sample"]["limits"].values()))
+
+
+    def test_composite_agent_subset_and_unknown_allocation_fit_version_one(self):
+        validator=Draft7Validator(json.loads((ROOT/'skills/auto-devops/references/report.schema.json').read_text()))
+        report=json.loads((FIXTURES/'composite-generated.json').read_text())
+        validator.validate(report)
+        self.assertIn(101,report['sample']['runIds'])
+        self.assertNotIn(101,report['timing']['distinctRunIds'])
+        report['timing']['aggregateExecutionSeconds']=None
+        validator.validate(report)

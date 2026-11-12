@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 1,
+  "target": {
+    "serverUrl": "https://synthetic.invalid",
+    "jobId": "Example_Verify",
+    "branch": "main",
+    "revisions": [],
+    "revisionNote": "Sampled revision was not available in the collected run view.",
+    "configuration": {
+      "source": "unavailable",
+      "revision": null,
+      "association": "unverified",
+      "reason": "Generated job 104 has no classic runners; current generated source is unsupported in this slice."
+    }
+  },
+  "sample": {
+    "since": "2026-10-28T00:00:00Z",
+    "until": "2026-11-11T00:00:00Z",
+    "rootRunIds": [
+      101
+    ],
+    "runIds": [
+      100,
+      101,
+      102,
+      103,
+      104
+    ],
+    "successfulRootRunIds": [
+      101
+    ],
+    "limits": {
+      "rootRuns": 30,
+      "days": 14,
+      "jobs": 100,
+      "runs": 200,
+      "logRuns": 5,
+      "logLinesPerRun": 2000
+    }
+  },
+  "coverage": {
+    "state": "partial",
+    "truncated": false,
+    "gaps": [
+      "Agent allocation for run 104 is unknown; 1140 seconds covers only confirmed agent-backed runs 100,102,103. Composite 101 is excluded.",
+      "Generated job 104 returned no classic runners; current configuration source is unavailable. Historical logs do not establish current settings."
+    ]
+  },
+  "conclusion": "insufficient-evidence",
+  "evidence": [
+    {
+      "id": "tree",
+      "sourceCommand": "teamcity run tree 101 --json",
+      "runIds": [
+        100,
+        101,
+        102,
+        103,
+        104
+      ],
+      "observation": "Composite root 101 depends on 102,103,104; 102 and 103 share run 100."
+    },
+    {
+      "id": "run-100",
+      "sourceCommand": "teamcity run view 100 --json",
+      "runIds": [
+        100
+      ],
+      "observation": "Queued 20261110T090000+0000, started 090005, finished 090505."
+    },
+    {
+      "id": "allocation-100",
+      "sourceCommand": "teamcity api '/app/rest/builds/id:100?fields=id,composite,agent(id,typeId)'",
+      "runIds": [
+        100
+      ],
+      "observation": "agent typeId descriptor, composite=false"
+    },
+    {
+      "id": "run-101",
+      "sourceCommand": "teamcity run view 101 --json",
+      "runIds": [
+        101
+      ],
+      "observation": "Queued 20261110T090000+0000, started 090000, finished 091605."
+    },
+    {
+      "id": "allocation-101",
+      "sourceCommand": "teamcity api '/app/rest/builds/id:101?fields=id,composite,agent(id,typeId)'",
+      "runIds": [
+        101
+      ],
+      "observation": "composite=true"
+    },
+    {
+      "id": "run-102",
+      "sourceCommand": "teamcity run view 102 --json",
+      "runIds": [
+        102
+      ],
+      "observation": "Queued 20261110T090000+0000, started 090505, finished 091505."
+    },
+    {
+      "id": "allocation-102",
+      "sourceCommand": "teamcity api '/app/rest/builds/id:102?fields=id,composite,agent(id,typeId)'",
+      "runIds": [
+        102
+      ],
+      "observation": "agent typeId descriptor, composite=false"
+    },
+    {
+      "id": "run-103",
+      "sourceCommand": "teamcity run view 103 --json",
+      "runIds": [
+        103
+      ],
+      "observation": "Queued 20261110T090000+0000, started 090505, finished 090905."
+    },
+    {
+      "id": "allocation-103",
+      "sourceCommand": "teamcity api '/app/rest/builds/id:103?fields=id,composite,agent(id,typeId)'",
+      "runIds": [
+        103
+      ],
+      "observation": "agent typeId descriptor, composite=false"
+    },
+    {
+      "id": "run-104",
+      "sourceCommand": "teamcity run view 104 --json",
+      "runIds": [
+        104
+      ],
+      "observation": "Queued 20261110T090000+0000, started 090805, finished 091005."
+    },
+    {
+      "id": "allocation-104",
+      "sourceCommand": "teamcity api '/app/rest/builds/id:104?fields=id,composite,agent(id,typeId)'",
+      "runIds": [
+        104
+      ],
+      "observation": "no agent descriptor; allocation unknown"
+    },
+    {
+      "id": "empty-steps",
+      "sourceCommand": "teamcity job step list Example_Generated --json",
+      "runIds": [],
+      "observation": "Classic endpoint returned count=0 and no runners; generated current source is unavailable."
+    },
+    {
+      "id": "history",
+      "sourceCommand": "teamcity run log 104 --tail 2000 --json",
+      "runIds": [
+        104
+      ],
+      "observation": "Timestamped historical messages show generated build and test work; they do not establish current source."
+    }
+  ],
+  "recommendations": [],
+  "timing": {
+    "distinctRunIds": [
+      100,
+      102,
+      103
+    ],
+    "aggregateExecutionSeconds": 1140,
+    "evidenceIds": [
+      "tree",
+      "run-100",
+      "allocation-100",
+      "run-101",
+      "allocation-101",
+      "run-102",
+      "allocation-102",
+      "run-103",
+      "allocation-103",
+      "run-104",
+      "allocation-104",
+      "empty-steps",
+      "history"
+    ],
+    "method": "Supported subset: sum agent-backed runs 100,102,103 once (shared 100 deduplicated). Composite 101 is orchestration; allocation 104 is unknown, not zero. Historical/reused work is not marginal new cost.",
+    "roots": [
+      {
+        "runId": 101,
+        "feedbackElapsedSeconds": 965,
+        "queuedToStartSeconds": 0,
+        "dependencyReadyDelaySeconds": 905,
+        "agentQueueSeconds": null,
+        "evidenceIds": [
+          "tree",
+          "run-100",
+          "allocation-100",
+          "run-101",
+          "allocation-101",
+          "run-102",
+          "allocation-102",
+          "run-103",
+          "allocation-103",
+          "run-104",
+          "allocation-104",
+          "empty-steps",
+          "history"
+        ],
+        "reason": "Composite activity overlaps dependency execution; chronology does not isolate agent queue time."
+      }
+    ]
+  }
+}

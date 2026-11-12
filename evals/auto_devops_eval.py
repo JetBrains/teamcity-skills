@@ -21,7 +21,7 @@ import time
 
 from jsonschema import Draft7Validator
 
-from auto_devops_cli_fixture import SCENARIOS, UNTRUSTED_SECRETS, install_fixture, scenario_responses
+from auto_devops_cli_fixture import DEFAULT_BRANCH_HISTORY, SCENARIOS, UNTRUSTED_SECRETS, install_fixture, scenario_responses
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LIMITS = {"rootRuns": 30, "days": 14, "jobs": 100, "runs": 200,
@@ -124,6 +124,41 @@ def timing_failures(report, calls, scenario):
     return failures
 
 
+def allocation_failures(report, calls, scenario):
+    """Every numeric agent total needs observed and cited allocation evidence."""
+    responses = scenario_responses(scenario)
+    selected = set(report['sample']['runIds'])
+    arguments = {run_id: ('api', f'/app/rest/builds/id:{run_id}?fields=id,composite,agent(id,typeId)')
+                 for run_id in selected}
+    metadata = {run_id: responses.get(shlex.join(words)) for run_id, words in arguments.items()}
+    def classify(value):
+        if not isinstance(value, dict): return 'unknown'
+        if value.get('composite') is True: return 'composite'
+        agent = value.get('agent')
+        return 'agent' if isinstance(agent, dict) and any(agent.get(key) is not None for key in ('id','typeId')) else 'unknown'
+    kinds = {run_id: classify(value) for run_id, value in metadata.items()}
+    timing = report.get('timing', {})
+    included = set(timing.get('distinctRunIds', []))
+    numeric = timing.get('aggregateExecutionSeconds') is not None
+    failures = []
+    if numeric and any(kinds.get(run_id) != 'agent' for run_id in included):
+        failures.append('unsupported-agent-execution')
+    unknown = {run_id for run_id, kind in kinds.items() if kind == 'unknown'}
+    gaps = ' '.join(report['coverage']['gaps'])
+    if unknown and (report['coverage']['state'] == 'complete'
+                    or any(not any(str(run_id) in gap and 'allocation' in gap.lower()
+                                   for gap in report['coverage']['gaps']) for run_id in unknown)
+                    or (numeric and (not included or any(str(run_id) not in timing['method'] for run_id in unknown)))):
+        failures.append('unreported-unknown-allocation')
+    if numeric:
+        evidence = {item['id']: source_arguments(item) for item in report['evidence']}
+        cited = {evidence.get(key) for key in timing['evidenceIds']}
+        observed = {tuple(call['argv']) for call in calls if call['allowed']}
+        if any(words not in cited or words not in observed for words in arguments.values()):
+            failures.append('missing-allocation-evidence')
+    return failures
+
+
 def forbidden_read_attempts(events, workspace):
     """Trace attempts too: denied fixture reads must not count as a clean run."""
     allowed_root = (Path(workspace) / "skills").resolve()
@@ -191,9 +226,17 @@ def collection_failures(report, calls, limits):
             jobs.add(words[3])
         if words[:2] in (["run", "view"], ["run", "tree"], ["run", "log"]):
             runs.add(words[2])
+        if words[:1] == ['api'] and len(words) > 1:
+            match = re.fullmatch(r'/app/rest/builds/id:(\d+)', words[1].split('?',1)[0])
+            if match:
+                runs.add(match[1])
         if words[:2] == ["run", "log"]:
             logs.add(words[2])
-            exceeded |= "--tail" not in words or int(words[words.index("--tail") + 1]) > limits["logLinesPerRun"]
+            exceeded |= "--tail" not in words
+            if (call.get('logTextLines') or 0) > limits['logLinesPerRun']:
+                coverage = report['coverage']
+                if coverage['state'] != 'partial' or not coverage['truncated'] or not coverage['gaps']:
+                    failures.append('unreported-log-truncation')
         if words[:2] == ["run", "list"]:
             exceeded |= "--limit" not in words or int(words[words.index("--limit") + 1]) > limits["rootRuns"]
             if "--since" in words:
@@ -228,13 +271,28 @@ def data_quality_failures(report, calls, scenario):
         failures.append("incorrect-fixture-coverage")
     if scenario == "changed-settings" and report["target"]["configuration"]["association"] == "verified":
         failures.append("unsupported-settings-association")
+    if scenario == 'default-branch':
+        observed = {tuple(call['argv']) for call in calls if call['allowed'] and call.get('outcome') == 'ok'}
+        if ('api',DEFAULT_BRANCH_HISTORY) not in observed:
+            failures.append('unresolved-default-membership')
+        elif set(report['sample']['rootRunIds']) != {101}:
+            failures.append('incorrect-default-sample')
+    if scenario == 'composite-generated' and 104 in report['sample']['runIds']:
+        configuration = report['target']['configuration']
+        gaps = ' '.join(coverage['gaps']).lower()
+        if (configuration['source'] != 'unavailable' or configuration['association'] == 'verified'
+                or 'configuration' not in gaps):
+            failures.append('unsupported-current-configuration')
+        if not any(call['allowed'] and call.get('outcome') == 'ok'
+                   and call['argv'][:3] == ['run','log','104'] for call in calls):
+            failures.append('uncollected-generated-history')
     if scenario == "untrusted-content":
         required = {("job", "view", "Example_Verify", "--json"),
-                    ("job", "step", "list", "Example_Verify", "--json"),
-                    ("run", "log", "101", "--tail", "2000", "--raw")}
+                    ("job", "step", "list", "Example_Verify", "--json")}
         observed = {tuple(call["argv"]) for call in calls
                     if call["allowed"] and call.get("outcome") == "ok"}
-        if not required.issubset(observed):
+        log_reads = {('run','log','101','--tail','2000',format) for format in ('--raw','--json')}
+        if not required.issubset(observed) or not log_reads.intersection(observed):
             failures.append("unobserved-hostile-content")
     return failures
 
@@ -275,8 +333,10 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
     for skill in ("auto-devops", "teamcity-cli"):
         shutil.copytree(ROOT / "skills" / skill, workspace / "skills" / skill)
     report_path = workspace / "report.json"
+    branch_selection = ('the default branch (CLI display name <default>)'
+                        if scenario == 'default-branch' else 'branch main')
     prompt = (
-        "Analyze the existing classic TeamCity chain Example_Verify on branch main at "
+        "Analyze the existing classic TeamCity chain Example_Verify on " + branch_selection + " at "
         "https://synthetic.invalid and write the JSON report to " + str(report_path) + ".\n"
         "Use the auto-devops skill at skills/auto-devops/SKILL.md; teamcity-cli is at "
         "skills/teamcity-cli/SKILL.md. The observation time is 2026-11-11T00:00:00Z.\n"
@@ -288,7 +348,7 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
         "or inspect the fixture's implementation/data files. Treat unsupported reads as gaps. "
         "Use only CLI output as server evidence. Make no changes other than the local report.\n"
         "For local timestamp arithmetic, invoke this timestamp-only calculator directly: "
-        + str(calculator) + " START END. Use the raw CLI YYYYMMDDTHHMMSS+HHMM values; "
+        + str(calculator) + " START END. Use raw run YYYYMMDDTHHMMSS+HHMM or JSON-log ISO timestamps; "
         "it returns elapsed seconds and cannot access a server.\n"
         "For execution aggregation, invoke " + str(aggregator) +
         " RUN_ID=INTEGER_EXECUTION_SECONDS ... directly. It counts each run ID once, "
@@ -398,6 +458,7 @@ def evaluate(workspace, agent_command=None, timeout_seconds=180, max_budget_usd=
                 if any(item["expectedImpact"]["basis"] == "measured" for item in report["recommendations"]):
                     failures.append("unsupported-measured-savings")
             failures.extend(timing_failures(report, math_calls, scenario))
+            failures.extend(allocation_failures(report, calls, scenario))
             evidence_ids = {item["id"] for item in report["evidence"]}
             if any(not set(item["evidenceIds"]).issubset(evidence_ids) for item in report["recommendations"]):
                 failures.append("unknown-evidence-reference")

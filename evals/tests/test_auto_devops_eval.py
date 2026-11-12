@@ -121,7 +121,7 @@ class AutoDevopsFixtureTest(unittest.TestCase):
             root = runs[1]
             self.assertEqual(965, (timestamp(root["finishDate"]) - timestamp(root["queuedDate"])).total_seconds())
             self.assertEqual(905, (timestamp(root["startDate"]) - timestamp(root["queuedDate"])).total_seconds())
-            log = read("run", "log", "102", "--tail", "2000", "--raw")
+            log = read("run", "log", "102", "--tail", "2000", "--json")
             self.assertIn("sleep 180", log)
             self.assertIn("09:08:05", log)
 
@@ -368,7 +368,7 @@ class AutoDevopsEvaluationTest(unittest.TestCase):
         cases=[({"runs":2}, None), ({"jobs":1}, None),
                ({"days":7}, ["teamcity run list --job Example_Verify --branch main --since 14d --limit 30 --json"]),
                ({"logRuns":1}, ["teamcity run log 102 --tail 2000 --raw", "teamcity run log 103 --tail 2000 --raw"]),
-               ({"logLinesPerRun":10}, ["teamcity run log 102 --tail 2000 --raw"])]
+               ({"logLinesPerRun":1}, ["teamcity run log 102 --tail 2000 --raw"])]
         for limits, commands in cases:
             with self.subTest(limits=limits), tempfile.TemporaryDirectory() as directory:
                 report=json.loads((EVALS / "tests/fixtures/auto-devops-reports/efficient-none.json").read_text())
@@ -377,7 +377,14 @@ class AutoDevopsEvaluationTest(unittest.TestCase):
                     commands=[item["sourceCommand"] for item in report["evidence"]]+commands
                 result=evaluate_case_report(Path(directory), report, "efficient", limits=limits, commands=commands)
                 self.assertFalse(result["passed"], result)
-                self.assertIn("collection-limit-exceeded", result["failures"])
+                failure = 'unreported-log-truncation' if 'logLinesPerRun' in limits else 'collection-limit-exceeded'
+                self.assertIn(failure, result["failures"])
+        with tempfile.TemporaryDirectory() as directory:
+            report=json.loads((EVALS / "tests/fixtures/auto-devops-reports/efficient-none.json").read_text())
+            report['sample']['limits']['logLinesPerRun']=2
+            commands=[item['sourceCommand'] for item in report['evidence']]+['teamcity run log 102 --tail 2000 --raw']
+            result=evaluate_case_report(Path(directory),report,'efficient',limits={'logLinesPerRun':2},commands=commands)
+            self.assertTrue(result['passed'],result)  # Two text lines, regardless of requested message count.
 
 
     def test_invalid_collection_limit_requests_fail_before_an_agent_can_run(self):
@@ -550,8 +557,14 @@ class AutoDevopsReviewFixTest(unittest.TestCase):
                          'observation':'Queued 09:00:00, started 09:05:05, finished 09:08:05 UTC.'},
                         {'id':'build','sourceCommand':'teamcity run view 100 --json','runIds':[100],
                          'observation':'Started 09:00:05, finished 09:05:05 UTC.'}]
+                    for run_id in (100,101):
+                        api=f'/app/rest/builds/id:{run_id}?fields=id,composite,agent(id,typeId)'
+                        import shlex
+                        report['evidence'].append({'id':f'allocation-{run_id}',
+                            'sourceCommand':shlex.join(('teamcity','api',api)),'runIds':[run_id],
+                            'observation':'Metadata confirms agent-backed execution.'})
                     report['timing']={'distinctRunIds':[100,101],'aggregateExecutionSeconds':999999 if incorrect else 480,
-                        'evidenceIds':['graph','root','build'],'method':'Sum finish-start once per run ID.',
+                        'evidenceIds':['graph','root','build','allocation-100','allocation-101'],'method':'Sum finish-start once per run ID.',
                         'roots':[{'runId':101,'feedbackElapsedSeconds':485,'queuedToStartSeconds':305,
                             'dependencyReadyDelaySeconds':305,'agentQueueSeconds':None,'evidenceIds':['graph','root','build'],
                             'reason':'Observed timestamps; queue cause unknown.'}]}
@@ -584,10 +597,10 @@ class AutoDevopsReviewFixTest(unittest.TestCase):
             with self.subTest(aggregate=aggregate), tempfile.TemporaryDirectory() as directory:
                 report=json.loads((EVALS/'tests/fixtures/auto-devops-reports/efficient-none.json').read_text())
                 report['sample']['runIds']=[101]
-                report['timing'].update(distinctRunIds=[101],aggregateExecutionSeconds=aggregate,evidenceIds=['root'])
+                report['timing'].update(distinctRunIds=[101],aggregateExecutionSeconds=aggregate,evidenceIds=['root','allocation-101'])
                 report['timing']['roots'][0].update(dependencyReadyDelaySeconds=None,evidenceIds=['root'],
                     reason='Only root timestamps collected; dependency readiness is unknown.')
-                report['evidence']=[item for item in report['evidence'] if item['id']=='root']
+                report['evidence']=[item for item in report['evidence'] if item['id'] in ('root','allocation-101')]
                 report['coverage']['gaps'].append('Dependency timestamps were not collected.')
                 result=evaluate_case_report(Path(directory),report,'efficient',calculation_run_ids={101})
                 self.assertEqual(expected,result['passed'],result)
@@ -609,4 +622,175 @@ class AutoDevopsReviewFixTest(unittest.TestCase):
                 report=json.loads((EVALS/'tests/fixtures/auto-devops-reports'/(fixture+'.json')).read_text())
                 report.pop('timing')
                 result=evaluate_case_report(Path(directory),report,scenario,calculate=False)
+                self.assertTrue(result['passed'],result)
+
+
+
+def evaluate_composite_report(workspace, report):
+    from auto_devops_eval import evaluate
+    agent=workspace/'synthetic-agent.py'
+    commands=[item['sourceCommand'] for item in report['evidence']]
+    intervals=[('090005','090505'),('090000','091605'),('090000','090000'),('090000','091505'),
+               ('090505','091505'),('090505','090905'),('090805','091005')]
+    durations={100:300,101:965,102:600,103:240,104:120}
+    values=[f'{run_id}={durations[run_id]}' for run_id in report['timing']['distinctRunIds']]
+    program='import os, shlex, subprocess\n'+f'for command in {commands!r}:\n'
+    program+="    subprocess.run([os.environ['AUTO_DEVOPS_CLI'], *shlex.split(command)[1:]], check=False)\n"
+    program+=f'for start,end in {intervals!r}:\n'
+    program+="    subprocess.run([os.environ['AUTO_DEVOPS_CALCULATOR'],'20261110T'+start+'+0000','20261110T'+end+'+0000'],check=True)\n"
+    if values:program+=f"subprocess.run([os.environ['AUTO_DEVOPS_AGGREGATOR'],*{values!r}],check=True)\n"
+    program+=f"print({json.dumps({'type':'result','is_error':False,'structured_output':{'report':report}})!r})\n"
+    agent.write_text(program)
+    return evaluate(workspace,agent_command=[sys.executable,str(agent)],scenario='composite-generated',
+                    collection_limits=report['sample']['limits'])
+
+
+class AutoDevopsCompositeTest(unittest.TestCase):
+    def report(self):
+        return json.loads((EVALS/'tests/fixtures/auto-devops-reports/composite-generated.json').read_text())
+
+    def test_composite_and_unknown_intervals_are_not_agent_execution(self):
+        for extra,total,expected in ((None,1140,True),(101,2105,False),(104,1260,False)):
+            with self.subTest(extra=extra),tempfile.TemporaryDirectory() as directory:
+                report=self.report()
+                if extra is not None:report['timing']['distinctRunIds'].append(extra)
+                report['timing']['aggregateExecutionSeconds']=total
+                result=evaluate_composite_report(Path(directory),report)
+                self.assertEqual(expected,result['passed'],result)
+
+    def test_agent_totals_need_cited_classification_for_included_and_excluded_runs(self):
+        for run_id in (100,101,104):
+            with self.subTest(run_id=run_id),tempfile.TemporaryDirectory() as directory:
+                report=self.report()
+                report['timing']['evidenceIds'].remove(f'allocation-{run_id}')
+                result=evaluate_composite_report(Path(directory),report)
+                self.assertFalse(result['passed'],result)
+                self.assertIn('missing-allocation-evidence',result['failures'])
+
+    def test_unknown_allocation_is_null_or_an_explicit_supported_subset(self):
+        for change,expected in (('null',True),('hidden',False),('zero',False),('queue-zero',False),('hidden-method',False)):
+            with self.subTest(change=change),tempfile.TemporaryDirectory() as directory:
+                report=self.report()
+                if change=='null':report['timing']['aggregateExecutionSeconds']=None
+                if change=='hidden':report['coverage']['gaps']=report['coverage']['gaps'][1:]
+                if change=='hidden-method':report['timing']['method']='Sum the selected run intervals.'
+                if change=='zero':
+                    report['sample']['runIds']=[101,104]
+                    report['timing'].update(distinctRunIds=[],aggregateExecutionSeconds=0)
+                    report['timing']['roots'][0]['dependencyReadyDelaySeconds']=None
+                if change=='queue-zero':report['timing']['roots'][0]['agentQueueSeconds']=0
+                result=evaluate_composite_report(Path(directory),report)
+                self.assertEqual(expected,result['passed'],result)
+
+    def test_empty_generated_steps_require_current_source_gap_and_historical_read(self):
+        for change,expected in ((None,True),('invent-current',False),('skip-log',False)):
+            with self.subTest(change=change),tempfile.TemporaryDirectory() as directory:
+                report=self.report()
+                if change=='invent-current':
+                    report['target']['configuration'].update(source='current-settings',association='verified')
+                    report['coverage']['gaps']=report['coverage']['gaps'][:1]
+                if change=='skip-log':report['evidence']=[item for item in report['evidence'] if item['id']!='history']
+                result=evaluate_composite_report(Path(directory),report)
+                self.assertEqual(expected,result['passed'],result)
+
+    def test_json_log_timestamps_and_multiline_message_counts_are_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace=Path(directory)
+            command,env,trace=install_fixture(workspace,'composite-generated')
+            result=subprocess.run([str(command),'run','log','104','--tail','4','--json'],env=env,text=True,capture_output=True)
+            self.assertEqual(0,result.returncode,result.stderr)
+            data=json.loads(result.stdout)
+            self.assertEqual(5,len(data['messages']))
+            self.assertEqual(6,sum(len(item['text'].splitlines()) for item in data['messages']))
+            measured=subprocess.run([str(workspace/'bin/time-delta-seconds'),data['messages'][0]['timestamp'],data['messages'][-1]['timestamp']],env=env,text=True,capture_output=True)
+            self.assertEqual(0,measured.returncode,measured.stderr)
+            self.assertEqual(120,float(measured.stdout))
+            call=json.loads(trace.read_text().splitlines()[-1])
+            self.assertEqual(6,call['logTextLines'])
+
+    def test_tail_message_count_does_not_hide_text_line_truncation(self):
+        for truncated in (False,True):
+            with self.subTest(truncated=truncated),tempfile.TemporaryDirectory() as directory:
+                report=self.report()
+                report['sample']['limits']['logLinesPerRun']=4
+                report['coverage']['truncated']=truncated
+                report['coverage']['gaps'].append('Retained 4 of 6 text lines from run 104; multiline log truncated.')
+                report['evidence'][-1]['sourceCommand']='teamcity run log 104 --tail 4 --json'
+                result=evaluate_composite_report(Path(directory),report)
+                self.assertEqual(truncated,result['passed'],result)
+
+
+    def test_confirmed_composite_empty_steps_do_not_require_a_generated_source_gap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report=self.report()
+            report['sample']['runIds']=[100,101,102,103]
+            report['target']['configuration'].update(source='current-settings',association='unverified',
+                reason='Classic composite root has no own runners; selected children have classic configuration.')
+            report['coverage']['gaps']=['Only selected classic children are covered; revisions remain unverified.']
+            report['evidence']=[item for item in report['evidence'] if item['id'] not in
+                                ('run-104','allocation-104','empty-steps','history')]
+            report['evidence'].append({'id':'composite-steps','sourceCommand':'teamcity job step list Example_Verify --json',
+                                      'runIds':[],'observation':'Confirmed classic composite has no own runners.'})
+            report['timing']['roots'][0]['dependencyReadyDelaySeconds']=None
+            ids=[item['id'] for item in report['evidence']]
+            report['timing']['evidenceIds']=ids
+            report['timing']['roots'][0]['evidenceIds']=ids
+            result=evaluate_composite_report(Path(directory),report)
+            self.assertTrue(result['passed'],result)
+
+
+    def test_metadata_only_reads_count_toward_distinct_run_budget(self):
+        import shlex
+        with tempfile.TemporaryDirectory() as directory:
+            report=json.loads((EVALS/'tests/fixtures/auto-devops-reports/partial-opportunity.json').read_text())
+            report['sample']['limits']['runs']=2
+            commands=[item['sourceCommand'] for item in report['evidence']]
+            for run_id in (100,102,103):
+                commands.append(shlex.join(('teamcity','api',f'/app/rest/builds/id:{run_id}?fields=id,composite,agent(id,typeId)')))
+            result=evaluate_case_report(Path(directory),report,'efficient',limits={'runs':2},commands=commands)
+            self.assertFalse(result['passed'],result)
+            self.assertIn('collection-limit-exceeded',result['failures'])
+
+
+    def test_empty_default_name_query_needs_bounded_default_membership_resolution(self):
+        import shlex
+        from auto_devops_cli_fixture import DEFAULT_BRANCH_HISTORY
+        for resolved,ids,expected in ((False,[],False),(True,[101],True),(True,[],False),(True,[101,105],False)):
+            with self.subTest(resolved=resolved,ids=ids),tempfile.TemporaryDirectory() as directory:
+                report=json.loads((EVALS/'tests/fixtures/auto-devops-reports/partial-opportunity.json').read_text())
+                report['target']['branch']='<default>'
+                report.update(conclusion='insufficient-evidence',recommendations=[])
+                report['sample'].update(rootRunIds=ids,runIds=ids,successfulRootRunIds=ids)
+                report['evidence']=[{'id':'empty-default','sourceCommand':shlex.join(('teamcity','run','list',
+                    '--job','Example_Verify','--branch','<default>','--since','14d','--limit','30','--json')),
+                    'runIds':[],'observation':'Literal default-name query returned no runs; this is inconclusive.'}]
+                if resolved:
+                    report['evidence'].append({'id':'resolved-default','sourceCommand':shlex.join(('teamcity','api',DEFAULT_BRANCH_HISTORY)),
+                        'runIds':[101],'observation':'Bounded default:true locator returned run 101; branchName/defaultBranch were omitted.'})
+                result=evaluate_case_report(Path(directory),report,'default-branch')
+                self.assertEqual(expected,result['passed'],result)
+                if not expected:
+                    failure='unresolved-default-membership' if not resolved else 'incorrect-default-sample'
+                    self.assertIn(failure,result['failures'])
+
+
+    def test_scenario_prompt_selects_default_branch_without_changing_main_cases(self):
+        import shlex
+        from auto_devops_cli_fixture import DEFAULT_BRANCH_HISTORY
+        from auto_devops_eval import evaluate
+        for scenario,selection in (('default-branch','default branch (CLI display name <default>)'),('classic','branch main')):
+            with self.subTest(scenario=scenario),tempfile.TemporaryDirectory() as directory:
+                workspace=Path(directory)
+                report=json.loads((EVALS/'tests/fixtures/auto-devops-reports/partial-opportunity.json').read_text())
+                commands=[item['sourceCommand'] for item in report['evidence']]
+                if scenario=='default-branch':
+                    report['target']['branch']='<default>'
+                    commands+=[shlex.join(('teamcity','api',DEFAULT_BRANCH_HISTORY))]
+                agent=workspace/'prompt-agent.py'
+                agent.write_text('import os,shlex,subprocess,sys\n'
+                    'prompt=sys.stdin.read()\n'+f'assert {selection!r} in prompt,prompt\n'
+                    +f'for command in {commands!r}:\n'
+                    +"    subprocess.run([os.environ['AUTO_DEVOPS_CLI'],*shlex.split(command)[1:]],check=True)\n"
+                    +f"print({json.dumps({'type':'result','is_error':False,'structured_output':{'report':report}})!r})\n")
+                result=evaluate(workspace,agent_command=[sys.executable,str(agent)],scenario=scenario)
                 self.assertTrue(result['passed'],result)

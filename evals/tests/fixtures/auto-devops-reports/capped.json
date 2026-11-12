@@ -108,6 +108,38 @@
       "sourceCommand": "teamcity job step list Example_Package --json",
       "runIds": [],
       "observation": "Current Package has only ./package.sh; no removable padding step is shown."
+    },
+    {
+      "id": "allocation-100",
+      "sourceCommand": "teamcity api '/app/rest/builds/id:100?fields=id,composite,agent(id,typeId)'",
+      "runIds": [
+        100
+      ],
+      "observation": "Metadata says composite=false and provides an agent typeId descriptor."
+    },
+    {
+      "id": "allocation-101",
+      "sourceCommand": "teamcity api '/app/rest/builds/id:101?fields=id,composite,agent(id,typeId)'",
+      "runIds": [
+        101
+      ],
+      "observation": "Metadata says composite=false and provides an agent typeId descriptor."
+    },
+    {
+      "id": "allocation-102",
+      "sourceCommand": "teamcity api '/app/rest/builds/id:102?fields=id,composite,agent(id,typeId)'",
+      "runIds": [
+        102
+      ],
+      "observation": "Metadata says composite=false and provides an agent typeId descriptor."
+    },
+    {
+      "id": "allocation-103",
+      "sourceCommand": "teamcity api '/app/rest/builds/id:103?fields=id,composite,agent(id,typeId)'",
+      "runIds": [
+        103
+      ],
+      "observation": "Metadata says composite=false and provides an agent typeId descriptor."
     }
   ],
   "recommendations": [],
@@ -124,7 +156,11 @@
       "root",
       "build",
       "tests",
-      "package"
+      "package",
+      "allocation-100",
+      "allocation-101",
+      "allocation-102",
+      "allocation-103"
     ],
     "method": "Sum finish-start per distinct run ID once; overlapping execution is summed, not treated as elapsed feedback or billed time.",
     "roots": [

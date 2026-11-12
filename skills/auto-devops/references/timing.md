@@ -2,24 +2,24 @@
 
 Use successful sampled roots for comparisons. Include `timing` when timestamps and a
 selected run graph support it; use null plus an explanation for unavailable quantities.
-Each raw evidence record describes only its one command's output. Put derived totals in
-`timing`, with every supporting run-view and graph evidence ID, rather than attributing
-timestamp calculations to tree output. Comparisons, slack, and critical-path conclusions go
-in derived reasoning with all input citations, never in a single-command raw observation.
-Recommendations cite all inputs to their reasoning.
+Raw evidence describes only its command's output; derived timing belongs in `timing`.
+Cite timestamp, graph, and allocation inputs. Keep calculations, slack and critical-path
+reasoning separate from raw observations; recommendations cite every input.
 
 ## Calculate before explaining
 
 Run a local deterministic calculator for timestamp subtraction and aggregation; do not
-calculate from clock strings mentally. Keep the inputs/results available for review. If
-calculation is unavailable, report the value as unknown. Calculate each run's finish-start
-from raw timestamps before summing: a sum helper does not establish its input durations.
-Collect one timestamp record per distinct run ID and reject inconsistent duplicates
-rather than averaging them.
+calculate mentally. Keep inputs/results for review; unavailable calculation means unknown.
+Calculate each finish-start interval before summing; a sum alone does not establish inputs.
+Collect one record per run ID and reject inconsistent duplicates.
 
-- Per-run execution is finish minus start. Sum it once per distinct ID across sampled
-  chains, including a shared dependency only once: `timing.aggregateExecutionSeconds`.
-  Parallel execution is summed too; that total can exceed elapsed feedback time.
+- Classify each run using collected composite/agent metadata before aggregating execution.
+  Sum finish-start once per confirmed agent-backed ID, including shared runs only once:
+  `timing.aggregateExecutionSeconds`. Composites orchestrate work and never count as
+  occupied-agent execution; their active intervals can overlap dependency execution.
+  Unknown allocation means unknown total, or an explicitly scoped supported subset with
+  omitted IDs/reasons in `method` and gaps. Never assume zero or hide exclusions.
+  Parallel agent execution is summed; reused historical work is not marginal new cost.
 - Per-root feedback is root finish minus root queued time, recorded in
   `feedbackElapsedSeconds`. This anchor excludes earlier work from reused dependencies;
   it does not claim to measure a user's time before TeamCity queued the root.
@@ -31,12 +31,13 @@ rather than averaging them.
   or the graph is uncertain, explain the limit or leave it null.
 - Dependency readiness describes observed chronology; it does not prove a queue cause.
   Leave `agentQueueSeconds` null unless separate evidence isolates agent waiting. The
-  remainder after dependencies finish can include other constraints, not just agents.
+  remainder can include other constraints. Composite activity overlaps dependencies, so
+  subtracting readiness from queued-to-start does not isolate agent waiting.
 
-`timing.distinctRunIds` names the deduplicated set used in the aggregate. Its `evidenceIds`
-cover every timestamp and graph input. Each `roots` row identifies its root, cites all
-inputs to that row, and explains the anchor and uncertainty. `method` explains the sum,
-shared-run handling, and missing data. Do not mix per-root feedback with a sample total.
+`sample.runIds` retains composites and unknowns; `timing.distinctRunIds` names only the
+agent-backed aggregate scope. Cite allocation evidence for inclusions/exclusions in timing.
+Composite roots still contribute feedback/readiness observations. Each root row cites its
+inputs and anchor; `method` states scope, deduplication and gaps. Keep root/sample totals distinct.
 
 ## Rank changes, then state estimates
 
