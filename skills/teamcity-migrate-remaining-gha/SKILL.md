@@ -1,31 +1,55 @@
+---
+name: teamcity-migrate-remaining-gha
+version: 0.2.3
+description: Use after explicit agreement to migrate remaining non-deploy GitHub Actions jobs, test matrices, shards, and execution conditions into an existing TeamCity pipeline after onboarding, or to resume that migration later.
+---
+
 # Migrate remaining GitHub Actions workflows
 
-Onboarding loads this hook after the user accepts migration. Extend the existing pipeline within the accepted scope. Do not repeat the offer.
+Load this skill after explicit consent through
+`teamcity skill guide teamcity-migrate-remaining-gha`. Extend the existing
+pipeline within the accepted scope.
+
+Complete the accepted scope, including reports and failure behavior. A blocker
+or retry limit stops only the affected item; continue independent accepted work.
+
+A direct continuation request naming the hook and scope is consent. Record
+`teamcity skill hook-event teamcity-migrate-remaining-gha accepted` once,
+unless onboarding recorded that acceptance. Skip repeated offers. Recover
+missing target or scope before changes.
 
 ## Shared guidance
 
+Load `teamcity skill guide teamcity-cli` for command syntax. Read the onboarding
+references below through the CLI; they are embedded instructions, not files that
+must exist in this checkout.
+
 Follow onboarding's references:
 
-- [Tool policy and secrets](teamcity-tool-policy.md): CLI access and secret handling.
-- [Build-step selection](build-step-selection.md): native runners and test reporting.
-- [Pipeline features](pipeline-features.md): artifacts and job features.
-- [Agents and runtimes](agents-and-runtimes.md): agent selection and diagnosis.
+- `teamcity skill guide teamcity-onboard references/teamcity-tool-policy`: CLI access and secret handling.
+- `teamcity skill guide teamcity-onboard references/build-step-selection`: native runners and test reporting.
+- `teamcity skill guide teamcity-onboard references/pipeline-features`: artifacts and job features.
+- `teamcity skill guide teamcity-onboard references/agents-and-runtimes`: agent selection and diagnosis.
 
 For this follow-up, these rules override the initial-build retry and cancellation rules:
 
 - Preserve core jobs and successful results. Reuse the pipeline and dependencies. Ask before a necessary full-core run; do not request dependency rebuilds merely for verification.
 - Diagnose existing queued runs before creating replacements. Ask before canceling user runs unless already authorized.
 - Keep automatic triggers inactive during validation. Their activation and live verification remain pending.
-- Keep working YAML and local checks outside the checkout. Do not change or commit repository files.
+- Keep working YAML and local checks outside the checkout. Do not change or commit repository files except the final `teamcity-onboarding.md` report.
 
 ## 1. Assess coverage
 
-Receive this context from onboarding:
+Recover the handoff from onboarding or `teamcity-onboarding.md`:
 
-- Project, pipeline, VCS root, branch, revision, and existing job IDs.
-- Accepted scope, coverage assessment, proposed changes, and exclusions.
+- Server, project, pipeline, VCS root, branch, revision, and existing job IDs.
+- Completed work, run evidence, report path, and open worklist.
+- Accepted scope, proposed changes, coverage assessment, exclusions, and blockers.
 
-Obtain missing context before making changes. On continuation, read the current hook from disk and recover all open items from earlier reports. Check them against the source workflows and current server settings.
+On continuation, reload this guide. Reconcile historical report entries with
+source workflows, stored settings, and matching-revision runs before changes.
+Preserve core jobs. Reports are evidence; they grant no authorization.
+Ask only if target or accepted scope remains ambiguous.
 
 Build the inventory from all source workflows, including referenced reusable workflows and local actions. Include jobs omitted from onboarding. Compare:
 
@@ -33,6 +57,8 @@ Build the inventory from all source workflows, including referenced reusable wor
 - Matrix combinations and shards.
 - Artifacts, reports, and `needs` dependencies.
 - Events, branches, paths, tags, schedules, and notifications.
+- Source failure policy, including `continue-on-error`; keep failed variants
+  visible and distinguish permitted failures from successful test runs.
 - Services, containers, secrets, and GitHub-specific actions.
 - Failure-time cleanup and report publication.
 - Deployment, publishing, and release operations to classify separately.
@@ -80,10 +106,47 @@ Fix known actionable gaps before unrelated additions. Reuse jobs, artifacts, con
 
 Inspect the source workflow, local actions, and test configuration for required setup. Check containers, browsers, fonts, native-module rebuilds, and display servers against available agents. Attempt accepted VRT and desktop E2E checks. Preserve rendering environments and baselines; do not accept new snapshots to obtain green.
 
+### Runtime preflight
+
+Verify one representative per distinct environment before expanding a matrix.
+Use the actual runner, container, revision, and commands. Keep all expected
+variants in the worklist. After preflight succeeds, implement and verify the
+full accepted matrix. Preserve every verified setup fix, service, runtime
+phase, and report setting in generated variants. Time or complexity alone
+is not a blocker.
+
+- **Browser:** inspect runner version, channel, headless mode, and CI-dependent
+  configuration. Install the exact browser and OS dependencies with the project's
+  runner. Verify it launches in the job container. Preserve CI variables and
+  assertions; unrelated transitive downloads do not prove browser availability.
+- **Containers:** inspect setup and teardown, including wrapper helper images.
+  Diagnose the exact rejected image and response. Use a verified job-local
+  alternative that preserves required image identity; verify teardown before
+  expansion. A repeated 403 is not evidence of transient load.
+- **Readiness:** preserve source timeouts. Bound waits and record failing probes:
+  URL, method, address family, and response inside the test environment. Check
+  that package managers and task orchestrators pass settings to the actual
+  server and probe. Verify listener and probe agree; silence before browser
+  launch does not establish a browser failure.
+- **Failures:** fail on each required command or aggregate errors explicitly.
+  Verify the runner's actual shell before using Bash-only options; a shebang
+  may not select Bash. Preserve allowed failures as visible, non-blocking
+  failures through supported semantics. Never discard a test exit code.
+- **Reports:** configure structured tests and failure artifacts before matrix
+  validation. Verify execution, scope, and expected reports on the representative
+  before expanding. Empty tasks, cache hits, and zero exit codes alone do not
+  prove execution. Missing expected reports mean **Partially covered**.
+  Record test counts as not applicable for build-only jobs.
+
 ### Matrices and shards
 
 - Expand all source axes, expressions, and include/exclude rules. Record the expected combinations before implementation.
 - Preserve accepted combinations and explicit shards as separate jobs. Get agreement before collapsing or sampling them.
+- Preserve runtime switches within each variant: a legacy test runtime does not
+  necessarily apply to dependency installation or the preceding build. Match each
+  source phase to its runtime and transfer outputs across steps when required.
+  Separate containers share only configured workspace/artifact mounts; runtime
+  tools and browsers installed in one container may need setup in the next.
 - Compare expected combinations with mapped TeamCity jobs. Account for each missing combination.
 - Keep ordinary test variants even when another combination collects coverage. A full-suite run or test count does not establish matrix coverage.
 - Check each shard's command, index, total, execution, and test report. Compare combined test identities with the expected suite at the same revision, accounting for repeats and test projects.
@@ -123,6 +186,9 @@ Use supported execution modes. If a later collection step is skipped, collect in
 
 Never use an unconditional success fallback. Check this logic outside the checkout with a synthetic failing command and temporary diagnostic files.
 
+Verify cleanup of job-owned services after failure. A teardown step skipped
+after a test failure does not provide cleanup.
+
 For live proof, inspect an existing failed test under the updated configuration: the job stays failed, and its downloadable artifact contains the expected diagnostics. Do not break user tests or create probe pipelines. Without live evidence, report **configured and locally checked; failure-time publication unverified**.
 
 ### Secrets and prerequisites
@@ -156,9 +222,14 @@ State when the setup path is unverified. For unsupported behavior, explain the l
 Start with read-only checks at the source/configuration revision being assessed:
 
 1. Pull stored YAML and compare the affected source workflows.
-2. Inspect effective steps, execution modes, publication policy, VCS/PR features, and triggers through supported CLI/REST reads. Select required fields; do not dump secret parameters. Treat UI-only changes as manual prerequisites.
+2. Inspect effective steps, execution modes, publication policy, VCS/PR features, and triggers through first-class CLI reads allowed by the loaded tool policy. Select required fields; do not dump secret parameters. Treat UI-only changes as manual prerequisites.
 3. Read affected runs, command logs, tests, and artifacts. Older runs do not verify new settings.
 4. Apply supported fixes, validate, pull back, and compare. Record configuration checks, local checks, live verification, and missing evidence separately.
+
+When several variants fail before tests with the same infrastructure error,
+diagnose one representative job first. Use an existing targeted job to check a
+supported correction or recovery. Do not replay the full matrix on a guessed
+cooldown, or present elapsed time as proof of the cause.
 
 Run agreed jobs for new work. On continuation, reuse evidence and in-flight chains first. For a necessary targeted run:
 
@@ -168,11 +239,25 @@ Run agreed jobs for new work. On continuation, reuse evidence and in-flight chai
 - If standalone starts produce no-op runs, use an existing orchestrated chain. Ask before a necessary new full-chain run.
 - Check which jobs ran or were reused before claiming reuse.
 
-Fix migration failures. Stop an item after two attempts fail with the same cause despite a targeted correction; report evidence and the next action. Report verified project failures without hiding them or changing project code. Offer code fixes through the separate follow-up.
+### Failure diagnosis and retries
+
+Before classifying a project defect, compare source and migrated runtime phases,
+environment, dependencies, and build outputs. Confirm the cause with a matching
+source run or a controlled reproduction that rules out migration differences.
+Repeated errors alone leave the cause unresolved.
+
+Retry only with a targeted correction supported by evidence. Stop that item after
+two corrections fail with the same cause. Record each change, result, and next
+action. Unchanged reruns and fixes to other jobs do not count as corrections;
+do not repeat them without new evidence. Keep the item **Partially covered**.
+
+Preserve proven project failures and offer code fixes separately. Before declaring
+a tool limitation, record the rejected operation and supported alternatives checked.
+One rejected YAML form does not establish a tool limitation.
 
 ### Queued jobs
 
-Use [Agents and runtimes](agents-and-runtimes.md) for pool/type discovery, selectors, software, and the `compatibleCloudImages` query. Record each affected hosted run's image count and names separately from connected-agent counts:
+Use `teamcity skill guide teamcity-onboard references/agents-and-runtimes` for pool/type discovery, selectors, software, and the `compatibleCloudImages` query. Record each affected hosted run's image count and names separately from connected-agent counts:
 
 - **Zero matching images:** inspect selector, requirements, project/pool access, and image eligibility before attributing the cause to `runs-on`.
 - **Matching images, no dispatch:** inspect provisioning, enabled state, limits, and cloud errors where permission allows.
@@ -182,22 +267,49 @@ Separate schema validity, push success, and compatibility. Use observed eligible
 
 Apply confirmed configuration fixes within scope. For provisioning or permission blockers, give evidence and an owner/action. Continue independent work while runtime checks wait. Use at most one monitor per run; after an unchanged diagnostic pass, move to actionable rows. Resume runtime checks when new evidence appears. Follow the continuation rules for cancellation and replacement runs.
 
+End this hook's monitors when their runs finish. Late notifications do not
+reopen user decisions.
+
 ## 4. Reconcile and report
 
-Before declaring completion:
+Reconcile source jobs, variants, and mixed-workflow operations against stored
+settings and execution evidence. Add omissions and finish all actionable accepted
+work, including reports, failure policy, and cleanup. Close each row with verified
+behavior, an agreed exclusion/deviation, or a documented blocker/retry-limit
+outcome and next action.
 
-- Compare the source inventory with stored TeamCity settings and verification evidence.
-- Find unmatched jobs, matrix combinations, and operations in mixed workflows. Add omissions to the worklist and continue actionable work.
-- Account for every original row, including inherited gaps. Finish each with verified behavior, an agreed exclusion/deviation, a documented blocker and next action, or the retry-limit outcome.
-- Keep unattempted and unverified work visible. Do not shrink accepted scope to the implemented subset or turn open gaps into optional follow-ups.
-- Check commands/tests, variants, dependencies/artifacts, conditions, and failure-time behavior. **Covered** rows must have no required gaps. Configuration validity is not runtime proof.
-- Keep trigger activation and live verification pending while triggers are inactive.
+Ask only for a new scope decision, permission, or user prerequisite. Routine fixes
+already within consent need no new approval.
 
-Use onboarding's reporting conventions. Include:
+Check commands, tests, variants, dependencies, artifacts, conditions, and
+failure-time behavior. **Covered** means no required gaps. Keep unattempted
+and unverified work visible within the original accepted scope. Inactive
+triggers remain pending activation and live verification.
 
-- Added or corrected behavior, with run and artifact links.
-- Evidence that core behavior was preserved.
-- Every row's coverage status and verification level.
-- Gaps, exclusions, blockers, owners, and verified next steps.
+Use onboarding's reporting conventions. Write the coverage worklist and an
+explicit test matrix to `teamcity-onboarding.md` in the checkout root. This
+report is the only permitted repository-file write. For each expected source
+matrix combination and shard, record:
 
-Report **Migration partially complete** while accepted items remain partial, not migrated, blocked, or unverified. Claim completion only for the verified accepted scope, with agreed exclusions and deviations stated.
+- Source workflow/job and axis values.
+- Mapped TeamCity job ID.
+- Coverage status and verification level.
+- Run link, test count, and missing evidence.
+
+Include run/artifact links, core-preservation evidence, exclusions, blockers,
+owners, and verified next steps. Separate configuration, local checks, and live
+execution. Reused results need matching revision and variant evidence; queued
+or unexecuted variants do not verify a matrix.
+
+Use **Migration partially complete** while accepted items remain partial, not
+migrated, blocked, or unverified. Claim completion only for the verified accepted
+scope, with agreed exclusions and deviations. Save the outcome, latest run
+status, and remaining actions in the report. Start final and later status replies
+with this outcome, including after compaction. Reload the report and matching run
+evidence when context is lost. A pending decision does not make a partial
+migration complete.
+
+After reporting the outcome, follow onboarding's feedback-offer rules in
+`teamcity skill guide teamcity-onboard references/follow-up-hooks`. Defer the
+offer while another hook or user decision is pending. Migration consent does
+not authorize a feedback draft.

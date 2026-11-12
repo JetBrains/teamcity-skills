@@ -54,7 +54,11 @@
   `corepack enable` provides the version pinned in `package.json`. Set the
   job parameter `env.COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'`, or Corepack's
   download notice on stderr becomes the job's failure text and hides the real
-  error.
+  error. The Node runner may invoke `shell-script` through `/bin/sh` even
+  when it starts with a Bash shebang. Use portable `set -eu` for required
+  commands, or invoke Bash explicitly when needed; verify the actual shell
+  before using `pipefail`, arrays, or `[[ ]]`. A successful last command
+  must not hide an earlier build or test failure.
 - .NET: the `dotnet-*` runners, one per command: `dotnet-build`,
   `dotnet-test`, `dotnet-publish`. `dotnet-test` runs VSTest. A project on
   Microsoft.Testing.Platform needs a script step that writes TRX or JUnit
