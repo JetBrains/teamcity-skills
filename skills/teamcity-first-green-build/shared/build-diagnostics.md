@@ -80,9 +80,9 @@ Then:
 
 1. List enabled, authorized agents and applicable cloud images or hosted
    selectors.
-2. Query the job against candidate agents so TeamCity reports unmet
-   requirements, missing versions, pool restrictions, or unresolved
-   parameters.
+2. Read `teamcity run view <job-run-id> --json`; `.compatibility` reports
+   each agent's unmet requirements, missing versions, pool restrictions, or
+   unresolved parameters.
 3. Pull the server-stored Pipeline YAML and verify that every `%name%`
    substitution is declared or inherited.
 

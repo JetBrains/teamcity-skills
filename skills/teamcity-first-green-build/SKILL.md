@@ -1,6 +1,6 @@
 ---
 name: teamcity-first-green-build
-version: 2.0.3
+version: 2.0.4
 description: Use when creating, validating, or updating TeamCity CI for a repository and driving it through its first successful build.
 ---
 
@@ -15,7 +15,7 @@ For an explicit configuration-only or no-build request:
 
 - create or update the pipeline;
 - validate and read back its saved configuration; and
-- query agent inventory and job compatibility once.
+- query agent inventory once and compare each job's requirements with it.
 
 Stop after these checks. A required query that is unavailable or denied is a
 blocker.
