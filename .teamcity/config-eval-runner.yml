@@ -2,9 +2,9 @@ name: Run configuration eval
 # Runs lightweight configuration and queue-diagnosis evals without compiling a
 # target project. Cheap enough to run per commit and across many repositories,
 # unlike a green-build case.
-# In TeamCity UI, add the Claude build feature and select a compatible AI
-# provider connection. The feature provides `claude` and injects short-lived
-# authentication for this build; no agent token belongs in YAML.
+# The Claude build feature provides `claude` and injects short-lived
+# authentication for this build. Its connection ID is a project parameter,
+# not committed to this repository.
 #
 # Parameters set at trigger time:
 #   case            path to the case JSON
@@ -15,6 +15,8 @@ name: Run configuration eval
 #                       parameter; never add its value to this file.
 #   env.EVAL_MCP_LOCAL_PROBE true only for the mcp-only transport diagnostic.
 #                            It adds a token-free local stdio ping server.
+import-parameters:
+  - eval.claude.connection.id
 parameters:
   case: evals/pipeline-configuration/cases/cmp-unit-converter-targets.json
   env.EVAL_PIPELINES: ""
@@ -49,9 +51,9 @@ jobs:
           "C:\Program Files\Git\bin\bash.exe" evals/run-eval-case.sh "%case%"
           @if errorlevel 1 exit /b 1
           @exit /b 0
-    # Configure the Claude feature with this installation's compatible AI
-    # provider connection in TeamCity. Its ID is server-local and deliberately
-    # omitted from this portable definition.
+    features:
+      - type: claude
+        connection-id: "%eval.claude.connection.id%"
   publish_eval_report:
     name: Publish evaluation report
     runs-on: self-hosted
