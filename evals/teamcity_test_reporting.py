@@ -14,6 +14,11 @@ def safe_check_result(check: dict) -> dict:
                 or isinstance(value, str) and re.fullmatch(
                     r"(?:SUCCESS|FAILURE|ERROR|UNKNOWN|CANCELED|none|changed|not-evidenced|\d{1,3}\+?)", value)):
             safe[field] = value
+    missing = check.get("missing")
+    # Contract entries the check did not find: names and patterns from the case file.
+    if (isinstance(missing, list) and missing and len(missing) <= 20
+            and all(isinstance(item, str) and 0 < len(item) <= 200 for item in missing)):
+        safe["missing"] = list(missing)
     return safe
 
 

@@ -192,7 +192,14 @@ def jdk_evidence(properties, jdk, jobs=None, jdk_match="exact"):
             if isinstance(home, str) and home.strip():
                 # A runner's explicit JDK overrides the job environment.
                 home = resolve_jdk_home(home, job.get("parameters"), job.get("environment"))
-                choices.append([jdk_home_major(home)])
+                major = jdk_home_major(home)
+                step_image = step_properties.get("docker-image", "")
+                if (major is None and "%" not in home and isinstance(step_image, str)
+                        and re.search(r"(?i)java|jdk|openjdk|temurin", step_image)):
+                    # A literal, unversioned home such as /opt/java/openjdk inside
+                    # a JDK image is that image's JDK.
+                    major = path_major(step_image) or java_major(step_image.rsplit(":", 1)[-1])
+                choices.append([major])
                 runner_selected = True
             else:
                 # Preserve the existing declaration check for jobs without a

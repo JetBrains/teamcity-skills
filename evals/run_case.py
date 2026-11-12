@@ -629,14 +629,14 @@ class TeamCity:
                                 step["properties"][field] = resolve_maven_arguments(
                                     step["properties"][field], parameters, environment)
                 # Pipeline YAML permits the short string form as well as an
-                # object with an explicit ``publish-artifact`` flag. A string
-                # is itself an artifact rule, so it must not be treated as a
-                # mapping by the grader.
+                # object with an optional ``publish-artifact`` flag. A string
+                # is itself an artifact rule, and a bare ``path`` object is the
+                # same declaration; only an explicit ``false`` opts out.
                 published = [
                     entry if isinstance(entry, str) else entry.get("path", "")
                     for entry in (job.get("files-publication") or [])
                     if isinstance(entry, str)
-                    or (isinstance(entry, dict) and entry.get("publish-artifact"))
+                    or (isinstance(entry, dict) and entry.get("publish-artifact", True) is not False)
                 ]
                 runs_on = job.get("runs-on")
                 requirements = [str(runs_on)] if runs_on else []
@@ -1177,6 +1177,7 @@ def grade_configuration(case: dict, observed: dict) -> dict:
         checks["toolUse"] = {
             "expected": True,
             "observed": not unmet and not used,
+            "missing": [*unmet, *(f"forbidden: {pattern}" for pattern in used)],
             "detail": (f"never called {unmet}; " if unmet else "")
                       + (f"called forbidden {used}; " if used else "")
                       + f"{len(calls)} call(s) recorded",
@@ -1196,13 +1197,18 @@ def grade_configuration(case: dict, observed: dict) -> dict:
 TEAMCITY_COMMAND = r"\bteamcity(?:\.cmd)?\s+"
 STATUS_CALL = re.compile(TEAMCITY_COMMAND + r"(?:run\s+view|queue\s+list)\b", re.I)
 WAIT_CALL = re.compile(TEAMCITY_COMMAND + r"run\s+watch\b|\bsleep\s+\d+", re.I)
+# A queued run's `run view` shows the verdict too (CLI 1.6+), but only a
+# dedicated query proves the agent stepped out of polling into diagnosis.
+DEDICATED_INCOMPATIBILITY_CALL = re.compile(
+    TEAMCITY_COMMAND + r"(?:agent\s+jobs\b[^\n]*--incompatible\b|job\s+view\b)", re.I
+)
 DIAGNOSTIC_CALLS = {
     "agent-inventory": re.compile(TEAMCITY_COMMAND + r"agent\s+list\b", re.I),
     "agent-runtime-capabilities": re.compile(
         TEAMCITY_COMMAND + r"agent\s+view\b", re.I
     ),
     "job-incompatibility-reasons": re.compile(
-        TEAMCITY_COMMAND + r"(?:agent\s+jobs\b[^\n]*--incompatible\b|job\s+view\b)", re.I
+        TEAMCITY_COMMAND + r"(?:agent\s+jobs\b[^\n]*--incompatible\b|job\s+view\b|run\s+view\b)", re.I
     ),
 }
 CONCLUSION_PATTERNS = {
@@ -1274,7 +1280,7 @@ def grade_queue_stall(case: dict, observed: dict) -> dict:
     first_compatibility = min(
         (i for i, call in enumerate(calls)
          if DIAGNOSTIC_CALLS["agent-inventory"].search(call)
-         or DIAGNOSTIC_CALLS["job-incompatibility-reasons"].search(call)),
+         or DEDICATED_INCOMPATIBILITY_CALL.search(call)),
         default=None,
     )
     status_before = (
@@ -1312,6 +1318,7 @@ def grade_queue_stall(case: dict, observed: dict) -> dict:
     checks["requiredDiagnostics"] = {
         "expected": True,
         "observed": not missing_diagnostics,
+        "missing": missing_diagnostics,
         "detail": (
             f"missing: {missing_diagnostics}" if missing_diagnostics
             else "all required diagnostics inspected"
@@ -1341,6 +1348,7 @@ def grade_queue_stall(case: dict, observed: dict) -> dict:
     checks["diagnosisReported"] = {
         "expected": True,
         "observed": not missing_conclusions,
+        "missing": missing_conclusions,
         "detail": (
             f"missing conclusion categories: {missing_conclusions}"
             if missing_conclusions else "stable incompatibility blocker reported"
