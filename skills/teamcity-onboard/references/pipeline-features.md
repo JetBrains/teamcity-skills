@@ -19,7 +19,13 @@ in the job, and declare in the report that TeamCity shows no count for it.
 ## Artifacts
 
 `files-publication` for the packaged output: what the workflow uploaded, or
-the JAR or package the build produces.
+the JAR or package the build produces. Publish every archive the build
+makes, sources and javadoc jars included (`target/*.jar`,
+`build/libs/*.jar`), and the raw JUnit XML of every test job
+(`target/surefire-reports/TEST-*.xml`, `target/failsafe-reports/TEST-*.xml`,
+`build/test-results/test/*.xml`). The XML is what a reviewer downloads; the
+Tests tab alone is not a deliverable. Do not skip a sources or javadoc jar
+the workflow builds.
 
 Publishing (`publish-artifact: true`) puts the files under `publish/`.
 - A path that matches a directory fails the publish and turns the job red
