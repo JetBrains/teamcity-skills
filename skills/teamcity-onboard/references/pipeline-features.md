@@ -19,7 +19,13 @@ in the job, and declare in the report that TeamCity shows no count for it.
 ## Artifacts
 
 `files-publication` for the packaged output: what the workflow uploaded, or
-the JAR or package the build produces.
+the JAR or package the build produces. Publish every archive the build
+makes, sources and javadoc jars included (`target/*.jar`,
+`build/libs/*.jar`), and the raw JUnit XML of every test job
+(`target/surefire-reports/TEST-*.xml`, `target/failsafe-reports/TEST-*.xml`,
+`build/test-results/test/*.xml`). The XML is what a reviewer downloads; the
+Tests tab alone is not a deliverable. Do not skip a sources or javadoc jar
+the workflow builds.
 
 Publishing (`publish-artifact: true`) puts the files under `publish/`.
 - A path that matches a directory fails the publish and turns the job red
@@ -72,11 +78,15 @@ is a directory, point the tab into the zip:
 - No YAML anchors (`&`, `*`). `pipeline validate` accepts them, but the push
   fails with a misleading error, such as
   `Field type is required for a step in job '<job>'`.
-- Run `teamcity pipeline validate` on changed YAML, then push. Validate
-  rejects hosted `runs-on` names the server accepts and misses what the
-  server rejects. A push error is the real validation, but a passed push
-  proves little: check `runs-on` as
-  [Agents and runtimes](agents-and-runtimes.md) describes.
+- Run `teamcity pipeline validate` on changed YAML and fix every error
+  before the push. The one error to tolerate is a `runs-on` string naming a
+  hosted type the server's pools list, which the schema's enum lacks. A
+  `self-hosted` entry is `arch`, `os-family`, `os-version`, `cpu`, `ram`, or
+  an object with `requirement`, `parameter`, `name`, and `value`; the
+  shorthand `- docker.server.osType: linux` pushes and even builds, but is
+  invalid. `pipeline push` does not validate, so a passed push proves
+  little: check `runs-on` as [Agents and runtimes](agents-and-runtimes.md)
+  describes.
 
 ## Shape
 

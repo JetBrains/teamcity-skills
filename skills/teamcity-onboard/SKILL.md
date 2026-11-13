@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.5.0
+version: 0.5.1
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first green build, test, and package pipeline with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
@@ -124,13 +124,18 @@ Read [Agents and runtimes](references/agents-and-runtimes.md) before you
 write YAML. Take `runs-on`, the runtime (JDK, .NET SDK, Node, Python), and
 the CPU architecture from the agent type's parameters. Always pin the
 runtime version. Zero compatible agent types is a blocker: fix it before you
-queue.
+queue. A `self-hosted` entry is `arch`, `os-family`, `os-version`, `cpu`,
+`ram`, or an object with `requirement`, `parameter`, `name`, and `value`;
+a bare `- <parameter>: <value>` line is invalid even though `push` accepts it.
 
 ## 3. Write the pipeline
 
 Read [Build-step selection](references/build-step-selection.md) and
 [Pipeline features](references/pipeline-features.md). Write the YAML outside
-the checkout.
+the checkout. Before every `pipeline create` or `pipeline push`, run
+`teamcity pipeline validate <yaml>` and fix every error it reports. The one
+error to tolerate is a `runs-on` string naming a hosted type the pools list.
+`push` does not validate: a pushed YAML can build and still be invalid.
 
 ## 4. Create the pipeline
 

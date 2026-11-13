@@ -61,25 +61,45 @@ availability, runner types, Docker, parameters, credentials, and VCS change
 collection. Pull saved Pipeline YAML and verify that each `%name%` substitution
 is declared or inherited.
 
-For a Pipeline job, use TeamCity's compatibility result. With the CLI:
+TeamCity reports compatibility only for a queued run. Before queueing,
+compare each job's requirement keys and `%env.*%` parameters with the agent
+inventory:
 
 ```bash
 TEAMCITY_URL=<server> teamcity pipeline schema --refresh
 TEAMCITY_URL=<server> teamcity agent list --connected --enabled --authorized \
   --limit 0 --json=id,name,typeId,pool.id,pool.name
-TEAMCITY_URL=<server> teamcity agent jobs <agent-id> --incompatible --json
 ```
 
-When compatibility access is denied, record it as unverified. Use another
-permitted machine-readable operation. If none exists, use
+Right after queueing, read the server's verdict with
+`TEAMCITY_URL=<server> teamcity run view <job-run-id> --json` (CLI 1.6 or
+later): `.compatibility` lists every compatible and incompatible agent and
+cloud image with the unmet requirement. Do not call
+`teamcity agent jobs <agent-id> --incompatible` per agent; a large server
+returns thousands of entries per agent.
+
+When the inventory query is denied, record compatibility as unverified. Use
+another permitted machine-readable operation. If none exists, use
 [Manual prerequisites](../shared/manual-prerequisites.md).
 
-Choose `runs-on` from target-server evidence. Use an observed stable
-self-hosted capability or a server-provided hosted selector. Never use a
-transient VM name or a selector copied from another server.
+Choose `runs-on` from target-server evidence. Start with the bare
+`runs-on: self-hosted`; the CLI's `agent list` and `agent view` show no
+agent parameters, so the first queued run is the only compatibility check.
+Add a requirement only when a build failed without it. A hosted type name
+such as `Linux-Medium` dispatches only on servers with JetBrains-hosted
+agents (`teamcity.agent.jbHosted`); `os-family` dispatches only on agents
+that publish `teamcity.agent.jvm.os.family`, and many publish only
+`teamcity.agent.jvm.os.name`. Never use a transient VM name or a selector
+copied from another server. A `self-hosted` entry is `arch`, `os-family`,
+`os-version`, `cpu`, `ram`, or an object with `requirement`, `parameter`,
+`name`, and `value`; the shorthand `- teamcity.agent.jvm.os.name: Linux`
+passes `pipeline push` but fails `pipeline validate`. A queued run with zero
+compatible agents is diagnosed in
+[Build diagnostics](../shared/build-diagnostics.md).
 
 Check each job's requirements against compatible agents. If none match, report
 the missing capability and the evidence needed before retrying.
 
-For configuration-only work, stop after the saved-YAML audit, one inventory
-query, and one compatibility query. A missing or denied query is a blocker.
+For configuration-only work, stop after the saved-YAML audit and one
+inventory query; nothing is queued, so compare requirements with the
+inventory yourself. A missing or denied inventory query is a blocker.
