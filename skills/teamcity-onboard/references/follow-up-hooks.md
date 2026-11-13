@@ -25,7 +25,7 @@ red-build → migrate → feedback → speed-up → deploy. Red-build applies to
 proven project failure; other hooks require green. Only implemented, bundled
 hooks get executable map rows; each hook's ticket adds its own condition and
 skill. Reserve the order without fabricating instructions for future hooks.
-Present the core report and any personal note before the hook question. Offer one
+Present the core report and any feedback note before the hook question. Offer one
 matching hook with its evidence, proposed changes, and scope. Stop
 for a response. Explicit consent names this hook and scope; an initial
 onboarding request, guide read, or skill installation does not grant consent.
@@ -85,7 +85,7 @@ Run in Claude Code and Junie with an isolated, logged CLI fixture:
 - Yes: record acceptance, load the complete guide, then start within scope.
 - No: record refusal; no hook read/change; show a concrete return request.
 - No answer: no response event, hook read, or action.
-- Final report: personal note before the hook question, with no feedback
+- Final report: feedback note before the hook question, with no feedback
   question while waiting. After refusal or completed accepted hooks, a separate
   feedback offer is allowed; hook consent alone produces no draft.
 - Fresh-session return: reload guide; recover report and current configuration
