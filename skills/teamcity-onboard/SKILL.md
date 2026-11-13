@@ -132,7 +132,10 @@ a bare `- <parameter>: <value>` line is invalid even though `push` accepts it.
 
 Read [Build-step selection](references/build-step-selection.md) and
 [Pipeline features](references/pipeline-features.md). Write the YAML outside
-the checkout.
+the checkout. Before every `pipeline create` or `pipeline push`, run
+`teamcity pipeline validate <yaml>` and fix every error it reports. The one
+error to tolerate is a `runs-on` string naming a hosted type the pools list.
+`push` does not validate: a pushed YAML can build and still be invalid.
 
 ## 4. Create the pipeline
 

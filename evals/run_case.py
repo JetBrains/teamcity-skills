@@ -1724,6 +1724,9 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
             allowed_tools.append("mcp__probe__*")
     if allowed_tools:
         command += " --allowedTools " + " ".join(shlex.quote(t) for t in allowed_tools)
+    # The skills keep working YAML outside the checkout; without this, every
+    # Read/Write of such a file needs an approval the non-interactive run cannot give.
+    command += " --add-dir " + shlex.quote(tempfile.gettempdir())
     if transport_contract:
         command += " --append-system-prompt " + shlex.quote(transport_contract)
     if mcp_config:
@@ -1871,7 +1874,9 @@ def denied_tools(trace: pathlib.Path) -> list:
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
-        for block in (event.get("message") or {}).get("content") or []:
+        message = event.get("message") if isinstance(event, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        for block in content if isinstance(content, list) else []:
             if not isinstance(block, dict):
                 continue
             if (block.get("type") == "tool_use" and isinstance(block.get("id"), str)
