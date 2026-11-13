@@ -40,13 +40,22 @@ Firefox, xvfb.
 - Start from the bare selector the server is known to dispatch. Add one
   requirement only after a build failed without it. Each `os-family`,
   `arch`, Docker, or custom key risks zero matches.
-- Take the name from the pools. The schema's `runs-on` enum does not match
-  the server: the server also runs every type name from the pools, such as
-  `Ubuntu-24.04-Large-Arm64`, and the form
-  `jetbrains-hosted: [capacity, arch, os-family, os-version]`, which
-  `pipeline validate` rejects. The enum names `Mac-Medium`, which matched no
-  image. `pipeline push` accepts any name, so it proves nothing. GitHub
-  labels and selectors from another server are invalid.
+- A hosted type name such as `Linux-Medium` or `Mac-Medium` compiles to
+  `system.agent.name starts with <name>` plus
+  `teamcity.agent.jbHosted equals true`. It dispatches only when the
+  project's pools contain a JetBrains-hosted type, one whose parameters
+  include `teamcity.agent.jbHosted`. On a server with only self-hosted
+  agents every hosted name matches nothing. Take the name from the pools,
+  never from the schema's enum or from another server: the enum names
+  `Mac-Medium` on servers that have no such image, and the server runs
+  names the enum lacks, such as `Ubuntu-24.04-Large-Arm64`. `pipeline push`
+  accepts any name, so it proves nothing.
+- `os-family: Linux` compiles to `teamcity.agent.jvm.os.family equals
+  Linux`. Use it only when that parameter is in the type's parameters; many
+  agents publish only `teamcity.agent.jvm.os.name`. For such agents write
+  the object form,
+  `- requirement: equals / parameter: teamcity.agent.jvm.os.name / value: Linux / name: Linux agent`,
+  or `arch: <teamcity.agent.jvm.os.arch value>`.
 - `self-hosted` takes only `arch`, `os-family`, `os-version`, `cpu`, `ram`,
   or an object with `requirement`, `parameter`, `name`, and `value`. The
   shorthand `- teamcity.agent.jvm.os.name: Linux` passes `pipeline push` and
@@ -140,10 +149,27 @@ The server's own verdict comes with the first queued run. Right after
 queueing, read each job run with `teamcity run view <job-run-id>`: it prints
 the wait reason, the compatible agents and cloud images, and the
 incompatible ones grouped by pool with the unmet requirement. `--json` lists
-every entry under `compatibility` (CLI 1.6 or later). Zero compatible
-entries is a wrong `runs-on` or a key no agent has: fix it now. The wait
-reason "There are no idle compatible agents" is the same for 0 matches and
-for busy agents, so read the list, not the reason. Do not run
+every entry under `compatibility` (CLI 1.6 or later). The wait reason
+"There are no idle compatible agents" is the same for 0 matches and for
+busy agents, so read the list, not the reason. Do not run
 `agent jobs --incompatible` per agent: a large server returns thousands of
-build types per agent. [Verify a build](verify-build.md) says what to do
-with a job that stays queued.
+build types per agent.
+
+Zero compatible entries names the cause. Read the incompatibility reasons
+and act on the cause, not on the count:
+
+| Reason in `run view` | Cause | Action |
+| --- | --- | --- |
+| `teamcity.agent.jbHosted equals true`, `system.agent.name starts with <name>` | `runs-on` is a hosted type name; the project has no JetBrains-hosted agents | Replace the name with `self-hosted` requirements built from a type the pools list |
+| `teamcity.agent.jvm.os.family equals <os>` | `os-family`; these agents do not publish that parameter | `arch: <os.arch value>` or the object form on `teamcity.agent.jvm.os.name` |
+| `Parameter '<key>' ...` for `env.JDK_*`, `docker.*`, or another key | no agent has the key | Install the runtime in the job or run the step in a container; drop the key |
+| `Agent belongs to the pool not associated with the project` | the matching agents are in a pool the project cannot use | Not fixable in YAML: a [manual prerequisite](manual-prerequisites.md) to attach the pool |
+| `Restricted by agent policy` | the agent runs only selected configurations | Not fixable in YAML: a manual prerequisite, or drop the target and say so |
+| compatible entries > 0, all busy | capacity | Wait; change nothing |
+
+Then `teamcity run cancel <head-run-id> --yes`, push the correction, and
+queue again. Never leave a run in the queue, and never create probe
+pipelines to test selectors: the first queued run of the real pipeline is
+the probe. Delete any pipeline you created and no longer need with
+`teamcity pipeline delete <id> --yes`. [Verify a build](verify-build.md)
+says what to do with a job that stays queued.
