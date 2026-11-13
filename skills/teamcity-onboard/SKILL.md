@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.6.0
+version: 0.7.0
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first green build, test, and package pipeline with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
@@ -180,7 +180,7 @@ project failure; the others require green. Each hook ticket adds its own row.
 | 2 — migrate | Core is green; non-deploy GHA jobs, variants, or capabilities remain partial or missing | `teamcity-migrate-remaining-gha` |
 
 Only migration is bundled. Prepare the offer here; present it after the
-report and personal note in steps 7–8.
+report and feedback note in steps 7–8.
 
 ### Consent and handoff
 
@@ -247,14 +247,18 @@ are where they go next. Then:
 - the value summary that guide describes;
 - one line per TeamCity feature to look at: what the user gets and where;
 - each manual prerequisite in a short sentence, with a link;
-- follow-ups: everything the user can do next, one line each, such as
-  the full suite when a subset ran, the follow-ups from that guide, and
+- follow-ups: at most three, one line each, the most useful first, such
+  as the full suite when a subset ran, the follow-ups from that guide, and
   each part of the repository's CI left out of the pipeline. Say what each
   one needs from the user, such as signing secrets or a VCS root. Leave out
-  only what the user cannot do at all. No separate "left out" list. After
-  the first green run, the last follow-up is the
-  [personal note](#8-a-personal-note), as one list item, not a separate
-  paragraph.
+  what the user cannot do at all. No separate "left out" list. After the
+  first green run, the third follow-up is the
+  [feedback note](#8-the-feedback-note). End with one question: which
+  follow-up does the user want? While a hook question awaits an answer,
+  that question ends the report instead (step 8). When you have a tool
+  for multiple-choice questions, the follow-ups are that question instead of a list: one
+  option per follow-up, with what it does and what it needs from the
+  user in the option's description.
 
 In `teamcity-onboarding.md` in the checkout root:
 
@@ -265,36 +269,34 @@ In `teamcity-onboarding.md` in the checkout root:
 - the runs: number and ID, such as "#2 (id 45)", state, duration, and the
   correction made before each rerun;
 - what was left out, and why;
+- the follow-ups that did not fit into the three in the chat;
 - each manual prerequisite in the form
   [Manual prerequisites](references/manual-prerequisites.md) requires.
 
-## 8. A personal note
+## 8. The feedback note
 
-Once per onboarding session, as the last item of the report's follow-ups list,
-before the hook question. The first green run triggers it, on whichever path
-reached it. Write it as a note from people, not as a status line. Name the
-project and the thing in this run that took the most
-work. When nothing did, say that instead: the first run was green. The shape,
-in your own words:
+Twice per onboarding session. First after the first green run, on
+whichever path reached it: the third follow-up in the report. Then once
+more after the user has done two or three follow-ups: the third follow-up
+of that report, unless the user already picked the note. As one list item:
 
-> - Congratulations on the first green build of <project>! <The hardest
->   thing> took a few tries, but all's well that builds well. The TeamCity
->   team did their best on this onboarding, and we want to hear how it
->   went, smooth sailing or choppy waters, at anton.shelepov@jetbrains.com.
+> - The TeamCity team did their best on this onboarding and wants to hear
+>   how it went: anton.shelepov@jetbrains.com. I can draft the message.
 
-Keep one pending question at a time. Choose when to offer feedback:
+Keep one pending question at a time ([step 6](#6-assess-follow-ups)):
 
-- **Hook awaiting an answer:** ask only the hook question, then wait.
+- **Hook awaiting an answer:** the note stays in the list, but the hook
+  question ends the report, not the follow-up question. Then wait.
 - **Hook accepted:** finish the accepted hooks and report their outcomes
-  before offering feedback. Defer while another hook or user decision is pending.
+  before the follow-up question. Defer while another hook or user
+  decision is pending.
 - **Hook declined:** acknowledge the refusal and show the later request;
-  you may then offer to draft feedback in that reply.
-- **No eligible hook:** you may offer feedback with the core report.
+  the follow-up question may end that reply.
+- **No eligible hook:** the follow-up question ends the core report.
 
-When eligible, ask: "Want me to prepare a short message for the team?"
-When offering feedback later, do not repeat the personal note. A yes to a hook
-authorizes that hook only.
+A yes to a hook authorizes that hook only; draft only when the user picks
+the note.
 
-On an explicit yes to the email-draft offer, draft a short email to
-anton.shelepov@jetbrains.com: what worked, what did not, and the repository type (stack, build tool, size). The user
-sends it. Never send it yourself. On "no" or no answer, say nothing more.
+When the user picks it, draft a short email to anton.shelepov@jetbrains.com:
+what worked, what did not, and the repository type (stack, build tool,
+size). The user sends it. Never send it yourself.
