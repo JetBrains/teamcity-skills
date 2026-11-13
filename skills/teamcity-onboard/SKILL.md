@@ -1,6 +1,6 @@
 ---
 name: teamcity-onboard
-version: 0.5.4
+version: 0.5.1
 description: Use when onboarding a project to TeamCity with an authenticated `teamcity` CLI and a checked-out repository. Gets the repository to its first green build, test, and package pipeline with native runners and a live build status, runs it remotely until green, and offers follow-ups.
 ---
 
