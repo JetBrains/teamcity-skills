@@ -68,12 +68,14 @@ class CommandPolicy:
         allow_build_writes: bool,
         pipeline_ids: Callable[[], Iterable[str]],
         job_ids: Callable[[], Iterable[str]],
+        build_type_of: Optional[Callable[[str], Optional[str]]] = None,
     ):
         self.target_project = target_project
         self.checkout = checkout.resolve()
         self.allow_build_writes = allow_build_writes
         self.pipeline_ids = pipeline_ids
         self.job_ids = job_ids
+        self.build_type_of = build_type_of
 
     def _require_target_project(self, arguments: list) -> None:
         project = _flag_value(arguments, "--project", "-p")
@@ -93,6 +95,23 @@ class CommandPolicy:
         job_id = positionals[2] if len(positionals) > 2 else None
         if not job_id or job_id not in set(self.job_ids()):
             raise BridgeError("the job is outside the temporary target project")
+
+    def _require_known_run(self, arguments: list) -> None:
+        """A build belongs to the project when its build type is a pipeline, a job,
+        or a virtual build type nested under one of the project's pipelines."""
+        positionals = _positional(arguments)
+        build_id = positionals[2] if len(positionals) > 2 else None
+        if not build_id or not build_id.isdigit() or self.build_type_of is None:
+            raise BridgeError("the run is outside the temporary target project")
+        try:
+            build_type = self.build_type_of(build_id)
+        except Exception as exc:
+            raise BridgeError("could not resolve the run's job") from exc
+        pipelines = set(self.pipeline_ids())
+        if not isinstance(build_type, str) or not (
+                build_type in pipelines or build_type in set(self.job_ids())
+                or any(build_type.startswith(pipeline + "_") for pipeline in pipelines)):
+            raise BridgeError("the run is outside the temporary target project")
 
     READ_ONLY_API_PREFIXES = ("/app/rest/agentTypes", "/app/rest/agentPools")
 
@@ -139,6 +158,10 @@ class CommandPolicy:
             return
         if area == "queue" and operation == "list":
             return
+        if area == "queue" and operation == "remove":
+            # Agents must be able to take their own stalled runs out of the queue.
+            self._require_known_run(arguments)
+            return
 
         if area == "project":
             if operation in {"list", "view"}:
@@ -163,18 +186,18 @@ class CommandPolicy:
             if operation == "create":
                 self._require_target_project(arguments)
                 return
-            if operation in {"view", "pull"}:
-                self._require_known_pipeline(arguments)
-                return
-            if operation == "push":
+            if operation in {"view", "pull", "push", "delete"}:
                 self._require_known_pipeline(arguments)
                 return
 
         if area == "run":
             if operation in {"list", "view", "log", "watch", "tree", "tests", "changes", "artifacts"}:
                 return
-            if operation in {"start", "restart", "cancel"} and self.allow_build_writes:
+            if operation == "start" and self.allow_build_writes:
                 self._require_known_job(arguments)
+                return
+            if operation in {"restart", "cancel"} and self.allow_build_writes:
+                self._require_known_run(arguments)
                 return
 
         raise BridgeError(f"unsupported TeamCity CLI operation: {area} {operation}")
@@ -223,6 +246,7 @@ class TeamCityCliBridge:
         pipeline_ids: Callable[[], Iterable[str]],
         job_ids: Callable[[], Iterable[str]],
         base_env: dict,
+        build_type_of: Optional[Callable[[str], Optional[str]]] = None,
     ):
         self.cli = pathlib.Path(cli).resolve()
         self.server_url = server_url
@@ -232,7 +256,7 @@ class TeamCityCliBridge:
         self.base_env = dict(base_env)
         self.nonce = secrets.token_urlsafe(24)
         self.policy = CommandPolicy(
-            target_project, checkout, allow_build_writes, pipeline_ids, job_ids
+            target_project, checkout, allow_build_writes, pipeline_ids, job_ids, build_type_of
         )
         self.server = None
         self.thread = None

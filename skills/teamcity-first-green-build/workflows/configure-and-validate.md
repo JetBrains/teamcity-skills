@@ -82,13 +82,20 @@ When the inventory query is denied, record compatibility as unverified. Use
 another permitted machine-readable operation. If none exists, use
 [Manual prerequisites](../shared/manual-prerequisites.md).
 
-Choose `runs-on` from target-server evidence. Use an observed stable
-self-hosted capability or a server-provided hosted selector. Never use a
-transient VM name or a selector copied from another server. A `self-hosted`
-entry is `arch`, `os-family`, `os-version`, `cpu`, `ram`, or an object with
-`requirement`, `parameter`, `name`, and `value`; the shorthand
-`- teamcity.agent.jvm.os.name: Linux` passes `pipeline push` but fails
-`pipeline validate`.
+Choose `runs-on` from target-server evidence. Start with the bare
+`runs-on: self-hosted`; the CLI's `agent list` and `agent view` show no
+agent parameters, so the first queued run is the only compatibility check.
+Add a requirement only when a build failed without it. A hosted type name
+such as `Linux-Medium` dispatches only on servers with JetBrains-hosted
+agents (`teamcity.agent.jbHosted`); `os-family` dispatches only on agents
+that publish `teamcity.agent.jvm.os.family`, and many publish only
+`teamcity.agent.jvm.os.name`. Never use a transient VM name or a selector
+copied from another server. A `self-hosted` entry is `arch`, `os-family`,
+`os-version`, `cpu`, `ram`, or an object with `requirement`, `parameter`,
+`name`, and `value`; the shorthand `- teamcity.agent.jvm.os.name: Linux`
+passes `pipeline push` but fails `pipeline validate`. A queued run with zero
+compatible agents is diagnosed in
+[Build diagnostics](../shared/build-diagnostics.md).
 
 Check each job's requirements against compatible agents. If none match, report
 the missing capability and the evidence needed before retrying.

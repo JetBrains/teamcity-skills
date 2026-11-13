@@ -59,6 +59,32 @@ class TeamCityCliBridgeTest(unittest.TestCase):
                 with self.subTest(arguments=arguments), self.assertRaises(BridgeError):
                     policy.authorize(arguments, checkout)
 
+    def test_agent_can_cancel_remove_and_delete_only_inside_its_project(self):
+        build_types = {"500": "Eval_Project_Pipeline", "501": "Eval_Project_Pipeline_virtual_Test_V__1",
+                       "502": "Eval_Project_Pipeline_Job", "900": "Other_Pipeline_virtual_Build_V__1"}
+        with tempfile.TemporaryDirectory() as directory:
+            checkout = pathlib.Path(directory)
+            policy = CommandPolicy(
+                "Eval_Project", checkout, True,
+                pipeline_ids=lambda: ["Eval_Project_Pipeline"],
+                job_ids=lambda: ["Eval_Project_Pipeline_Job"],
+                build_type_of=build_types.get,
+            )
+            for arguments in (["run", "cancel", "500", "--yes"], ["run", "cancel", "501"],
+                              ["run", "restart", "502"], ["queue", "remove", "501"],
+                              ["pipeline", "delete", "Eval_Project_Pipeline", "-y"]):
+                with self.subTest(arguments=arguments):
+                    policy.authorize(arguments, checkout)
+            for arguments in (["run", "cancel", "900"], ["queue", "remove", "900"],
+                              ["queue", "remove", "123456"], ["run", "cancel", "Eval_Project_Pipeline_Job"],
+                              ["pipeline", "delete", "Other_Pipeline"]):
+                with self.subTest(arguments=arguments), self.assertRaises(BridgeError):
+                    policy.authorize(arguments, checkout)
+            # Configuration-only evals still cannot touch runs.
+            read_only = self.policy(checkout)
+            with self.assertRaises(BridgeError):
+                read_only.authorize(["run", "cancel", "500"], checkout)
+
     def test_api_allows_only_get_on_agent_inventory(self):
         with tempfile.TemporaryDirectory() as directory:
             checkout = pathlib.Path(directory)

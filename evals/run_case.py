@@ -2415,6 +2415,7 @@ def run(
                         allow_build_writes=case["kind"] == "first-green-build",
                         pipeline_ids=lambda: tc.pipeline_ids(project_id),
                         job_ids=lambda: [item["id"] for item in tc.build_types(project_id)],
+                        build_type_of=lambda build_id: tc.build(int(build_id)).get("buildTypeId"),
                         base_env=env,
                     )
                 else:

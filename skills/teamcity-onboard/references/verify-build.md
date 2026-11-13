@@ -67,10 +67,14 @@ each error. Then:
 compatible image count, as [Agents and runtimes](agents-and-runtimes.md)
 describes. A waiting head is never the cause.
 
-- 0 compatible images or unresolved parameters: one supported correction,
-  then requeue with `--rebuild-deps`. Typical causes: a `runs-on` name the
-  server has no type for, a key no agent type has, an architecture label
-  that differs from the agent's value (the workflow says `x86_64`, the agent
+- 0 compatible images or unresolved parameters: read the incompatibility
+  reasons in `run view <job-run-id>` and apply the matching row of the
+  table in [Agents and runtimes](agents-and-runtimes.md). Cancel the queued
+  head with `run cancel <id> --yes`, make the one correction the reason
+  supports, then requeue. Typical causes: a hosted `runs-on` name on a
+  server without JetBrains-hosted agents, `os-family` on agents that
+  publish only `teamcity.agent.jvm.os.name`, an architecture label that
+  differs from the agent's value (the workflow says `x86_64`, the agent
   `amd64`), a host-JDK parameter no agent has.
 - Compatible images, all busy: a capacity wait. Keep polling.
 - Ten minutes in the queue is the maximum. An added requirement or a branch
