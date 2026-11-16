@@ -113,6 +113,24 @@
         }}
       }
     },
+    "featureAssessment": {
+      "type": "array", "minItems": 1, "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["feature", "jobIds", "state", "configuration", "observedBehavior", "evidenceIds", "nextCheck"],
+        "properties": {
+          "feature": {"enum": ["build-reuse", "triggers-and-queue", "checkout", "conditional-execution", "caching", "parallel-execution", "agent-capacity"]},
+          "jobIds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/definitions/text"}},
+          "state": {"enum": ["assessed", "not-applicable", "unverified"]},
+          "configuration": {"$ref": "#/definitions/text"},
+          "observedBehavior": {"$ref": "#/definitions/text"},
+          "evidenceIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/text"}},
+          "nextCheck": {"type": ["string", "null"], "minLength": 1}
+        },
+        "if": {"properties": {"state": {"const": "unverified"}}},
+        "then": {"properties": {"nextCheck": {"$ref": "#/definitions/text"}}},
+        "else": {"properties": {"evidenceIds": {"minItems": 1}}}
+      }
+    },
     "conclusion": {"enum": ["opportunity", "none", "insufficient-evidence"]},
     "timing": {
       "type": "object", "additionalProperties": false,
@@ -186,6 +204,12 @@
     }
   },
   "allOf": [
+    {
+      "if": {"required": ["featureAssessment"], "properties": {"featureAssessment": {
+        "contains": {"properties": {"state": {"const": "unverified"}}}
+      }}},
+      "then": {"properties": {"coverage": {"properties": {"state": {"enum": ["partial", "blocked"]}}}}}
+    },
     {
       "if": {"required": ["collection"], "properties": {"collection": {"anyOf": [
         {"properties": {"usage": {"properties": {"breadthComplete": {"const": false}}}}},

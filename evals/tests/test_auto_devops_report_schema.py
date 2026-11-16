@@ -12,6 +12,41 @@ FIXTURES = Path(__file__).parent / "fixtures" / "auto-devops-reports"
 
 
 class AutoDevopsReportSchemaTest(unittest.TestCase):
+    def test_feature_assessment_keeps_configuration_and_observed_behavior_separate(self):
+        validator = Draft7Validator(json.loads(
+            (ROOT / "skills/auto-devops/references/report.schema.json").read_text()))
+        report = json.loads((FIXTURES / "partial-opportunity.json").read_text())
+        validator.validate(report)  # Existing v1 reports remain valid.
+        report["featureAssessment"] = [{
+            "feature": "caching", "jobIds": ["Example_Build"], "state": "assessed",
+            "configuration": "A shared cache is enabled for dependencies.",
+            "observedBehavior": "Three comparable runs restore the cache and avoid downloads.",
+            "evidenceIds": [report["evidence"][0]["id"]], "nextCheck": None}]
+        validator.validate(report)
+        for field, invalid in (("observedBehavior", ""), ("jobIds", []),
+                               ("jobIds", ["Example_Build", "Example_Build"]),
+                               ("evidenceIds", []), ("state", "enabled")):
+            broken = copy.deepcopy(report)
+            broken["featureAssessment"][0][field] = invalid
+            with self.subTest(field=field, invalid=invalid):
+                self.assertFalse(validator.is_valid(broken))
+
+    def test_unverified_feature_requires_follow_up_and_cannot_claim_complete_coverage(self):
+        validator = Draft7Validator(json.loads(
+            (ROOT / "skills/auto-devops/references/report.schema.json").read_text()))
+        report = json.loads((FIXTURES / "partial-opportunity.json").read_text())
+        report["featureAssessment"] = [{
+            "feature": "agent-capacity", "jobIds": ["Example_Build"], "state": "unverified",
+            "configuration": "Cloud profile access was denied.",
+            "observedBehavior": "Recorded startup waiting does not explain the profile settings.",
+            "evidenceIds": [], "nextCheck": "Inspect the matching profile with existing CLI access."}]
+        validator.validate(report)
+        broken = copy.deepcopy(report)
+        broken["featureAssessment"][0]["nextCheck"] = None
+        self.assertFalse(validator.is_valid(broken))
+        report["coverage"].update(state="complete", truncated=False, gaps=[])
+        self.assertFalse(validator.is_valid(report), "unverified relevant features leave coverage partial")
+
     def test_partial_report_is_valid_but_an_unknown_contract_version_is_not(self):
         schema = json.loads((ROOT / "skills/auto-devops/references/report.schema.json").read_text())
         Draft7Validator.check_schema(schema)

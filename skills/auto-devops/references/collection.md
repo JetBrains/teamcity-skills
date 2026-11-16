@@ -49,6 +49,11 @@ A log proves execution, not that the step still exists today. If work was alread
 record that difference; do not recommend removing it again or blame current settings for
 historical duration. Keep unverified associations explicit when revisions are unavailable.
 
+Step lists and dependency trees do not expose all optimization settings. Follow
+[feature-checks.md](feature-checks.md) for dependency options, triggers, checkout, build
+features, job settings and requirements. Assess configuration alongside observed behavior;
+an enabled feature is not proof that it saves time or cost.
+
 Denied/expired/unsupported reads are gaps. Continue useful reads within budget and existing
 authorization, without repeated retries or permission expansion; other observations remain valid.
 

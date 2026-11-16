@@ -38,6 +38,13 @@ keeping `references/`. Invoke it with a root job ID, branch, and local output fi
   When observed work/settings support no worthwhile concrete change, choose `none` and
   explain the limited scope; do not invent generic recommendations to fill the list.
   Low gains alone are not failure, and `none` does not prove universal efficiency.
+- Optional `featureAssessment` preserves older v1 reports; new analyses include it.
+  Follow [feature-checks.md](feature-checks.md). Each row has a `feature` family, scoped
+  `jobIds`, `state` (`assessed`, `not-applicable`, `unverified`), `configuration`,
+  `observedBehavior`, `evidenceIds`, and `nextCheck` (text or null). Keep configuration
+  separate from its observed effect. Assessed/not-applicable rows require supporting
+  evidence IDs. Unverified rows require a concrete next check and partial/blocked coverage.
+  Evidence IDs resolve to collected observations; name missing evidence without inventing it.
 - `evidence` contains stable IDs, associated run IDs, and concise observations.
   Each `sourceCommand` is one exact executed CLI invocation. Split observations from
   multiple reads into separate evidence records and cite their IDs from recommendations;
@@ -59,6 +66,7 @@ manual steps, coverage gaps, revision/configuration reasons, collection coverage
 reasons, and explanatory evidence prose. Keep schema keys, enums, IDs, flags, commands,
 exact technical identifiers, and quoted raw data unchanged. Existing secret-omission rules
 still apply. This guidance does not rewrite machine contracts or general model instructions.
+Apply the same guidance to feature-assessment configuration, behavior and next-check text.
 
 Write for an experienced TeamCity developer reading English at B1 level. Keep the technical
 depth. Briefly explain a necessary unfamiliar term on first use; skip TeamCity/programming basics.
