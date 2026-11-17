@@ -177,6 +177,28 @@ class FirstGreenEvidenceTest(unittest.TestCase):
         published = runner.publishable_result({"build": {"sourceMutations": ["gradlew", "cert/x.json"]}})
         self.assertEqual(["cert/x.json", "gradlew"], published["sourceMutations"])
 
+    def test_batch_artifacts_count_for_their_parallel_job(self):
+        tc, tree = self.fixture()
+        batches = [node(1011, "test_virtual_Batch_1_1"), node(1012, "test_virtual_Batch_2_1")]
+        tree["dependencies"][0]["dependencies"] = batches
+        tc.build.side_effect = lambda build_id: {
+            **next(item for item in tree["dependencies"] + batches if item["id"] == build_id),
+            "buildType": {"name": {101: "Tests", 102: "Package"}.get(build_id, "Batch")},
+        }
+        # The composite job build lists nothing of its own; each batch published its XML.
+        tc.artifacts.side_effect = lambda build_id: {
+            102: ["app.jar"],
+            1011: ["TEST-One.xml", "TEST-Shared.xml"],
+            1012: ["TEST-Two.xml", "TEST-Shared.xml"],
+        }.get(build_id, [])
+        build = runner.wait_for_build(tc, "project", 10)
+        observed, diagnostics = evidence.observe_chain(tc, "project", build, "21")
+        self.assertEqual(["TEST-One.xml", "TEST-Shared.xml", "TEST-Two.xml"],
+                         observed["jobResults"][0]["artifacts"])
+        self.assertEqual(["TEST-One.xml", "TEST-Shared.xml", "TEST-Two.xml", "app.jar"], observed["artifacts"])
+        self.assertEqual([3, 1], [item["artifactCount"] for item in diagnostics["builds"]])
+        self.assertTrue(runner.artifact_matches("**/target/surefire-reports/TEST-*.xml", observed["artifacts"]))
+
     def test_vcs_settings_come_from_selected_pipeline_head(self):
         case = json.loads((EVALS / "first-green-build/cases/clean-spring-boot-maven.json").read_text())
         tc, _ = self.fixture()
