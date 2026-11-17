@@ -20,8 +20,8 @@ also define parameters. The name `env.JDK_21_0` and path `/opt/jdk-21` are
 examples: inspect the actual agent's **Parameters** tab or a supported tool.
 An installed JDK that the agent has not detected does not prove that this
 parameter exists. See [TeamCity's Java-related agent parameters](https://www.jetbrains.com/help/teamcity/predefined-build-parameters.html#Java-Related+Environment+Variables).
-The CLI command `teamcity agent jobs <agent-id> --incompatible --json` can
-report unmet requirements, but it does not list parameter values. Treat a key
+`teamcity run view <job-run-id> --json` on a queued run reports unmet
+requirements under `.compatibility`, but it does not list parameter values. Treat a key
 inferred from the Java version as a candidate until agent parameters or job
 compatibility confirm it.
 

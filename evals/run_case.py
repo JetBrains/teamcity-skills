@@ -78,6 +78,9 @@ EVALS = pathlib.Path(__file__).parent
 PLACEHOLDER = re.compile(r"\{\{teamcity\.(server|targetProject)\}\}")
 SAFE_AGENT_METADATA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SAFE_REVISION = re.compile(r"^[a-fA-F0-9]{40}$")
+# Server-provided build parameters; a reference to them requires nothing of an agent.
+SERVER_PARAMETER_PREFIXES = ("system.", "teamcity.build.", "build.", "dep.", "vcsroot.",
+                             "teamcity.project", "teamcity.server", "teamcity.version")
 TOOL_MODES = ("cli-only", "mcp-only", "cli+mcp")
 sys.path.insert(0, str(EVALS))
 from teamcity_cli_bridge import BridgeError, TeamCityCliBridge
@@ -626,22 +629,36 @@ class TeamCity:
                                 step["properties"][field] = resolve_maven_arguments(
                                     step["properties"][field], parameters, environment)
                 # Pipeline YAML permits the short string form as well as an
-                # object with an explicit ``publish-artifact`` flag. A string
-                # is itself an artifact rule, so it must not be treated as a
-                # mapping by the grader.
+                # object with an optional ``publish-artifact`` flag. A string
+                # is itself an artifact rule, and a bare ``path`` object is the
+                # same declaration; only an explicit ``false`` opts out.
                 published = [
                     entry if isinstance(entry, str) else entry.get("path", "")
                     for entry in (job.get("files-publication") or [])
                     if isinstance(entry, str)
-                    or (isinstance(entry, dict) and entry.get("publish-artifact"))
+                    or (isinstance(entry, dict) and entry.get("publish-artifact", True) is not False)
                 ]
                 runs_on = job.get("runs-on")
+                requirements = [str(runs_on)] if runs_on else []
+                # TeamCity dispatches a job only to agents that provide every
+                # referenced parameter the pipeline itself does not define.
+                defined = set(parameters) | {f"env.{name}" for name in environment}
+                referenced = {
+                    name
+                    for value in [*parameters.values(),
+                                  *(value for raw in (job.get("steps") or []) for value in raw.values())]
+                    if isinstance(value, str)
+                    for name in re.findall(r"%([A-Za-z0-9_.\-]+)%", value)
+                }
+                requirements.extend(
+                    f"implicit-requirement: {name}" for name in sorted(referenced - defined)
+                    if not name.startswith(SERVER_PARAMETER_PREFIXES))
                 collected.append({
                     "id": f"{pipeline_id}/{job_id}",
                     "name": job.get("name") or job_id,
                     "steps": steps,
                     "artifactRules": "\n".join(published),
-                    "agentRequirements": [str(runs_on)] if runs_on else [],
+                    "agentRequirements": requirements,
                     "environment": jdk_selectors(environment),
                     "parameters": jdk_selectors(parameters, parameter=True),
                     "jobProperties": {
@@ -1160,6 +1177,7 @@ def grade_configuration(case: dict, observed: dict) -> dict:
         checks["toolUse"] = {
             "expected": True,
             "observed": not unmet and not used,
+            "missing": [*unmet, *(f"forbidden: {pattern}" for pattern in used)],
             "detail": (f"never called {unmet}; " if unmet else "")
                       + (f"called forbidden {used}; " if used else "")
                       + f"{len(calls)} call(s) recorded",
@@ -1179,13 +1197,18 @@ def grade_configuration(case: dict, observed: dict) -> dict:
 TEAMCITY_COMMAND = r"\bteamcity(?:\.cmd)?\s+"
 STATUS_CALL = re.compile(TEAMCITY_COMMAND + r"(?:run\s+view|queue\s+list)\b", re.I)
 WAIT_CALL = re.compile(TEAMCITY_COMMAND + r"run\s+watch\b|\bsleep\s+\d+", re.I)
+# A queued run's `run view` shows the verdict too (CLI 1.6+), but only a
+# dedicated query proves the agent stepped out of polling into diagnosis.
+DEDICATED_INCOMPATIBILITY_CALL = re.compile(
+    TEAMCITY_COMMAND + r"(?:agent\s+jobs\b[^\n]*--incompatible\b|job\s+view\b)", re.I
+)
 DIAGNOSTIC_CALLS = {
     "agent-inventory": re.compile(TEAMCITY_COMMAND + r"agent\s+list\b", re.I),
     "agent-runtime-capabilities": re.compile(
         TEAMCITY_COMMAND + r"agent\s+view\b", re.I
     ),
     "job-incompatibility-reasons": re.compile(
-        TEAMCITY_COMMAND + r"(?:agent\s+jobs\b[^\n]*--incompatible\b|job\s+view\b)", re.I
+        TEAMCITY_COMMAND + r"(?:agent\s+jobs\b[^\n]*--incompatible\b|job\s+view\b|run\s+view\b)", re.I
     ),
 }
 CONCLUSION_PATTERNS = {
@@ -1257,7 +1280,7 @@ def grade_queue_stall(case: dict, observed: dict) -> dict:
     first_compatibility = min(
         (i for i, call in enumerate(calls)
          if DIAGNOSTIC_CALLS["agent-inventory"].search(call)
-         or DIAGNOSTIC_CALLS["job-incompatibility-reasons"].search(call)),
+         or DEDICATED_INCOMPATIBILITY_CALL.search(call)),
         default=None,
     )
     status_before = (
@@ -1295,6 +1318,7 @@ def grade_queue_stall(case: dict, observed: dict) -> dict:
     checks["requiredDiagnostics"] = {
         "expected": True,
         "observed": not missing_diagnostics,
+        "missing": missing_diagnostics,
         "detail": (
             f"missing: {missing_diagnostics}" if missing_diagnostics
             else "all required diagnostics inspected"
@@ -1324,6 +1348,7 @@ def grade_queue_stall(case: dict, observed: dict) -> dict:
     checks["diagnosisReported"] = {
         "expected": True,
         "observed": not missing_conclusions,
+        "missing": missing_conclusions,
         "detail": (
             f"missing conclusion categories: {missing_conclusions}"
             if missing_conclusions else "stable incompatibility blocker reported"
@@ -1699,6 +1724,9 @@ def invoke_agent(prompt: str, checkout: pathlib.Path, env: dict, trace: pathlib.
             allowed_tools.append("mcp__probe__*")
     if allowed_tools:
         command += " --allowedTools " + " ".join(shlex.quote(t) for t in allowed_tools)
+    # The skills keep working YAML outside the checkout; without this, every
+    # Read/Write of such a file needs an approval the non-interactive run cannot give.
+    command += " --add-dir " + shlex.quote(tempfile.gettempdir())
     if transport_contract:
         command += " --append-system-prompt " + shlex.quote(transport_contract)
     if mcp_config:
@@ -1829,6 +1857,38 @@ def permission_failure_surface(trace: pathlib.Path) -> Optional[str]:
                  r"(?:approval|permission).{0,160}(?:bash|write|edit|file)", tail, re.S):
         return "workspace"
     return "unknown"
+
+
+def denied_tools(trace: pathlib.Path) -> list:
+    """Names of tools whose results report a permission denial.
+
+    Read from structured events only: a tool name is safe to publish, the
+    denied command or the agent's prose is not.
+    """
+    names, denied = {}, set()
+    for line in trace_output_lines(trace):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        message = event.get("message") if isinstance(event, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        for block in content if isinstance(content, list) else []:
+            if not isinstance(block, dict):
+                continue
+            if (block.get("type") == "tool_use" and isinstance(block.get("id"), str)
+                    and isinstance(block.get("name"), str)):
+                names[block["id"]] = block["name"]
+            elif block.get("type") == "tool_result":
+                text = json.dumps(block.get("content")).lower()
+                if "requires approval" in text or "permission_denied" in text:
+                    name = names.get(block.get("tool_use_id"))
+                    if name:
+                        denied.add(name)
+    return sorted(denied)
 
 
 def mcp_runtime(trace: pathlib.Path) -> dict:
@@ -2050,6 +2110,11 @@ def publishable_result(result: dict) -> dict:
         published["agentToolSummary"] = tool_summary
     if result.get("permissionFailureSurface") in ("mcp", "workspace", "unknown"):
         published["permissionFailureSurface"] = result["permissionFailureSurface"]
+    denied = result.get("deniedTools")
+    if isinstance(denied, list) and denied:
+        published["deniedTools"] = sorted({
+            name for name in denied if isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,80}", name)
+        })[:10]
     runtime = safe_mcp_runtime(result.get("mcpRuntime"))
     if runtime:
         published["mcpRuntime"] = runtime
@@ -2080,6 +2145,11 @@ def publishable_result(result: dict) -> dict:
     max_budget = result.get("agentMaxBudgetUsd")
     if type(max_budget) in (int, float) and math.isfinite(max_budget) and max_budget > 0:
         published["agentMaxBudgetUsd"] = max_budget
+    mutations = (result.get("build") or {}).get("sourceMutations")
+    if isinstance(mutations, list) and mutations:
+        published["sourceMutations"] = sorted(
+            {path for path in mutations if isinstance(path, str) and 0 < len(path) <= 512}
+        )[:50]
     published["checks"] = {
         name: safe_check_result(check)
         for name, check in (result.get("checks") or {}).items()
@@ -2350,6 +2420,7 @@ def run(
                         allow_build_writes=case["kind"] == "first-green-build",
                         pipeline_ids=lambda: tc.pipeline_ids(project_id),
                         job_ids=lambda: [item["id"] for item in tc.build_types(project_id)],
+                        build_type_of=lambda build_id: tc.build(int(build_id)).get("buildTypeId"),
                         base_env=env,
                     )
                 else:
@@ -2391,8 +2462,16 @@ def run(
             agent_run.get("failureCategory") or trace_error_category(trace)
         )
         permission_surface = permission_failure_surface(trace)
+        denied = denied_tools(trace)
         if permission_surface:
+            if (permission_surface == "mcp" and tool_mode == "cli-only"
+                    and not any(name.startswith("mcp__") for name in denied)):
+                # No MCP server exists in this mode; "teamcity" near "permission"
+                # is the skill's or the agent's wording, not an MCP denial.
+                permission_surface = "workspace" if denied else "unknown"
             result["permissionFailureSurface"] = permission_surface
+        if denied:
+            result["deniedTools"] = denied
         result["agentToolSummary"] = agent_tool_summary(trace)
         if mcp_config:
             result["mcpRuntime"] = mcp_runtime(trace)
@@ -2414,6 +2493,8 @@ def run(
         if agent_exit != 0 or agent_run.get("failureCategory"):
             no_build_budget = min(budget, int(env.get("EVAL_FAILED_AGENT_GRACE", "120")))
         allowed = [".claude/"]
+        if case.get("skill") == "teamcity-onboard":
+            allowed.append("teamcity-onboarding.md")
         revision = case.get("repository", {}).get("revision")
         if "requestedConfiguration" in case:
             allowed.extend([case["requestedConfiguration"]["sourcePath"], ".teamcity/"])

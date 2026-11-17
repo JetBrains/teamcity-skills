@@ -80,18 +80,32 @@ Then:
 
 1. List enabled, authorized agents and applicable cloud images or hosted
    selectors.
-2. Query the job against candidate agents so TeamCity reports unmet
-   requirements, missing versions, pool restrictions, or unresolved
-   parameters.
+2. Read `teamcity run view <job-run-id> --json`; `.compatibility` reports
+   each agent's unmet requirements, missing versions, pool restrictions, or
+   unresolved parameters.
 3. Pull the server-stored Pipeline YAML and verify that every `%name%`
    substitution is declared or inherited.
 
 Perform these checks immediately when the reason says **no compatible agents**
 or **unresolved parameters**. Treat **no idle compatible agents** as ambiguous
-until the job result distinguishes busy capacity from zero compatible agents.
-If an unmet `os-family teamcity.agent.jvm.os.family equals Linux` requirement
-uses a key absent from the candidate agent, replace it with an observed,
-relevant parameter; changing the value's case cannot make the key exist.
+until the compatibility list distinguishes busy capacity (compatible entries
+present) from zero compatible agents. Act on the incompatibility reason, not
+on the count:
+
+| Reason in `run view` | Cause | Action |
+| --- | --- | --- |
+| `teamcity.agent.jbHosted equals true`, `system.agent.name starts with <name>` | `runs-on` is a hosted type name; the project has no JetBrains-hosted agents | Replace the name with `self-hosted` requirements |
+| `teamcity.agent.jvm.os.family equals <os>` | `os-family`; these agents do not publish that parameter | `arch: <os.arch value>` or `- requirement: equals / parameter: teamcity.agent.jvm.os.name / value: <os> / name: <label>` |
+| `Parameter '<key>' ...` for `env.JDK_*`, `docker.*`, or another key | no agent has the key | Install the runtime in the job or use a container; drop the key |
+| `Agent belongs to the pool not associated with the project` | matching agents sit in a pool the project cannot use | Not fixable in YAML: report it through [Manual prerequisites](manual-prerequisites.md) |
+| `Restricted by agent policy` | the agent runs only selected configurations | Not fixable in YAML: manual prerequisite, or drop the target and say so |
+
+Changing a value's case cannot make a missing key exist. After the
+correction, cancel the queued run with `teamcity run cancel <run-id> --yes`,
+validate, push, and queue again. Never leave a run in the queue. Do not
+create probe pipelines to test selectors: the first queued run of the real
+pipeline is the probe. Delete pipelines you created and no longer need with
+`teamcity pipeline delete <id> --yes`.
 
 For an unresolved host-JDK parameter such as `env.JDK_25`, report a
 pre-dispatch blocker: a build step cannot install JDK 25 before the job starts.

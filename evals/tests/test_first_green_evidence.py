@@ -123,6 +123,60 @@ class FirstGreenEvidenceTest(unittest.TestCase):
         self.assertFalse(diagnostics["jdk"]["runtimeVerified"])
         tc.vcs_roots.assert_not_called()
 
+    def test_architecture_suffixed_jdk_keys_identify_the_major(self):
+        for selector, major in (("%env.JDK_21_0%", 21), ("%env.JDK_21_0_ARM64%", 21),
+                                ("%env.JDK_1_8_x64%", 8), ("%env.JDK_17_0_x64%", 17), ("%env.JAVA_HOME%", None)):
+            with self.subTest(selector=selector):
+                self.assertEqual(major, evidence.jdk_home_major(selector))
+        resolved = evidence.resolve_jdk_home("%env.JAVA_HOME%", {"env.JAVA_HOME": "%env.JDK_21_0_ARM64%"}, {})
+        self.assertEqual("%env.JDK_21_0_ARM64%", resolved)
+        job = [{"name": "Build", "parameters": {"env.JAVA_HOME": "%env.JDK_21_0_ARM64%"},
+                "steps": [{"type": "gradle", "properties": {"jdk-home": resolved}}]}]
+        self.assertTrue(evidence.jdk_evidence({}, "21", job)[0])
+        self.assertFalse(evidence.jdk_evidence({}, "17", job)[0])
+
+    def test_bare_path_publication_is_an_artifact_rule_unless_opted_out(self):
+        tc = runner.TeamCity("teamcity", "https://example.invalid", "private", {})
+        document = {"jobs": {"Build": {"steps": [{"type": "maven", "goals": "verify"}],
+                                       "files-publication": ["target/*.jar => jars",
+                                                             {"path": "target/surefire-reports/*.xml"},
+                                                             {"path": "build/private.log", "publish-artifact": False},
+                                                             {"path": "target/site/**", "publish-artifact": True}]}}}
+        with mock.patch.object(tc, "pipeline_definition", return_value=document):
+            [job] = tc.jobs("project", "pipeline")
+        self.assertEqual("target/*.jar => jars\ntarget/surefire-reports/*.xml\ntarget/site/**",
+                         job["artifactRules"])
+
+    def test_unversioned_runner_jdk_home_inside_a_jdk_image_is_the_image_jdk(self):
+        def job(home, image="eclipse-temurin:25-jdk"):
+            return [{"name": "Build", "steps": [{"type": "gradle", "properties": {
+                "jdk-home": home, "docker-image": image}}]}]
+        for home, image, expected in (("/opt/java/openjdk", "eclipse-temurin:25-jdk", True),
+                                      ("/opt/java/openjdk", "gradle:9.2-jdk25", True),
+                                      ("/opt/jdk-17", "eclipse-temurin:25-jdk", False),
+                                      ("%env.JAVA_HOME%", "eclipse-temurin:25-jdk", False),
+                                      ("/opt/java/openjdk", "gradle:9.2", False)):
+            with self.subTest(home=home, image=image):
+                matched, _, details = evidence.jdk_evidence({}, "25", job(home, image))
+                self.assertEqual(expected, matched)
+                self.assertEqual(expected, details["declaredMatch"])
+
+    def test_parallel_test_batches_are_not_declared_jobs(self):
+        tc, tree = self.fixture()
+        batches = [node(1011, "test_virtual_Batch_1_1"), node(1012, "test_virtual_Batch_2_1")]
+        tree["dependencies"][0]["dependencies"] = batches
+        tc.build.side_effect = lambda build_id: {
+            **next(item for item in tree["dependencies"] + batches if item["id"] == build_id),
+            "buildType": {"name": {101: "Tests", 102: "Package"}.get(build_id, "Batch")},
+        }
+        build = runner.wait_for_build(tc, "project", 10)
+        observed, diagnostics = evidence.observe_chain(tc, "project", build, "21")
+        self.assertEqual(1, observed["testCount"])
+        self.assertEqual([101, 102], [item["id"] for item in diagnostics["builds"]])
+        self.assertEqual(2, tc.test_results.call_count)
+        published = runner.publishable_result({"build": {"sourceMutations": ["gradlew", "cert/x.json"]}})
+        self.assertEqual(["cert/x.json", "gradlew"], published["sourceMutations"])
+
     def test_vcs_settings_come_from_selected_pipeline_head(self):
         case = json.loads((EVALS / "first-green-build/cases/clean-spring-boot-maven.json").read_text())
         tc, _ = self.fixture()

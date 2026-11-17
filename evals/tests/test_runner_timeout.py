@@ -597,6 +597,27 @@ class AgentTimeoutTest(unittest.TestCase):
 
         self.assertEqual("mcp", surface)
 
+    def test_denied_tools_come_from_structured_tool_results_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trace = pathlib.Path(directory) / "trace.log"
+            trace.write_text(
+                "--- prompt ---\nprivate\n--- output ---\n"
+                + json.dumps({"type": "assistant", "message": {"content": [
+                    {"type": "tool_use", "id": "t1", "name": "TodoWrite", "input": {}},
+                    {"type": "tool_use", "id": "t2", "name": "Bash", "input": {"command": "teamcity run view 1"}}]}}) + "\n"
+                + json.dumps({"type": "user", "message": {"content": [
+                    {"type": "tool_result", "tool_use_id": "t1", "content": "This tool requires approval"},
+                    {"type": "tool_result", "tool_use_id": "t2", "content": "ok, no permission_denied here"}]}}) + "\n"
+                + "The agent said permission_denied never happened for TeamCity.\n"
+                # Non-assistant events carry a string message or no content list.
+                + json.dumps({"type": "system", "subtype": "init", "message": "requires approval"}) + "\n"
+                + json.dumps({"type": "result", "message": {"content": "permission_denied"}}) + "\n"
+                + json.dumps(["not", "an", "event"]) + "\n"
+            )
+            self.assertEqual(["Bash", "TodoWrite"], run_case.denied_tools(trace))
+            published = run_case.publishable_result({"deniedTools": ["TodoWrite", "../x", "Bash"]})
+            self.assertEqual(["Bash", "TodoWrite"], published["deniedTools"])
+
     def test_permission_failure_surface_ignores_prompt_text(self):
         with tempfile.TemporaryDirectory() as directory:
             trace = pathlib.Path(directory) / "trace.log"

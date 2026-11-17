@@ -171,12 +171,34 @@ def maven_runtime(log, jdk, step_count, step_indices=None, total_steps=None, jdk
     return result
 
 
+def merge_maven_runtimes(runtimes):
+    """One record for a parallel job: every batch build must verify the same JDK."""
+    statuses = [item["status"] for item in runtimes]
+    merged = dict(runtimes[0])
+    merged["observedMajors"] = sorted({major for item in runtimes for major in item["observedMajors"]})
+    merged["launchCount"] = min(item["launchCount"] for item in runtimes)
+    merged["verifiedLaunchCount"] = min(item["verifiedLaunchCount"] for item in runtimes)
+    if "mismatch" in statuses:
+        merged["status"] = "mismatch"
+    elif "unavailable" in statuses:
+        merged["status"] = "unavailable"
+    elif "ambiguous" in statuses or len(merged["observedMajors"]) > 1:
+        merged["status"] = "ambiguous"
+    elif all(status == "verified" for status in statuses):
+        merged["status"] = "verified"
+    else:
+        merged["status"] = "missing"
+    return merged
+
+
 def safe_maven_runtime(value):
     if (not isinstance(value, dict) or not isinstance(value.get("status"), str)
             or value["status"] not in STATUSES
             or value.get("jdkMatch", "exact") not in JDK_MATCH_MODES):
         return {}
     safe = {"status": value["status"], "jdkMatch": value.get("jdkMatch", "exact")}
+    if value.get("evidence") == "declared-docker-image":
+        safe["evidence"] = value["evidence"]
     for key in ("buildId", "requiredMajor", "stepCount", "launchCount", "verifiedLaunchCount"):
         if type(value.get(key)) is int and value[key] >= 0:
             safe[key] = value[key]

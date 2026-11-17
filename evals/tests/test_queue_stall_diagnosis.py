@@ -88,7 +88,8 @@ class QueueStallDiagnosisTest(unittest.TestCase):
         self.assertFalse(checks["statusCheckLimit"]["passed"])
         self.assertFalse(checks["requiredDiagnostics"]["passed"])
         self.assertFalse(checks["diagnosticAgentInventory"]["passed"])
-        self.assertFalse(checks["diagnosticJobIncompatibility"]["passed"])
+        # `run view` of a queued run shows the incompatibility verdict (CLI 1.6+).
+        self.assertTrue(checks["diagnosticJobIncompatibility"]["passed"])
         self.assertFalse(checks["diagnosticStoredParameters"]["passed"])
         self.assertFalse(checks["waitLimit"]["passed"])
         self.assertFalse(checks["noBlindRetry"]["passed"])
@@ -134,6 +135,22 @@ class QueueStallDiagnosisTest(unittest.TestCase):
             capabilities = json.loads(agent.stdout)["parameters"]
             self.assertNotIn("env.JDK_25", capabilities)
             self.assertEqual("false", capabilities["env.DOCKER_AVAILABLE"])
+
+    def test_fixture_run_view_carries_the_compatibility_verdict(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = pathlib.Path(directory)
+            env = run_case.install_queue_stall_fixture(workspace, dict(os.environ))
+            fixture_cli = [sys.executable, str(workspace / "fixture-bin/teamcity-fixture.py")]
+            view = json.loads(subprocess.run(
+                [*fixture_cli, "run", "view", "73142", "--json"],
+                env=env, capture_output=True, text=True, check=True,
+            ).stdout)
+            compatibility = view["compatibility"]
+            self.assertEqual([], compatibility["compatibleAgents"])
+            self.assertEqual(["linux-agent-a", "linux-agent-b"],
+                             [agent["name"] for agent in compatibility["incompatibleAgents"]])
+            self.assertTrue(all("env.JDK_25" in reason for agent in compatibility["incompatibleAgents"]
+                                for reason in agent["reasons"]))
 
     def test_java25_case_requires_dispatch_and_provisioning_diagnosis(self):
         case = json.loads(JAVA25_CASE.read_text())
