@@ -22,13 +22,12 @@
     "sourceMutations": "none",
     "toolchain": {"jdk": "17"},
     "firstBuild": "SUCCESS",
-    "allTestsPassed": true,
     "minimumTestCount": 200,
     "requiredTestNames": [
       "^org\\.springframework\\.cloud\\.consul\\.ConsulAutoConfigurationTests\\.",
       "^org\\.springframework\\.cloud\\.consul\\.config\\.ConsulConfigDataIntegrationTests\\.",
       "^org\\.springframework\\.cloud\\.consul\\.discovery\\.ConsulDiscoveryClientTests\\.",
-      "^org\\.springframework\\.cloud\\.consul\\.binder\\.ConsulBinderTests\\.",
+      "^org\\.springframework\\.cloud\\.consul\\.binder\\.ConsulInboundMessageProducerTests\\.",
       "^org\\.springframework\\.cloud\\.consul\\.configdatatests\\.ConsulConfigDataApplicationTests\\."
     ],
     "configuration": {
