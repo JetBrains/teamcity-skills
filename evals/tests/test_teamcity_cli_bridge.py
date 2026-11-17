@@ -96,8 +96,11 @@ class TeamCityCliBridgeTest(unittest.TestCase):
             policy.authorize(["api", "/app/rest/agentPools?locator=project:(id:Eval_Project)"], checkout)
             for arguments in (
                 ["api", "/app/rest/agentTypes/id:42", "-X", "DELETE"],
+                ["api", "/app/rest/agentTypes/id:42", "-XPOST"],
+                ["api", "/app/rest/agentTypes/id:42", "-X=POST"],
                 ["api", "/app/rest/agentPools", "--method=POST"],
                 ["api", "/app/rest/agentPools", "-f", "name=x"],
+                ["api", "/app/rest/agentPools", "-fname=x"],
                 ["api", "/app/rest/agents"],
                 ["api", "/app/rest/builds"],
             ):

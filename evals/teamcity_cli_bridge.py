@@ -116,8 +116,9 @@ class CommandPolicy:
     READ_ONLY_API_PREFIXES = ("/app/rest/agentTypes", "/app/rest/agentPools")
 
     def _require_read_only_agent_api(self, arguments: list) -> None:
-        if any(argument in ("-X", "--method", "-f", "--field", "--input")
-               or argument.startswith(("-X=", "--method=", "--field=", "--input="))
+        if any(argument.startswith(("-X", "-f"))
+               or argument in ("--method", "--field", "--input")
+               or argument.startswith(("--method=", "--field=", "--input="))
                for argument in arguments):
             raise BridgeError("the eval CLI bridge permits only GET requests through `teamcity api`")
         positionals = _positional(arguments)
