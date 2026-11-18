@@ -23,6 +23,7 @@
 - `--yes`, `-y` installs without prompting; required for non-interactive installation.
 - `--check` or `--json` reports status without installing; neither combines with `--yes`.
 - On Windows, WinGet updates start in a separate window after the CLI exits.
+- The updater cancels the update if the CLI has not exited within 15 seconds.
 - Exit code 0 confirms the updater started. Check the window or printed log for the installation result.
 - Scripts that need the installation exit code must run `winget upgrade --id JetBrains.TeamCityCLI --exact --source winget` directly.
 
