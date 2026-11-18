@@ -288,6 +288,14 @@ def observe_chain(tc, project_id, build, required_jdk, jdk_match="exact", verify
             maven.append({**runtime, "buildId": member["id"], "jobId": job["id"]})
         tests = tc.test_results(member["id"])
         published_artifacts = tc.artifacts(member["id"])
+        # A parallel job's batches publish the files; the server merges them
+        # into the job build on its own terms (same-named files collapse to the
+        # latest batch). Read every batch too, so XML published from the
+        # batches counts for the job that declared it.
+        for batch in batches.get(member["id"], []):
+            for path in tc.artifacts(batch["id"]):
+                if path not in published_artifacts:
+                    published_artifacts.append(path)
         all_tests.extend(tests)
         artifacts.extend(published_artifacts)
         job_results.append({"job": job, "buildId": member["id"], "status": member.get("status"),

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "id": "onboard-spring-cloud-consul",
+  "kind": "first-green-build",
+  "status": "draft",
+  "skill": "teamcity-onboard",
+  "prompt": "Continue the TeamCity onboarding flow for this checked-out repository. The web hand-over supplies TeamCity server {{teamcity.server}}, parent project {{teamcity.targetProject}}, checkout in the current working directory, remote https://github.com/spring-cloud/spring-cloud-consul.git, current branch main, and no VCS root. Recreate only the build and test core of its GitHub Actions workflow. Do not publish, deploy, or release. Use native TeamCity runners, dependency cache, and parallel tests when compatible. Validate the saved pipeline and run it until green.",
+  "teamcity": {"server": "runner-configured", "targetProject": "runner-configured"},
+  "repository": {"url": "https://github.com/spring-cloud/spring-cloud-consul.git", "revision": "baa3453d4c73195e4cea2f45eda72a773a79c15f", "defaultBranch": "main", "root": "."},
+  "stack": {"family": "spring-cloud", "buildTool": "maven", "maven": "wrapper"},
+  "requestedConfiguration": {"format": "yaml", "sourcePath": ".teamcity.yml"},
+  "agentTools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+  "verification": {
+    "command": "./mvnw -B -Pspring clean verify",
+    "testReportPaths": ["**/target/surefire-reports/TEST-*.xml"],
+    "artifactPaths": ["**/target/*.jar", "**/target/surefire-reports/TEST-*.xml"]
+  },
+  "expected": {
+    "configurationValidated": true,
+    "testsExecutedAndReported": true,
+    "artifactsPublished": true,
+    "sourceMutations": "none",
+    "toolchain": {"jdk": "17"},
+    "firstBuild": "SUCCESS",
+    "minimumTestCount": 200,
+    "requiredTestNames": [
+      "^org\\.springframework\\.cloud\\.consul\\.ConsulAutoConfigurationTests\\.",
+      "^org\\.springframework\\.cloud\\.consul\\.config\\.ConsulConfigDataIntegrationTests\\.",
+      "^org\\.springframework\\.cloud\\.consul\\.discovery\\.ConsulDiscoveryClientTests\\.",
+      "^org\\.springframework\\.cloud\\.consul\\.binder\\.ConsulInboundMessageProducerTests\\.",
+      "^org\\.springframework\\.cloud\\.consul\\.configdatatests\\.ConsulConfigDataApplicationTests\\."
+    ],
+    "configuration": {
+      "configurationValidated": true,
+      "sourceMutations": "none",
+      "minimumJobs": 1,
+      "toolchain": {"jdk": "17"},
+      "requiredStepTypes": ["maven"],
+      "requiredStepProperties": [
+        {"stepType": "maven", "property": "goals", "matches": "(?i)(^|\\s)(verify|install)(\\s|$)"}
+      ],
+      "forbiddenStepProperties": [
+        {"stepType": "maven", "property": "goals", "matches": "(?i)^-D(?:test=.*|maven\\.test\\.failure\\.ignore(?:=true)?|surefire\\.failIfNoSpecifiedTests=false|failIfNoTests=false)$"},
+        {"stepType": "maven", "property": "runner-arguments", "matches": "(?i)^-D(?:test=.*|maven\\.test\\.failure\\.ignore(?:=true)?|surefire\\.failIfNoSpecifiedTests=false|failIfNoTests=false)$"},
+        {"stepType": "maven", "property": "maven-version", "matches": "bundled[-_]3[-_][0-5](?!\\d)"}
+      ],
+      "requiredArtifactRules": ["\\.jar", "surefire-reports.*\\.xml"],
+      "requiredJobProperties": [{"property": "enable-dependency-cache", "value": true}]
+    }
+  }
+}
